@@ -23,6 +23,7 @@ Datasets, metrics, targets, and methodology for repeatable performance measureme
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#18--benchmarking-plan-and-performance-targets`).
 - [ ] CLI tool (SPM) runs scans on fixtures; writes JSON metrics.
 - [ ] Instruments templates for Time Profiler and System Trace stored in repo.
 - [ ] Automation script pins CPU concurrency and warms/cools caches per spec.

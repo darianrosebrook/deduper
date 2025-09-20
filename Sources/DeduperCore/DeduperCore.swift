@@ -42,6 +42,7 @@ public struct DeduperCore {
 // - BookmarkManager.swift
 // - ScanService.swift  
 // - MonitoringService.swift
+// - PersistenceController.swift
 
 // MARK: - Library Information
 

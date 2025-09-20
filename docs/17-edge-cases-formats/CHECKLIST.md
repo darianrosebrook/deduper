@@ -24,6 +24,7 @@ Robust handling across formats, Live Photos, cloud placeholders, links, bundles,
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#17--edge-cases--file-format-support`).
 - [ ] RAW+JPEG pairing policy: default RAW master; use JPEG for metadata fill.
 - [ ] Live Photos linkage: HEIC+MOV treated as unit.
 - [ ] Sidecar detection: link `.xmp/.XMP` and treat as metadata extension.

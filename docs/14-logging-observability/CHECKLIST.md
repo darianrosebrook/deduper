@@ -15,6 +15,7 @@ Structured logging, error taxonomy, diagnostics export, and performance signpost
 - [ ] Error types mapped to user/system/internal with consistent handling.
 - [ ] Diagnostics bundle export.
 - [ ] Signposts added around scanning, hashing, grouping, and merging phases.
+ - [ ] Telemetry conforms to `docs/TELEMETRY_SCHEMA.md` (events, fields, sampling).
 
 ### Verification (Automated)
 
@@ -23,11 +24,13 @@ Structured logging, error taxonomy, diagnostics export, and performance signpost
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#14--logging-error-handling-and-observability`).
 - [ ] OSLog categories: `scan`, `hash`, `video`, `grouping`, `merge`, `ui`, `persist`.
 - [ ] Redaction policy: strip usernames, absolute paths where possible.
 - [ ] Error taxonomy types + mapping to user/system/internal handling.
 - [ ] `exportDiagnostics()` bundles logs, config snapshot, anonymized stats.
 - [ ] os_signpost around: enumerate, hash, fingerprint, compare, group, merge.
+ - [ ] Implement telemetry events per `docs/TELEMETRY_SCHEMA.md`.
 
 ### Done Criteria
 

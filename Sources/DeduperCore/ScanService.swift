@@ -1,5 +1,6 @@
 import Foundation
 import UniformTypeIdentifiers
+import CoreData
 import os.log
 
 /**
@@ -14,6 +15,11 @@ public final class ScanService: @unchecked Sendable {
     
     private let logger = Logger(subsystem: "app.deduper", category: "scan")
     private let fileManager = FileManager.default
+    private let persistenceController: PersistenceController
+    
+    /// Active scan tasks for cancellation support
+    private var activeTasks: [UUID: Task<Void, Never>] = [:]
+    private let tasksQueue = DispatchQueue(label: "app.deduper.scanService.tasks", attributes: .concurrent)
     
     /// Default exclusion rules for common system and sync folders
     public static let defaultExcludes: [ExcludeRule] = [
@@ -38,7 +44,9 @@ public final class ScanService: @unchecked Sendable {
     
     // MARK: - Initialization
     
-    public init() {
+    public init(persistenceController: PersistenceController) {
+        self.persistenceController = persistenceController
+        
         // Build set of all supported extensions from MediaType cases
         var extensions: Set<String> = []
         for mediaType in MediaType.allCases {
@@ -58,10 +66,15 @@ public final class ScanService: @unchecked Sendable {
      * - Returns: AsyncStream of ScanEvents
      */
     public func enumerate(urls: [URL], options: ScanOptions = ScanOptions()) async -> AsyncStream<ScanEvent> {
-        logger.info("Starting scan of \(urls.count) directories")
+        let taskId = UUID()
         
         return AsyncStream { continuation in
             Task {
+                defer {
+                    Task {
+                        await self.removeTask(taskId)
+                    }
+                }
                 
                 let startTime = Date()
                 var totalFiles = 0
@@ -74,11 +87,25 @@ public final class ScanService: @unchecked Sendable {
                 
                 // Process URLs sequentially for now (will optimize later)
                 for url in urls {
+                    // Check for cancellation
+                    if Task.isCancelled {
+                        continuation.yield(.error(url.path, "Scan cancelled by user"))
+                        break
+                    }
+                    
+                    // Check for managed library
+                    if isManagedLibrary(url) {
+                        continuation.yield(.error(url.path, getManagedLibraryGuidance()))
+                        skippedFiles += 1
+                        continue
+                    }
+                    
                     let metrics = await self.scanDirectory(
                         url: url,
                         excludes: allExcludes,
                         options: options,
-                        continuation: continuation
+                        continuation: continuation,
+                        taskId: taskId
                     )
                     totalFiles += metrics.totalFiles
                     mediaFiles += metrics.mediaFiles
@@ -87,7 +114,7 @@ public final class ScanService: @unchecked Sendable {
                 }
                 
                 let duration = Date().timeIntervalSince(startTime)
-                let metrics = ScanMetrics(
+                let finalMetrics = ScanMetrics(
                     totalFiles: totalFiles,
                     mediaFiles: mediaFiles,
                     skippedFiles: skippedFiles,
@@ -95,10 +122,10 @@ public final class ScanService: @unchecked Sendable {
                     duration: duration
                 )
                 
-                continuation.yield(.finished(metrics))
+                continuation.yield(.finished(finalMetrics))
                 continuation.finish()
                 
-                self.logger.info("Scan completed: \(metrics)")
+                self.logger.info("Scan completed: \(finalMetrics)")
             }
         }
     }
@@ -128,11 +155,30 @@ public final class ScanService: @unchecked Sendable {
     
     /**
      * Cancel all ongoing scan operations
-     * Note: This is a placeholder for future cancellation support
      */
     public func cancelAll() {
-        logger.info("Cancel requested for all scan operations")
-        // TODO: Implement proper cancellation using Task cancellation
+        logger.info("Cancelling all scan operations")
+        
+        tasksQueue.async(flags: .barrier) {
+            for (taskId, task) in self.activeTasks {
+                task.cancel()
+                self.logger.debug("Cancelled scan task: \(taskId)")
+            }
+            self.activeTasks.removeAll()
+        }
+    }
+    
+    /**
+     * Cancel a specific scan task
+     */
+    public func cancel(taskId: UUID) {
+        tasksQueue.async(flags: .barrier) {
+            if let task = self.activeTasks[taskId] {
+                task.cancel()
+                self.activeTasks.removeValue(forKey: taskId)
+                self.logger.debug("Cancelled scan task: \(taskId)")
+            }
+        }
     }
     
     // MARK: - Private Methods
@@ -141,7 +187,8 @@ public final class ScanService: @unchecked Sendable {
         url: URL,
         excludes: [ExcludeRule],
         options: ScanOptions,
-        continuation: AsyncStream<ScanEvent>.Continuation
+        continuation: AsyncStream<ScanEvent>.Continuation,
+        taskId: UUID
     ) async -> (totalFiles: Int, mediaFiles: Int, skippedFiles: Int, errorCount: Int) {
         continuation.yield(.started(url))
         
@@ -159,7 +206,9 @@ public final class ScanService: @unchecked Sendable {
                 .typeIdentifierKey,
                 .isSymbolicLinkKey,
                 .fileResourceIdentifierKey,
-                .ubiquitousItemDownloadingStatusKey
+                .ubiquitousItemDownloadingStatusKey,
+                .isHiddenKey,
+                .isPackageKey
             ]
             
             let enumeratorOptions: FileManager.DirectoryEnumerationOptions = [
@@ -184,6 +233,12 @@ public final class ScanService: @unchecked Sendable {
             let allURLs = Array(enumerator.compactMap { $0 as? URL })
             
             for fileURL in allURLs {
+                // Check for cancellation periodically
+                if itemCount % progressInterval == 0 && Task.isCancelled {
+                    logger.info("Scan cancelled at \(itemCount) items")
+                    break
+                }
+                
                 totalFiles += 1
                 itemCount += 1
                 
@@ -193,7 +248,7 @@ public final class ScanService: @unchecked Sendable {
                     // Check if directory should be excluded
                     if shouldExclude(fileURL, excludes: excludes) {
                         logger.debug("Excluding directory: \(fileURL.path, privacy: .public)")
-                        enumerator.skipDescendants()
+                        skippedFiles += 1
                         continue
                     }
                     continue // Skip directories, we only want files
@@ -219,9 +274,22 @@ public final class ScanService: @unchecked Sendable {
                     continue
                 }
                 
-                // Create ScannedFile
+                // Incremental scanning check
+                if options.incremental {
+                    // For now, skip incremental scanning to avoid actor isolation issues
+                    // TODO: Implement proper incremental scanning
+                    logger.debug("Incremental scanning requested but not yet implemented")
+                }
+                
+                // Create ScannedFile and persist to Core Data
                 do {
                     let scannedFile = try createScannedFile(from: fileURL)
+                    
+                    // Persist to Core Data in background
+                    Task.detached { [weak self] in
+                        try? await self?.persistenceController.upsertFileRecord(from: scannedFile)
+                    }
+                    
                     continuation.yield(.item(scannedFile))
                     mediaFiles += 1
                 } catch {
@@ -254,34 +322,16 @@ public final class ScanService: @unchecked Sendable {
     }
     
     private func createScannedFile(from url: URL) throws -> ScannedFile {
-        let resourceKeys: [URLResourceKey] = [
-            .fileSizeKey,
-            .contentModificationDateKey,
-            .creationDateKey,
-            .typeIdentifierKey
-        ]
+        let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey, .creationDateKey, .contentModificationDateKey])
         
-        let resourceValues = try url.resourceValues(forKeys: Set(resourceKeys))
-        
-        // Determine media type
-        let mediaType: MediaType
-        if let contentType = resourceValues.contentType {
-            if contentType.conforms(to: .image) {
-                mediaType = .photo
-            } else if contentType.conforms(to: .movie) {
-                mediaType = .video
-            } else {
-                // Fallback to extension-based detection
-                mediaType = determineMediaType(from: url)
-            }
-        } else {
-            mediaType = determineMediaType(from: url)
+        guard let fileSize = resourceValues.fileSize else {
+            throw AccessError.fileNotFound(url)
         }
         
         return ScannedFile(
             url: url,
-            mediaType: mediaType,
-            fileSize: Int64(resourceValues.fileSize ?? 0),
+            mediaType: determineMediaType(from: url),
+            fileSize: Int64(fileSize),
             createdAt: resourceValues.creationDate,
             modifiedAt: resourceValues.contentModificationDate
         )
@@ -303,28 +353,36 @@ public final class ScanService: @unchecked Sendable {
         // Default to photo for unknown extensions
         return .photo
     }
+    
+    // MARK: - Managed Library Detection
+    
+    private func isManagedLibrary(_ url: URL) -> Bool {
+        let path = url.path.lowercased()
+        return path.contains("photos library.photoslibrary") ||
+               path.contains(".lightroom") ||
+               path.contains(".aperture") ||
+               path.contains(".iphoto")
+    }
+    
+    private func getManagedLibraryGuidance() -> String {
+        return """
+        Managed library detected! For safety:
+        
+        1. Export photos to a regular folder
+        2. Run duplicate detection on that folder
+        3. Re-import cleaned photos back to library
+        
+        Direct modification of managed libraries can cause data loss.
+        """
+    }
+    
+    // MARK: - Task Management (Simplified)
+    
+    private func removeTask(_ taskId: UUID) async {
+        tasksQueue.async(flags: .barrier) {
+            self.activeTasks.removeValue(forKey: taskId)
+        }
+    }
 }
 
 // MARK: - Extensions
-
-extension ScanService {
-    /// Create a ScanOptions with default exclusions and sensible concurrency
-    public static func defaultOptions() -> ScanOptions {
-        return ScanOptions(
-            excludes: [],
-            followSymlinks: false,
-            concurrency: min(ProcessInfo.processInfo.activeProcessorCount, 4),
-            incremental: true
-        )
-    }
-    
-    /// Create a ScanOptions for aggressive scanning (more files, higher concurrency)
-    public static func aggressiveOptions() -> ScanOptions {
-        return ScanOptions(
-            excludes: [],
-            followSymlinks: true,
-            concurrency: ProcessInfo.processInfo.activeProcessorCount,
-            incremental: false
-        )
-    }
-}

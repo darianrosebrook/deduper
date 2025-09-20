@@ -25,6 +25,7 @@ Establish coverage for core logic, integration on fixtures, and UI flows.
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#19--testing-strategy-unit-integration-e2e`).
 - [ ] Unit test suites for: hashing, metadata parsers, grouping, safety guards.
 - [ ] Integration tests for: scanning, video signatures, merge, caching.
 - [ ] XCUITests for: select folder, review group, merge, undo.

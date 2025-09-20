@@ -22,6 +22,7 @@ SwiftUI screens for groups list and group detail with previews, metadata, select
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#07--user-interface`).
 - [ ] `DuplicatesListView` shows groups with confidence badges; uses list virtualization for large datasets.
 - [ ] `DuplicateGroupDetailView` renders side-by-side compare with metadata overlay and keeper selection.
 - [ ] `EvidencePanelView` lists signals, thresholds, distances, and overall confidence; per-signal verdicts.

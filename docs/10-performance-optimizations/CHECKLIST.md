@@ -25,6 +25,7 @@ Concurrency limits, incremental processing, memory usage, and efficient comparis
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#10--performance-optimizations`).
 - [ ] Concurrency manager with max worker count based on system cores.
 - [ ] Incremental pipeline (persisted index; change detection; invalidation hooks).
 - [ ] BK-tree (or neighbor-optimized) lookup for perceptual hashes.

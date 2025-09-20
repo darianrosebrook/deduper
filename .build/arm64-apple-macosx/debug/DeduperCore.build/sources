@@ -2,5 +2,6 @@
 /Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/CoreTypes.swift
 /Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/DeduperCore.swift
 /Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/MonitoringService.swift
+/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PersistenceController.swift
 /Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/ScanService.swift
 /Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/DerivedSources/resource_bundle_accessor.swift

@@ -22,6 +22,7 @@ Feedback loop: adjust thresholds, store ignore pairs/groups, and optional user p
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#11--learning--refinement`).
 - [ ] `ignorePair(fileIdA,fileIdB)` persists a symmetric ignore tuple.
 - [ ] `isIgnored(fileIdA,fileIdB)` fast lookup during grouping.
 - [ ] `recordDecision(groupId, accepted: Bool)` feeds learning store.

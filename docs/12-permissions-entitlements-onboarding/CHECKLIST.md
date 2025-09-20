@@ -16,6 +16,7 @@ Entitlements, bookmarks, TCC prompts, and onboarding UX.
 - [ ] Pre-permission explainer; clear recovery if access denied.
 - [ ] Info.plist usage descriptions present and user-facing text reviewed.
 - [ ] Onboarding explains managed library risks and proposes safe workflows.
+ - [ ] Aligns with `docs/SECURITY_PRIVACY_MODEL.md` mitigations and validation.
 
 ### Verification (Automated)
 
@@ -24,11 +25,13 @@ Entitlements, bookmarks, TCC prompts, and onboarding UX.
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#12--permissions-entitlements-and-onboarding`).
 - [ ] Configure entitlements: `com.apple.security.app-sandbox`, `com.apple.security.files.user-selected.read-write`.
 - [ ] Info.plist: `NSPhotoLibraryUsageDescription`, `NSPhotoLibraryAddUsageDescription` (if Photos integration present).
 - [ ] Onboarding explainer: why access is needed; managed library safety note; link to docs.
 - [ ] Bookmark lifecycle: create, resolve, refresh; start/stop security-scoped access.
 - [ ] Recovery UI for revoked/expired bookmarks.
+ - [ ] Cross-check flows against `docs/SECURITY_PRIVACY_MODEL.md`.
 
 ### Done Criteria
 

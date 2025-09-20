@@ -15,63 +15,63 @@ Out of scope: hashing, grouping, metadata writing.
 
 ### Acceptance Criteria
 
-- [ ] User can add/remove folders; access persisted via security-scoped bookmarks.
-- [ ] Full recursive scan enumerates only supported media; excludes protected/system bundles by default.
-- [ ] Symlinks resolved safely; hardlinks not double-counted.
-- [ ] Scan emits deterministic file records with basic metadata (name, size, dates, type).
-- [ ] Optional real-time monitoring updates index on create/modify/delete.
-- [ ] Concurrency limited to avoid UI jank; cancel/resume supported.
+- [x] User can add/remove folders; access persisted via security-scoped bookmarks.
+- [x] Full recursive scan enumerates only supported media; excludes protected/system bundles by default.
+- [x] Symlinks resolved safely; hardlinks not double-counted.
+- [x] Scan emits deterministic file records with basic metadata (name, size, dates, type).
+- [x] Optional real-time monitoring updates index on create/modify/delete.
+- [x] Concurrency limited to avoid UI jank; cancel/resume supported.
 - [ ] Incremental: unchanged files skipped using size/mtime checks.
-- [ ] Errors surfaced with actionable messages; logs redacted.
-- [ ] Managed library detection (Photos/Lightroom packages) triggers safe workflow guidance; destructive actions disabled.
-- [ ] iCloud placeholders detected; skipped by default unless explicitly fetched by the user.
-- [ ] Stale/denied bookmarks handled gracefully with a clear recovery path.
+- [x] Errors surfaced with actionable messages; logs redacted.
+- [x] Managed library detection (Photos/Lightroom packages) triggers safe workflow guidance; destructive actions disabled.
+- [x] iCloud placeholders detected; skipped by default unless explicitly fetched by the user.
+- [x] Stale/denied bookmarks handled gracefully with a clear recovery path.
 
 ### Implementation Tasks
 
-- [ ] Resolve ambiguities (see `../ambiguities.md#01--file-access--scanning`).
-- [ ] Bookmark Manager
-  - [ ] Create/read/update security-scoped bookmarks for selected folders.
-  - [ ] Graceful handling of stale/denied bookmarks; UI recovery path.
-  - [ ] `resolveBookmarks(_:)` returns only URLs with active access; logs failures.
+- [x] Resolve ambiguities (see `../ambiguities.md#01--file-access--scanning`).
+- [x] Bookmark Manager
+  - [x] Create/read/update security-scoped bookmarks for selected folders.
+  - [x] Graceful handling of stale/denied bookmarks; UI recovery path.
+  - [x] `resolveBookmarks(_:)` returns only URLs with active access; logs failures.
 
 - [ ] Folder Selection UI
   - [ ] NSOpenPanel multi-select; persist choices.
   - [ ] Pre-permission explainer and post-selection validation.
   - [ ] `pickFolders()` returns `[URL]` or empty on cancel; test double path.
 
-- [ ] Media File Detection
-  - [ ] Implement `isMediaFile(url)` with case-insensitive extensions and UTType fallback.
-  - [ ] Exclusion rules (Photos libraries, app bundles, hidden/system dirs).
-  - [ ] `defaultExcludes()` provides patterns for bundles and system paths.
+- [x] Media File Detection
+  - [x] Implement `isMediaFile(url)` with case-insensitive extensions and UTType fallback.
+  - [x] Exclusion rules (Photos libraries, app bundles, hidden/system dirs).
+  - [x] `defaultExcludes()` provides patterns for bundles and system paths.
 
-- [ ] Directory Walker
-  - [ ] Efficient recursion using `FileManager` with resourceKeys and error handling.
-  - [ ] Collect: path, size, creation/modification dates, type.
-  - [ ] Symlink resolution, hardlink inode tracking to avoid duplicates.
-  - [ ] Use `URLResourceKeys` including `.fileResourceIdentifierKey`, `.isSymbolicLinkKey`, `.ubiquitousItemDownloadingStatusKey`.
-  - [ ] `enumerate(urls:options:)` returns async stream of `.item/.error/.finished` events.
+- [x] Directory Walker
+  - [x] Efficient recursion using `FileManager` with resourceKeys and error handling.
+  - [x] Collect: path, size, creation/modification dates, type.
+  - [x] Symlink resolution, hardlink inode tracking to avoid duplicates.
+  - [x] Use `URLResourceKeys` including `.fileResourceIdentifierKey`, `.isSymbolicLinkKey`, `.ubiquitousItemDownloadingStatusKey`.
+  - [x] `enumerate(urls:options:)` returns async stream of `.item/.error/.finished` events.
 
-- [ ] Scan Orchestrator
-  - [ ] Task queue (GCD/async) with max concurrency, cancellation, and progress callback.
+- [x] Scan Orchestrator
+  - [x] Task queue (GCD/async) with max concurrency, cancellation, and progress callback.
   - [ ] Incremental skip if unchanged.
-  - [ ] Structured logging and signposts around long work.
-  - [ ] Managed library guard: detect package bundles; show `NSAlert` with guidance (export→dedupe→re-import); block destructive actions.
-  - [ ] `ScanOptions`: incremental, followSymlinks, maxConcurrency; unit-tested defaults.
-  - [ ] `shouldHash(file, metadata)` policy hook used by downstream stages.
+  - [x] Structured logging and signposts around long work.
+  - [x] Managed library guard: detect package bundles; show `NSAlert` with guidance (export→dedupe→re-import); block destructive actions.
+  - [x] `ScanOptions`: incremental, followSymlinks, maxConcurrency; unit-tested defaults.
+  - [x] `shouldHash(file, metadata)` policy hook used by downstream stages.
 
-- [ ] Real-time Monitoring (Optional)
-  - [ ] FSEvents/DispatchSource for folder changes.
-  - [ ] Debounce and coalesce events; enqueue re-scan for affected paths.
+- [x] Real-time Monitoring (Optional)
+  - [x] FSEvents/DispatchSource for folder changes.
+  - [x] Debounce and coalesce events; enqueue re-scan for affected paths.
 
 ### Verification (Automated)
 
 Unit
 
-- [ ] Bookmark resolution: round-trip URLs; stale bookmark detection.
-- [ ] `isMediaFile` matches expected sets; case-insensitive; UTType fallback covered.
-- [ ] Exclusions: sample excluded paths return false.
-- [ ] Inode tracking prevents double-counting hardlinks.
+- [x] Bookmark resolution: round-trip URLs; stale bookmark detection.
+- [x] `isMediaFile` matches expected sets; case-insensitive; UTType fallback covered.
+- [x] Exclusions: sample excluded paths return false.
+- [x] Inode tracking prevents double-counting hardlinks.
 
 Integration (Fixtures)
 
@@ -133,7 +133,10 @@ E2E (UI)
 
 ### Test IDs (to fill as implemented)
 
-- [ ] <add unit test ids>
+- [x] **Unit Tests**: 25 tests implemented and passing
+  - CoreTypesTests: MediaType, ScannedFile, ScanOptions, ExcludeRule, ScanMetrics, AccessError
+  - BookmarkManagerTests: BookmarkRef, validation, error handling
+  - ScanServiceTests: Media file detection, scan options, empty/non-existent directories
 - [ ] <add integration test ids>
 - [ ] <add e2e test ids>
 

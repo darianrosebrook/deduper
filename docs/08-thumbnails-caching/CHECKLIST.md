@@ -25,6 +25,7 @@ Efficient thumbnail generation and caching for images and video posters with rel
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#08--thumbnails--caching`).
 - [ ] `generateThumbnail(url,targetSize)` uses Image I/O downsampling and transform.
 - [ ] `NSCache` memory cache keyed by `fileId + modifiedAt + size`.
 - [ ] Disk cache under Application Support with manifest including `modifiedAt`.

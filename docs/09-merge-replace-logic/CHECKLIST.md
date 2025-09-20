@@ -20,6 +20,7 @@ Select keeper, merge metadata from duplicates, and move redundant files to Trash
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#09--merge--replace-logic`).
 - [ ] `planMerge(group)` computes deterministic policy (keeper + field map) without side effects.
 - [ ] `applyMerge(plan)` performs atomic metadata writes and file moves.
 - [ ] `undoLastMerge()` restores files and reverts metadata based on transaction log.

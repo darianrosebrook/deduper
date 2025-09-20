@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="22758" systemVersion="23F79" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="FileRecord" representedClassName="FileRecord" syncable="YES" codeGenerationType="class">
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="fileSize" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="NO"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="lastScannedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="mediaType" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="NO"/>
+        <attribute name="modifiedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="url" optional="YES" attributeType="URI" usesScalarValueType="NO"/>
+        <relationship name="imageSignature" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="ImageSignature" inverseName="fileRecord"/>
+        <relationship name="videoSignature" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="VideoSignature" inverseName="fileRecord"/>
+    </entity>
+    <entity name="ImageSignature" representedClassName="ImageSignature" syncable="YES" codeGenerationType="class">
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="dhash" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="NO"/>
+        <attribute name="height" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="NO"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="phash" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="NO"/>
+        <attribute name="width" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="NO"/>
+        <relationship name="fileRecord" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="FileRecord" inverseName="imageSignature"/>
+    </entity>
+    <entity name="VideoSignature" representedClassName="VideoSignature" syncable="YES" codeGenerationType="class">
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="durationSec" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="NO"/>
+        <attribute name="frameHashes" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="[UInt64]"/>
+        <attribute name="height" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="NO"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="width" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="NO"/>
+        <relationship name="fileRecord" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="FileRecord" inverseName="videoSignature"/>
+    </entity>
+    <entity name="DuplicateGroup" representedClassName="DuplicateGroup" syncable="YES" codeGenerationType="class">
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="rationale" optional="YES" attributeType="String"/>
+        <relationship name="members" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="FileRecord" inverseName="duplicateGroups"/>
+    </entity>
+    <entity name="UserDecision" representedClassName="UserDecision" syncable="YES" codeGenerationType="class">
+        <attribute name="action" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="NO"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <relationship name="duplicateGroup" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="DuplicateGroup" inverseName="userDecisions"/>
+    </entity>
+</model>

@@ -2,8 +2,9 @@ import Testing
 import Foundation
 @testable import DeduperCore
 
-@Test func testIsMediaFileByExtension() {
-    let scanService = ScanService()
+@Test @MainActor func testIsMediaFileByExtension() {
+    let persistenceController = PersistenceController(inMemory: true)
+    let scanService = ScanService(persistenceController: persistenceController)
     
     // Test photo extensions
     #expect(scanService.isMediaFile(url: URL(fileURLWithPath: "/test/image.jpg")) == true)
@@ -48,7 +49,7 @@ import Foundation
 }
 
 @Test func testDefaultOptions() {
-    let options = ScanService.defaultOptions()
+    let options = ScanOptions()
     
     #expect(options.followSymlinks == false)
     #expect(options.concurrency > 0)
@@ -57,7 +58,7 @@ import Foundation
 }
 
 @Test func testAggressiveOptions() {
-    let options = ScanService.aggressiveOptions()
+    let options = ScanOptions(followSymlinks: true, concurrency: ProcessInfo.processInfo.activeProcessorCount, incremental: false)
     
     #expect(options.followSymlinks == true)
     #expect(options.concurrency > 0)
@@ -65,9 +66,10 @@ import Foundation
     #expect(options.excludes.count == 0)
 }
 
-@Test func testScanWithEmptyURLs() async {
-    let scanService = ScanService()
-    let stream = await scanService.enumerate(urls: [], options: ScanService.defaultOptions())
+@Test @MainActor func testScanWithEmptyURLs() async {
+    let persistenceController = PersistenceController(inMemory: true)
+    let scanService = ScanService(persistenceController: persistenceController)
+    let stream = await scanService.enumerate(urls: [], options: ScanOptions())
     
     var events: [ScanEvent] = []
     for await event in stream {
@@ -86,10 +88,11 @@ import Foundation
     }
 }
 
-@Test func testScanWithNonExistentDirectory() async {
-    let scanService = ScanService()
+@Test @MainActor func testScanWithNonExistentDirectory() async {
+    let persistenceController = PersistenceController(inMemory: true)
+    let scanService = ScanService(persistenceController: persistenceController)
     let nonExistentURL = URL(fileURLWithPath: "/non/existent/directory")
-    let stream = await scanService.enumerate(urls: [nonExistentURL], options: ScanService.defaultOptions())
+    let stream = await scanService.enumerate(urls: [nonExistentURL], options: ScanOptions())
     
     var events: [ScanEvent] = []
     for await event in stream {

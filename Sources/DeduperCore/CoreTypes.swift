@@ -24,9 +24,22 @@ public enum MediaType: Int16, CaseIterable, Sendable {
     public var commonExtensions: [String] {
         switch self {
         case .photo:
-            return ["jpg", "jpeg", "png", "heic", "heif", "tiff", "tif", "raw", "cr2", "nef", "arw", "dng", "webp", "gif"]
+            return [
+                // Standard formats
+                "jpg", "jpeg", "png", "heic", "heif", "tiff", "tif", "webp", "gif", "bmp",
+                // RAW formats (major camera manufacturers)
+                "raw", "cr2", "cr3", "nef", "nrw", "arw", "dng", "orf", "pef", "rw2", 
+                "sr2", "x3f", "erf", "raf", "dcr", "kdc", "mrw", "mos", "srw", "fff",
+                // Additional professional formats
+                "psd", "ai", "eps", "svg"
+            ]
         case .video:
-            return ["mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "m4v", "3gp", "ogv"]
+            return [
+                // Standard formats
+                "mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "m4v", "3gp", "mts", "m2ts", "ogv",
+                // Professional formats
+                "prores", "dnxhd", "xdcam", "xavc", "r3d", "ari", "arri"
+            ]
         }
     }
 }

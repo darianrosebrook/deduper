@@ -705,6 +705,26 @@ func preloadThumbnails(for groups: [DuplicateGroup]) {
   - [Cutting-edge] Documind — Minimalist/single-sourcing approaches: `https://www.documind.chat/blog/technical-writing-best-practices`
   - [Cutting-edge] Matrixflows — Keep docs current via regular reviews: `https://www.matrixflows.com/blog/improve-technical-writing-skills`
 
+## Architecture Decisions (ADRs)
+
+See `docs/adr/README.md` for accepted decisions and the ADR template.
+
+## Glossary & Data Dictionary
+
+See `docs/GLOSSARY.md` for authoritative terms, entities, fields, units, and normalization rules.
+
+## Errors & UX Copy
+
+See `docs/ERRORS_AND_UX_COPY.md` for the error taxonomy, codes, and user-facing messages.
+
+## Telemetry & Logging Schema
+
+See `docs/TELEMETRY_SCHEMA.md` for event names, fields, redaction rules, and sampling.
+
+## Security & Privacy Threat Model
+
+See `docs/SECURITY_PRIVACY_MODEL.md` for data flows, STRIDE threats, mitigations, validation, and incident response.
+
 ## Troubleshooting
 
 - "No files found": Verify security-scoped bookmark access; re-prompt user to re-authorize folder

@@ -22,6 +22,7 @@ Persist files, metadata, signatures, groups, and decisions; support migrations a
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#06--results-storage--data-management`).
 - [ ] Data model and lightweight migrations.
 - [ ] Persistence layer APIs; background context and batching.
 - [ ] Bookmark resolve/refresh; path updates.
@@ -40,6 +41,9 @@ Persist files, metadata, signatures, groups, and decisions; support migrations a
 
 ### Done Criteria
 
+### Test IDs (to fill as implemented)
+
+- [ ] <add unit test ids>
 - Durable store, performant queries, migration covered; tests green.
 
 

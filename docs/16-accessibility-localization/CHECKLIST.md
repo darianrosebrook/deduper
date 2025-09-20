@@ -24,6 +24,7 @@ Ensure full accessibility support and prepare for localization.
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#16--accessibility-and-localization`).
 - [ ] VoiceOver labels for all interactive elements.
 - [ ] Focus order defined; keyboard shortcuts for keeper selection and actions.
 - [ ] High-contrast palette option; Dynamic Type scaling supported.

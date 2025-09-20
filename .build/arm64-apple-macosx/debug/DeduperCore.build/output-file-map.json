@@ -30,6 +30,13 @@
     "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/MonitoringService.swiftdeps",
     "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/MonitoringService.dia"
   },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PersistenceController.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PersistenceController.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PersistenceController.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PersistenceController~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PersistenceController.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PersistenceController.dia"
+  },
   "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/ScanService.swift": {
     "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/ScanService.d",
     "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/ScanService.swift.o",

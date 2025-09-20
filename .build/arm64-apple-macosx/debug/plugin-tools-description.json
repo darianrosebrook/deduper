@@ -57,6 +57,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PersistenceController.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/ScanService.swift"
         },
         {
@@ -84,6 +88,7 @@
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/CoreTypes.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/DeduperCore.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/MonitoringService.swift.o",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PersistenceController.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/ScanService.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/resource_bundle_accessor.swift.o"
       ],
@@ -162,6 +167,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PersistenceController.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/ScanService.swift.o"
         },
         {
@@ -179,6 +188,7 @@
         "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/CoreTypes.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/DeduperCore.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/MonitoringService.swift",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PersistenceController.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/ScanService.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/DerivedSources/resource_bundle_accessor.swift"
       ],
@@ -432,6 +442,7 @@
       "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/CoreTypes.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/DeduperCore.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/MonitoringService.swift",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PersistenceController.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/ScanService.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/DerivedSources/resource_bundle_accessor.swift",
       "-I",
@@ -686,6 +697,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PersistenceController.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/ScanService.swift"
         },
         {
@@ -731,6 +746,10 @@
         {
           "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/MonitoringService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PersistenceController.swift.o"
         },
         {
           "kind" : "file",

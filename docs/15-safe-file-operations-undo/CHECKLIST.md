@@ -17,6 +17,7 @@ Atomic metadata writes, move-to-trash, conflict handling, transaction log, and u
 - [ ] Transaction log supports one-click undo of last merge.
 - [ ] Atomic writes or safe replacements (e.g., `replaceItemAt`) used for metadata updates.
 - [ ] Conflict handling for name collisions during file moves.
+ - [ ] Aligns with undo depth/retention in ADR-0003 and mitigations in `docs/SECURITY_PRIVACY_MODEL.md`.
 
 ### Verification (Automated)
 
@@ -25,11 +26,13 @@ Atomic metadata writes, move-to-trash, conflict handling, transaction log, and u
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#15--safe-file-operations-undo-and-recovery`).
 - [ ] `writeMissingEXIF(keeper, from:)` only fills missing fields.
 - [ ] For images, use Image I/O; for videos, use AVFoundation tags where applicable.
 - [ ] Atomic replace: write to temp + `replaceItemAt` for finalization.
 - [ ] Move to Trash via `FileManager.trashItem`; record original paths.
 - [ ] `TransactionLog` structure + serializer; `undo(transaction)` implementation.
+ - [ ] Honor configured undo depth and 7-day retention (default).
 
 ### Done Criteria
 

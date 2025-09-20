@@ -21,6 +21,7 @@ Combine signals (checksum, size/dimensions, names/dates, perceptual hashes) to f
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#05--duplicate-detection-engine`).
 - [ ] Checksum map grouping; skip singletons.
 - [ ] Candidate queues by size/dimensions/duration buckets.
 - [ ] Hamming-distance thresholds configurable; name similarity helper.
@@ -44,6 +45,9 @@ Integration
 
 ### Done Criteria
 
+### Test IDs (to fill as implemented)
+
+- [ ] <add integration test ids>
 - Accurate groups with rationale; tests green; efficiency targets met.
 
 

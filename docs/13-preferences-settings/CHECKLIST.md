@@ -24,6 +24,7 @@ Detection thresholds, automation, performance, safety, privacy, and advanced con
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#13--preferences--settings`).
 - [ ] `PreferencesStore` persists settings (UserDefaults/Core Data).
 - [ ] Tabs: Detection, Performance, Safety, Advanced.
 - [ ] Detection: image/video thresholds; confidence weights; exact vs similarity mode.
