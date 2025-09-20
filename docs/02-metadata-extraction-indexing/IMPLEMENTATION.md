@@ -115,8 +115,11 @@ func normalize(meta: MediaMetadata) -> MediaMetadata {
 ### Code References
 
 - `Sources/DeduperCore/MetadataExtractionService.swift` - Main service implementation
+- `Sources/DeduperCore/IndexQueryService.swift` - Query APIs for indexed attributes
 - `Sources/DeduperCore/CoreTypes.swift` - MediaMetadata struct definition
+- `Sources/DeduperCore/Resources/Deduper.xcdatamodeld/` - Core Data model with indexes
 - `Tests/DeduperCoreTests/MetadataExtractionServiceTests.swift` - Unit tests
+- `Tests/DeduperCoreTests/IndexQueryServiceTests.swift` - Query API tests
 
 ### Implementation Status
 
@@ -127,10 +130,11 @@ func normalize(meta: MediaMetadata) -> MediaMetadata {
 - Metadata normalization (GPS precision, date fallbacks)
 - Core Data persistence integration with FileRecord/ImageSignature/VideoSignature entities
 - Custom Equatable conformance for MediaMetadata
-- Unit tests for basic metadata and normalization
+- Secondary indexes with indexed attributes in Core Data model
+- IndexQueryService with efficient query APIs (fileSize, dimensions, captureDate, duration)
+- Unit tests for basic metadata, normalization, and query APIs
 
 🔄 **In Progress:**
-- Secondary indexes for efficient querying
 - Integration tests with real media files
 - Performance benchmarking
 

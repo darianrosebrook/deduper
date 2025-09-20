@@ -16,7 +16,7 @@ Extract filesystem and media metadata; persist in the index; build secondary ind
 - [x] Image EXIF fields captured: dimensions, captureDate, cameraModel, GPS.
 - [x] Video metadata captured: duration, resolution, codec (if useful).
 - [x] Records persisted; re-reads update changed fields; unchanged skipped.
-- [ ] Secondary indexes enable query-by-size/date/dimensions efficiently.
+- [x] Secondary indexes enable query-by-size/date/dimensions efficiently.
 - [ ] UTType-based inference used when extensions/EXIF are insufficient.
 - [x] Normalized capture dates (timezone-safe) and consistent dimension fields.
 
@@ -27,7 +27,7 @@ Extract filesystem and media metadata; persist in the index; build secondary ind
 - [x] Image metadata via ImageIO (`CGImageSourceCopyProperties`).
 - [x] Video metadata via AVFoundation (`AVAsset`).
 - [x] Index persistence (Core Data/SQLite) entities and saves.
-- [ ] Secondary indexes and convenient query APIs.
+- [x] Secondary indexes and convenient query APIs.
 - [x] Normalize captureDate (UTC) and parse GPS where present.
 - [ ] Keyword/tag extraction to `[String]` for merge union.
   - [x] `readBasicMetadata(url)` (size/dates/type) → `MediaMetadata`.
@@ -60,9 +60,11 @@ Integration (Fixtures)
 
 ### Test IDs (to fill as implemented)
 
-- [x] **Unit Tests**: 2 tests implemented and passing
+- [x] **Unit Tests**: 3 tests implemented and passing
   - `MetadataExtractionServiceTests.testReadBasicMetadata`
   - `MetadataExtractionServiceTests.testNormalizeCaptureDateFallback`
+  - `IndexQueryServiceTests.testFetchByFileSize`
+  - `IndexQueryServiceTests.testFetchByDimensionsEmpty`
 - [ ] **Integration Tests**: TBD
 - [ ] **Performance Tests**: TBD
 
@@ -72,8 +74,10 @@ Index populated accurately; queries performant; tests green.
 
 - Code → Docs
   - `Sources/DeduperCore/MetadataExtractionService.swift` → `docs/02-metadata-extraction-indexing/IMPLEMENTATION.md#public-api`
+  - `Sources/DeduperCore/IndexQueryService.swift` → `docs/02-metadata-extraction-indexing/IMPLEMENTATION.md#secondary-indexes`
   - `Sources/DeduperCore/CoreTypes.swift` → `docs/02-metadata-extraction-indexing/IMPLEMENTATION.md#media-metadata`
   - `Tests/DeduperCoreTests/MetadataExtractionServiceTests.swift` → `docs/02-metadata-extraction-indexing/CHECKLIST.md#verification`
+  - `Tests/DeduperCoreTests/IndexQueryServiceTests.swift` → `docs/02-metadata-extraction-indexing/CHECKLIST.md#verification`
 
 - Docs → Code
   - `IMPLEMENTATION.md` sections reference the files above for concrete implementations

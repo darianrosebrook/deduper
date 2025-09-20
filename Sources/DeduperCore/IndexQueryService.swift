@@ -29,66 +29,87 @@ public final class IndexQueryService: @unchecked Sendable {
     
     public func fetchByDimensions(width: Int? = nil, height: Int? = nil, mediaType: MediaType = .photo) async throws -> [ScannedFile] {
         try await persistenceController.performBackgroundTask { context in
-            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "ImageSignature")
-            var predicates: [NSPredicate] = []
-            if let width { predicates.append(NSPredicate(format: "width == %d", width)) }
-            if let height { predicates.append(NSPredicate(format: "height == %d", height)) }
-            if !predicates.isEmpty { request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: predicates) }
-            let sigs = try context.fetch(request)
-            return sigs.compactMap { sig in
-                guard let record = sig.value(forKey: "fileRecord") as? NSManagedObject,
-                      let mtRaw = record.value(forKey: "mediaType") as? Int16,
-                      let mt = MediaType(rawValue: mtRaw),
-                      mt == mediaType,
-                      let id = record.value(forKey: "id") as? UUID,
+            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "FileRecord")
+            request.predicate = NSPredicate(format: "mediaType == %d", mediaType.rawValue)
+            let files = try context.fetch(request)
+            return try files.compactMap { record in
+                guard let id = record.value(forKey: "id") as? UUID,
                       let url = record.value(forKey: "url") as? URL,
-                      let size = record.value(forKey: "fileSize") as? Int64 else { return nil }
-                let createdAt = record.value(forKey: "createdAt") as? Date
-                let modifiedAt = record.value(forKey: "modifiedAt") as? Date
-                return ScannedFile(id: id, url: url, mediaType: mt, fileSize: size, createdAt: createdAt, modifiedAt: modifiedAt)
+                      let size = record.value(forKey: "fileSize") as? Int64,
+                      let mtRaw = record.value(forKey: "mediaType") as? Int16,
+                      let mt = MediaType(rawValue: mtRaw) else { return nil }
+                
+                // Check if image signature exists and matches dimensions
+                if let imageSig = record.value(forKey: "imageSignature") as? NSManagedObject {
+                    let w = (imageSig.value(forKey: "width") as? NSNumber)?.intValue
+                    let h = (imageSig.value(forKey: "height") as? NSNumber)?.intValue
+                    let matchesWidth = width == nil || w == width
+                    let matchesHeight = height == nil || h == height
+                    
+                    if matchesWidth && matchesHeight {
+                        let createdAt = record.value(forKey: "createdAt") as? Date
+                        let modifiedAt = record.value(forKey: "modifiedAt") as? Date
+                        return ScannedFile(id: id, url: url, mediaType: mt, fileSize: size, createdAt: createdAt, modifiedAt: modifiedAt)
+                    }
+                }
+                return nil
             }
         }
     }
     
     public func fetchByCaptureDateRange(start: Date?, end: Date?, mediaType: MediaType = .photo) async throws -> [ScannedFile] {
         try await persistenceController.performBackgroundTask { context in
-            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "ImageSignature")
-            var predicates: [NSPredicate] = []
-            if let start { predicates.append(NSPredicate(format: "captureDate >= %@", start as NSDate)) }
-            if let end { predicates.append(NSPredicate(format: "captureDate <= %@", end as NSDate)) }
-            if !predicates.isEmpty { request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: predicates) }
-            let sigs = try context.fetch(request)
-            return sigs.compactMap { sig in
-                guard let record = sig.value(forKey: "fileRecord") as? NSManagedObject,
-                      let mtRaw = record.value(forKey: "mediaType") as? Int16,
-                      let mt = MediaType(rawValue: mtRaw),
-                      mt == mediaType,
-                      let id = record.value(forKey: "id") as? UUID,
+            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "FileRecord")
+            request.predicate = NSPredicate(format: "mediaType == %d", mediaType.rawValue)
+            let files = try context.fetch(request)
+            return try files.compactMap { record in
+                guard let id = record.value(forKey: "id") as? UUID,
                       let url = record.value(forKey: "url") as? URL,
-                      let size = record.value(forKey: "fileSize") as? Int64 else { return nil }
-                let createdAt = record.value(forKey: "createdAt") as? Date
-                let modifiedAt = record.value(forKey: "modifiedAt") as? Date
-                return ScannedFile(id: id, url: url, mediaType: mt, fileSize: size, createdAt: createdAt, modifiedAt: modifiedAt)
+                      let size = record.value(forKey: "fileSize") as? Int64,
+                      let mtRaw = record.value(forKey: "mediaType") as? Int16,
+                      let mt = MediaType(rawValue: mtRaw) else { return nil }
+                
+                // Check capture date from image signature or fallback to file dates
+                if let imageSig = record.value(forKey: "imageSignature") as? NSManagedObject {
+                    let captureDate = imageSig.value(forKey: "captureDate") as? Date ?? record.value(forKey: "createdAt") as? Date
+                    
+                    let inStart = start == nil || (captureDate != nil && captureDate! >= start!)
+                    let inEnd = end == nil || (captureDate != nil && captureDate! <= end!)
+                    
+                    if inStart && inEnd {
+                        let createdAt = record.value(forKey: "createdAt") as? Date
+                        let modifiedAt = record.value(forKey: "modifiedAt") as? Date
+                        return ScannedFile(id: id, url: url, mediaType: mt, fileSize: size, createdAt: createdAt, modifiedAt: modifiedAt)
+                    }
+                }
+                return nil
             }
         }
     }
     
     public func fetchVideosByDuration(minSeconds: Double? = nil, maxSeconds: Double? = nil) async throws -> [ScannedFile] {
         try await persistenceController.performBackgroundTask { context in
-            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "VideoSignature")
-            var predicates: [NSPredicate] = []
-            if let minSeconds { predicates.append(NSPredicate(format: "durationSec >= %f", minSeconds)) }
-            if let maxSeconds { predicates.append(NSPredicate(format: "durationSec <= %f", maxSeconds)) }
-            if !predicates.isEmpty { request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: predicates) }
-            let sigs = try context.fetch(request)
-            return sigs.compactMap { sig in
-                guard let record = sig.value(forKey: "fileRecord") as? NSManagedObject,
-                      let id = record.value(forKey: "id") as? UUID,
+            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "FileRecord")
+            request.predicate = NSPredicate(format: "mediaType == %d", MediaType.video.rawValue)
+            let files = try context.fetch(request)
+            return try files.compactMap { record in
+                guard let id = record.value(forKey: "id") as? UUID,
                       let url = record.value(forKey: "url") as? URL,
                       let size = record.value(forKey: "fileSize") as? Int64 else { return nil }
-                let createdAt = record.value(forKey: "createdAt") as? Date
-                let modifiedAt = record.value(forKey: "modifiedAt") as? Date
-                return ScannedFile(id: id, url: url, mediaType: .video, fileSize: size, createdAt: createdAt, modifiedAt: modifiedAt)
+                
+                // Check duration from video signature
+                if let videoSig = record.value(forKey: "videoSignature") as? NSManagedObject {
+                    let duration = videoSig.value(forKey: "durationSec") as? Double ?? 0
+                    let matchesMin = minSeconds == nil || duration >= minSeconds!
+                    let matchesMax = maxSeconds == nil || duration <= maxSeconds!
+                    
+                    if matchesMin && matchesMax {
+                        let createdAt = record.value(forKey: "createdAt") as? Date
+                        let modifiedAt = record.value(forKey: "modifiedAt") as? Date
+                        return ScannedFile(id: id, url: url, mediaType: .video, fileSize: size, createdAt: createdAt, modifiedAt: modifiedAt)
+                    }
+                }
+                return nil
             }
         }
     }
