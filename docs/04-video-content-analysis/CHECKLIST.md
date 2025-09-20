@@ -20,15 +20,14 @@ Extract representative frames; compute per-frame image hashes; assemble video si
 
 ### Implementation Tasks
 
-- [ ] Resolve ambiguities (see `../ambiguities.md#04--video-content-analysis`).
-- [ ] AVAssetImageGenerator setup with `appliesPreferredTrackTransform`.
+- [x] Resolve ambiguities (see `../ambiguities.md#04--video-content-analysis`).
+- [ ] AVAssetImageGenerator setup with `appliesPreferredTrackTransform` and tight tolerances.
 - [ ] Frame time selection (0%, 50%, end-1s) with guard for short videos.
-- [ ] Reuse image hashing; store `frameHashes: [UInt64]`.
+- [ ] Reuse image hashing; store `frameHashes: [UInt64]` with `computedAt`.
 - [ ] Signature comparison with per-frame thresholds and duration tolerance.
  - [ ] `fingerprint(url)` returns `VideoSignature(duration,width,height,frameHashes)`.
  - [ ] `compare(sigA,sigB)` returns per-frame distances and aggregate verdict.
- - [ ] Persist per-frame distances for evidence panel and diagnostics.
-- [ ] Persist per-frame distances for evidence panel and diagnostics.
+ - [ ] Persist per-frame distances for evidence panel and diagnostics hooks.
 
 ### Verification (Automated)
 
@@ -43,13 +42,16 @@ Integration
 ### Metrics
 
 - [ ] Throughput target: ≥ 20 videos/sec on short clips baseline.
+- [ ] Frame extraction failure rate tracked (< 1% transient errors across fixtures).
 
 ### Done Criteria
+
+- Video fingerprints persisted (duration, resolution, frameHashes) for scanned videos.
+- Comparison routine surfaces per-frame distances and duration delta for downstream evidence.
+- Telemetry emits throughput + failure metrics and tests cover short-clip guard.
 
 ### Test IDs (to fill as implemented)
 
 - [ ] <add unit test ids>
 - [ ] <add integration test ids>
 - Robust signature and compare; tests green; perf target met.
-
-

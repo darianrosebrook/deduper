@@ -13,10 +13,16 @@ public final class MetadataExtractionService: @unchecked Sendable {
     private let logger = Logger(subsystem: "app.deduper", category: "metadata")
     private let persistenceController: PersistenceController
     private let imageHasher: ImageHashingService
+    private let videoFingerprinter: VideoFingerprinter
     
-    public init(persistenceController: PersistenceController) {
+    public init(
+        persistenceController: PersistenceController,
+        imageHasher: ImageHashingService = ImageHashingService(),
+        videoFingerprinter: VideoFingerprinter? = nil
+    ) {
         self.persistenceController = persistenceController
-        self.imageHasher = ImageHashingService()
+        self.imageHasher = imageHasher
+        self.videoFingerprinter = videoFingerprinter ?? VideoFingerprinter(imageHasher: imageHasher)
     }
     
     // MARK: - Public API
@@ -87,7 +93,8 @@ public final class MetadataExtractionService: @unchecked Sendable {
                         }
                     }
                 case .video:
-                    if metadata.durationSec != nil || metadata.dimensions != nil {
+                    let signature = self.videoFingerprinter.fingerprint(url: file.url)
+                    if signature != nil || metadata.durationSec != nil || metadata.dimensions != nil {
                         let videoSig: NSManagedObject
                         if let existing = fileRecord.value(forKey: "videoSignature") as? NSManagedObject {
                             videoSig = existing
@@ -98,10 +105,20 @@ public final class MetadataExtractionService: @unchecked Sendable {
                             videoSig.setValue(Date(), forKey: "createdAt")
                             fileRecord.setValue(videoSig, forKey: "videoSignature")
                         }
-                        if let duration = metadata.durationSec { videoSig.setValue(duration, forKey: "durationSec") }
-                        if let dims = metadata.dimensions {
-                            videoSig.setValue(NSNumber(value: dims.width), forKey: "width")
-                            videoSig.setValue(NSNumber(value: dims.height), forKey: "height")
+
+                        if let sig = signature {
+                            videoSig.setValue(sig.durationSec, forKey: "durationSec")
+                            videoSig.setValue(NSNumber(value: sig.width), forKey: "width")
+                            videoSig.setValue(NSNumber(value: sig.height), forKey: "height")
+                            let frameNumbers = sig.frameHashes.map { NSNumber(value: $0) }
+                            videoSig.setValue(frameNumbers, forKey: "frameHashes")
+                            videoSig.setValue(sig.computedAt, forKey: "computedAt")
+                        } else {
+                            if let duration = metadata.durationSec { videoSig.setValue(duration, forKey: "durationSec") }
+                            if let dims = metadata.dimensions {
+                                videoSig.setValue(NSNumber(value: dims.width), forKey: "width")
+                                videoSig.setValue(NSNumber(value: dims.height), forKey: "height")
+                            }
                         }
                     }
                 }
@@ -197,5 +214,3 @@ public final class MetadataExtractionService: @unchecked Sendable {
         return iso.date(from: str)
     }
 }
-
-

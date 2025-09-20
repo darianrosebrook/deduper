@@ -324,6 +324,116 @@ public struct MediaMetadata: Sendable, Equatable {
     public var durationSec: Double?
 }
 
+// MARK: - Video Signatures (Module 04)
+
+public struct VideoSignature: Sendable, Equatable {
+    public let durationSec: Double
+    public let width: Int
+    public let height: Int
+    public let frameHashes: [UInt64]
+    public let sampleTimesSec: [Double]
+    public let computedAt: Date
+
+    public init(
+        durationSec: Double,
+        width: Int,
+        height: Int,
+        frameHashes: [UInt64],
+        sampleTimesSec: [Double] = [],
+        computedAt: Date = Date()
+    ) {
+        self.durationSec = durationSec
+        self.width = width
+        self.height = height
+        self.frameHashes = frameHashes
+        self.sampleTimesSec = sampleTimesSec
+        self.computedAt = computedAt
+    }
+}
+
+public struct VideoFingerprintConfig: Sendable, Equatable {
+    public let middleSampleMinimumDuration: Double
+    public let endSampleOffset: Double
+    public let generatorMaxDimension: Int
+    public let preferredTimescale: Int32
+
+    public static let `default` = VideoFingerprintConfig(
+        middleSampleMinimumDuration: 2.0,
+        endSampleOffset: 1.0,
+        generatorMaxDimension: 720,
+        preferredTimescale: 600
+    )
+
+    public init(
+        middleSampleMinimumDuration: Double = 2.0,
+        endSampleOffset: Double = 1.0,
+        generatorMaxDimension: Int = 720,
+        preferredTimescale: Int32 = 600
+    ) {
+        self.middleSampleMinimumDuration = middleSampleMinimumDuration
+        self.endSampleOffset = endSampleOffset
+        self.generatorMaxDimension = generatorMaxDimension
+        self.preferredTimescale = preferredTimescale
+    }
+
+    /// Duration threshold that qualifies as a "short" clip (no middle sample)
+    public var shortClipDurationThreshold: Double {
+        return middleSampleMinimumDuration
+    }
+}
+
+public struct VideoComparisonOptions: Sendable, Equatable {
+    public let perFrameMatchThreshold: Int
+    public let maxMismatchedFramesForDuplicate: Int
+    public let durationToleranceSeconds: Double
+    public let durationToleranceFraction: Double
+    
+    public static let `default` = VideoComparisonOptions(
+        perFrameMatchThreshold: 5,
+        maxMismatchedFramesForDuplicate: 1,
+        durationToleranceSeconds: 2.0,
+        durationToleranceFraction: 0.02
+    )
+    
+    public init(
+        perFrameMatchThreshold: Int = 5,
+        maxMismatchedFramesForDuplicate: Int = 1,
+        durationToleranceSeconds: Double = 2.0,
+        durationToleranceFraction: Double = 0.02
+    ) {
+        self.perFrameMatchThreshold = perFrameMatchThreshold
+        self.maxMismatchedFramesForDuplicate = maxMismatchedFramesForDuplicate
+        self.durationToleranceSeconds = durationToleranceSeconds
+        self.durationToleranceFraction = durationToleranceFraction
+    }
+}
+
+public enum VideoComparisonVerdict: Sendable, Equatable {
+    case duplicate
+    case similar
+    case different
+    case insufficientData
+}
+
+public struct VideoFrameDistance: Sendable, Equatable {
+    public let index: Int
+    public let timeA: Double?
+    public let timeB: Double?
+    public let hashA: UInt64?
+    public let hashB: UInt64?
+    public let distance: Int?
+}
+
+public struct VideoSimilarity: Sendable, Equatable {
+    public let verdict: VideoComparisonVerdict
+    public let durationDelta: Double
+    public let durationDeltaRatio: Double
+    public let frameDistances: [VideoFrameDistance]
+    public let averageDistance: Double?
+    public let maxDistance: Int?
+    public let mismatchedFrameCount: Int
+}
+
 extension MediaMetadata {
     public static func == (lhs: MediaMetadata, rhs: MediaMetadata) -> Bool {
         let lhsDim = lhs.dimensions.map { ($0.width, $0.height) }

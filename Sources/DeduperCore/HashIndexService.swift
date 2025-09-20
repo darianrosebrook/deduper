@@ -19,9 +19,18 @@ public final class HashIndexService: @unchecked Sendable {
     private let queue = DispatchQueue(label: "hash-index", attributes: .concurrent)
     private var _entries: [HashIndexEntry] = []
     
-    public init(config: HashingConfig = .default, hashingService: ImageHashingService? = nil) {
+    /// Optional BK-tree for faster similarity searches on large datasets
+    private var _bkTree: BKTree?
+    private let useBKTree: Bool
+    
+    public init(config: HashingConfig = .default, hashingService: ImageHashingService? = nil, useBKTree: Bool = false) {
         self.config = config
         self.hashingService = hashingService ?? ImageHashingService(config: config)
+        self.useBKTree = useBKTree
+        
+        if useBKTree {
+            self._bkTree = BKTree(hashingService: self.hashingService)
+        }
     }
     
     // MARK: - Public API
@@ -44,7 +53,21 @@ public final class HashIndexService: @unchecked Sendable {
         )
         
         queue.async(flags: .barrier) { [weak self] in
-            self?._entries.append(entry)
+            guard let self = self else { return }
+            
+            self._entries.append(entry)
+            
+            // Also insert into BK-tree if enabled
+            if self.useBKTree, let bkTree = self._bkTree {
+                bkTree.insert(
+                    fileId: fileId,
+                    hash: hashResult.hash,
+                    algorithm: hashResult.algorithm,
+                    width: hashResult.width,
+                    height: hashResult.height,
+                    computedAt: hashResult.computedAt
+                )
+            }
         }
         
         logger.debug("Added \(hashResult.algorithm.name) hash for file \(fileId)")
@@ -70,7 +93,23 @@ public final class HashIndexService: @unchecked Sendable {
         }
         
         queue.async(flags: .barrier) { [weak self] in
-            self?._entries.append(contentsOf: entries)
+            guard let self = self else { return }
+            
+            self._entries.append(contentsOf: entries)
+            
+            // Also insert into BK-tree if enabled
+            if self.useBKTree, let bkTree = self._bkTree {
+                for hashResult in hashResults {
+                    bkTree.insert(
+                        fileId: fileId,
+                        hash: hashResult.hash,
+                        algorithm: hashResult.algorithm,
+                        width: hashResult.width,
+                        height: hashResult.height,
+                        computedAt: hashResult.computedAt
+                    )
+                }
+            }
         }
         
         logger.debug("Added \(hashResults.count) hash entries for file \(fileId)")
@@ -101,6 +140,12 @@ public final class HashIndexService: @unchecked Sendable {
      */
     public func queryWithin(distance: Int, of hash: UInt64, algorithm: HashAlgorithm, excludeFileId: UUID? = nil) -> [HashMatch] {
         return queue.sync {
+            // Use BK-tree if available and enabled
+            if useBKTree, let bkTree = _bkTree {
+                return bkTree.search(hash: hash, maxDistance: distance, algorithm: algorithm, excludeFileId: excludeFileId)
+            }
+            
+            // Fallback to linear search
             var matches: [HashMatch] = []
             
             for entry in _entries {
@@ -212,7 +257,14 @@ public final class HashIndexService: @unchecked Sendable {
      */
     public func clear() {
         queue.async(flags: .barrier) { [weak self] in
-            self?._entries.removeAll()
+            guard let self = self else { return }
+            
+            self._entries.removeAll()
+            
+            // Also clear BK-tree if enabled
+            if self.useBKTree {
+                self._bkTree?.clear()
+            }
         }
         
         logger.debug("Cleared hash index")
@@ -298,21 +350,147 @@ public struct HashIndexStatistics: Sendable {
     }
 }
 
-// MARK: - BK-Tree Implementation (Future Enhancement)
+// MARK: - BK-Tree Implementation
 
 /**
- * Optional BK-tree structure for faster similarity searches on large datasets
+ * BK-tree structure for efficient similarity searches using Hamming distance
  * 
- * This is a placeholder for future optimization when the dataset grows large.
- * BK-trees can significantly speed up nearest-neighbor searches by pre-organizing
- * data based on distance metrics.
+ * BK-trees organize data hierarchically based on distance metrics, allowing
+ * for O(log n) nearest-neighbor searches instead of O(n) linear scans.
+ * 
+ * Each node contains a hash and children organized by their distance from
+ * the parent hash. This allows pruning of subtrees during search based on
+ * the triangle inequality property of distance metrics.
  * 
  * - Author: @darianrosebrook
  */
 public final class BKTree {
-    // TODO: Implement BK-tree for O(log n) similarity searches
-    // See: https://en.wikipedia.org/wiki/BK-tree
+    private let hashingService: ImageHashingService
+    private var root: BKNode?
+    private var nodeCount: Int = 0
     
-    // For now, we use linear search which is adequate for moderate dataset sizes
-    // Implementation can be added when performance testing indicates need
+    public init(hashingService: ImageHashingService) {
+        self.hashingService = hashingService
+    }
+    
+    /**
+     * Inserts a hash entry into the BK-tree
+     * 
+     * - Parameters:
+     *   - fileId: Unique identifier for the file
+     *   - hash: Hash value to insert
+     *   - algorithm: Hash algorithm type
+     *   - width: Image width
+     *   - height: Image height
+     *   - computedAt: When the hash was computed
+     */
+    public func insert(fileId: UUID, hash: UInt64, algorithm: HashAlgorithm, width: Int32, height: Int32, computedAt: Date) {
+        let entry = HashIndexEntry(
+            fileId: fileId,
+            algorithm: algorithm,
+            hash: hash,
+            width: width,
+            height: height,
+            computedAt: computedAt
+        )
+        
+        if root == nil {
+            root = BKNode(entry: entry)
+            nodeCount = 1
+        } else {
+            insert(entry: entry, into: &root!)
+            nodeCount += 1
+        }
+    }
+    
+    /**
+     * Searches for entries within a specified Hamming distance
+     * 
+     * - Parameters:
+     *   - hash: Target hash to search for
+     *   - maxDistance: Maximum Hamming distance for matches
+     *   - algorithm: Hash algorithm to search within
+     *   - excludeFileId: Optional file ID to exclude from results
+     * - Returns: Array of matching entries sorted by distance
+     */
+    public func search(hash: UInt64, maxDistance: Int, algorithm: HashAlgorithm, excludeFileId: UUID? = nil) -> [HashMatch] {
+        guard let root = root else { return [] }
+        
+        var results: [HashMatch] = []
+        search(hash: hash, maxDistance: maxDistance, algorithm: algorithm, excludeFileId: excludeFileId, node: root, results: &results)
+        
+        // Sort by distance (closest first)
+        return results.sorted { $0.distance < $1.distance }
+    }
+    
+    /**
+     * Gets the current number of nodes in the tree
+     * 
+     * - Returns: Total node count
+     */
+    public func count() -> Int {
+        return nodeCount
+    }
+    
+    /**
+     * Clears all entries from the tree
+     */
+    public func clear() {
+        root = nil
+        nodeCount = 0
+    }
+    
+    // MARK: - Private Methods
+    
+    private func insert(entry: HashIndexEntry, into node: inout BKNode) {
+        let distance = hashingService.hammingDistance(node.entry.hash, entry.hash)
+        
+        if var existingChild = node.children[distance] {
+            // Recursively insert into the existing child
+            insert(entry: entry, into: &existingChild)
+            node.children[distance] = existingChild
+        } else {
+            // Create new child at this distance
+            node.children[distance] = BKNode(entry: entry)
+        }
+    }
+    
+    private func search(hash: UInt64, maxDistance: Int, algorithm: HashAlgorithm, excludeFileId: UUID?, node: BKNode, results: inout [HashMatch]) {
+        let distance = hashingService.hammingDistance(hash, node.entry.hash)
+        
+        // Add this node if it matches criteria
+        if distance <= maxDistance && 
+           node.entry.algorithm == algorithm &&
+           (excludeFileId == nil || node.entry.fileId != excludeFileId!) {
+            results.append(HashMatch(
+                fileId: node.entry.fileId,
+                algorithm: node.entry.algorithm,
+                hash: node.entry.hash,
+                distance: distance,
+                width: node.entry.width,
+                height: node.entry.height
+            ))
+        }
+        
+        // Search children that could potentially contain matches
+        // Using triangle inequality: |a - b| <= |a - c| + |c - b|
+        // So we need to search distances where |distance - childDistance| <= maxDistance
+        for (childDistance, child) in node.children {
+            if abs(distance - childDistance) <= maxDistance {
+                search(hash: hash, maxDistance: maxDistance, algorithm: algorithm, excludeFileId: excludeFileId, node: child, results: &results)
+            }
+        }
+    }
+}
+
+/**
+ * Internal node structure for the BK-tree
+ */
+private final class BKNode {
+    let entry: HashIndexEntry
+    var children: [Int: BKNode] = [:]
+    
+    init(entry: HashIndexEntry) {
+        self.entry = entry
+    }
 }
