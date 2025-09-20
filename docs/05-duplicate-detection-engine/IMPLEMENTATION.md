@@ -9,7 +9,7 @@ Author: @darianrosebrook
 ### Strategy
 
 1) Exact duplicates: checksum+size grouping with rationale edges tagged `checksum`.
-2) Candidate buckets: by size±1%, dimensions snapped to 16px blocks (images) or duration±2% plus resolution tier (videos).
+2) Candidate buckets: by size±1%, dimensions snapped to 16px blocks (images) or duration±2% plus resolution tier (videos) with filename stem prefixes to keep similarly named assets together.
 3) Metadata hints: filename stem Jaro-Winkler ≥0.88 and capture-date proximity (<2s) to prioritize candidates.
 4) Visual comparison: Hamming distances for images (Module 01/03) and per-frame distances (mean/max) for videos via Module 04 signatures.
 5) Policy layer: RAW↔JPEG, HEIC↔MOV, XMP sidecars collapsed into single logical asset sets when enabled.
@@ -19,8 +19,8 @@ Author: @darianrosebrook
 ### Public API (proposed)
 
 - DetectionEngine
-  - `buildGroups(for fileIds: [UUID], options: DetectOptions) -> [DuplicateGroupResult]`
-  - `previewCandidates(in scope: CandidateScope) -> [CandidateBucket]`
+  - `buildGroups(for fileIds: [UUID], assets: [DetectionAsset], options: DetectOptions) -> [DuplicateGroupResult]`
+  - `previewCandidates(in scope: CandidateScope, assets: [DetectionAsset], options: DetectOptions) -> [CandidateBucket]`
   - `explain(groupId: UUID) -> GroupRationale`
 
 CandidateScope
@@ -42,6 +42,7 @@ DetectOptions
 - Missing data guards: if signatures or metadata are absent, skip comparison, log `missingSignature` rationale entry, and fall back to metadata-only scoring.
 - Ignore pairs/groups: hydrate from module 11 preferences at start; drop comparisons proactively and surface `ignoredByUser` evidence.
 - Time budget: abort gracefully when elapsed ≥ `limits.timeBudgetMs`, marking result set `incomplete` with remaining candidates for rescheduling.
+- Incomplete flag: `DuplicateGroupResult.incomplete` set when comparison or time budgets are hit so callers can reschedule work.
 - Policy toggles: if RAW/JPEG linker disabled mid-run, invalidate affected buckets to avoid inconsistent grouping.
 
 ### Persistence Touchpoints (module 06)
@@ -54,6 +55,7 @@ DetectOptions
 ### Confidence Model
 
 - Base score combines normalized signals: checksum (1.0 or 0), hash distance (1 - d/threshold), metadata similarity (dimensions, timestamps), name similarity.
+- Default weights (conservative): checksum 0.50 (ground truth), hash 0.30 (visual agreement), metadata 0.10 (dim/duration proximity), name 0.05 (filename stem), captureTime 0.03 (timestamp proximity), policyBonus budget 0.05 (distributed per policy bonuses below).
 - Policy bonuses: RAW↔JPEG link adds +0.05 when enabled; Live Photo alignment adds +0.03; sidecar links add +0.02.
 - Penalties: missing signatures (-0.1), duration mismatch beyond tolerance (-0.2), user ignore (-1.0 + `ignored` flag).
 - Duplicate threshold default 0.85; similar threshold default 0.60; below 0.60 flagged as `different` but candidate retained for manual review if other signals present.
