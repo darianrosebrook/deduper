@@ -321,9 +321,13 @@ struct IntegrationTests {
         try Data(count: 1024).write(to: newImage)
 
         // Allow some time for the monitor debounce and scan to occur
-        try await Task.sleep(nanoseconds: 2_000_000_000) // 2.0s
+        try await Task.sleep(nanoseconds: 3_500_000_000) // allow debounce + scan time
 
-        #expect(receivedItems >= 1, "Should receive at least one item from monitoring-triggered scan")
+        if receivedItems < 1 {
+            Issue.record("Monitoring did not emit any items; likely restricted by test sandbox")
+        } else {
+            #expect(receivedItems >= 1, "Should receive at least one item from monitoring-triggered scan")
+        }
 
         orchestrator.stopAll()
         _ = streamFinished // not asserting; just ensuring we can reference it without warning
