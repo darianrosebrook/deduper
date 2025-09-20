@@ -24,7 +24,47 @@ public final class PersistenceController: ObservableObject {
     // MARK: - Initialization
     
     public init(inMemory: Bool = false) {
-        container = NSPersistentContainer(name: "Deduper")
+        // Load the Core Data model from the Swift Package resources bundle
+        // Prefer merged model to support SPM copying .xcdatamodeld without compiling to .momd
+        let model: NSManagedObjectModel = {
+            // Prefer compiled models inside the SPM resources bundle
+            if let urls = Bundle.module.urls(forResourcesWithExtension: "momd", subdirectory: nil),
+               let url = urls.first,
+               let compiled = NSManagedObjectModel(contentsOf: url) {
+                return compiled
+            }
+            if let urls = Bundle.module.urls(forResourcesWithExtension: "mom", subdirectory: nil),
+               let url = urls.first,
+               let compiled = NSManagedObjectModel(contentsOf: url) {
+                return compiled
+            }
+            // As a last resort, construct the minimal model programmatically for tests
+            let model = NSManagedObjectModel()
+            let fileRecord = NSEntityDescription()
+            fileRecord.name = "FileRecord"
+            fileRecord.managedObjectClassName = "NSManagedObject"
+            
+            func makeAttribute(_ name: String, _ type: NSAttributeType, _ optional: Bool = true) -> NSAttributeDescription {
+                let attr = NSAttributeDescription()
+                attr.name = name
+                attr.attributeType = type
+                attr.isOptional = optional
+                return attr
+            }
+            
+            fileRecord.properties = [
+                makeAttribute("id", .UUIDAttributeType),
+                makeAttribute("url", .URIAttributeType),
+                makeAttribute("fileSize", .integer64AttributeType),
+                makeAttribute("mediaType", .integer16AttributeType),
+                makeAttribute("createdAt", .dateAttributeType),
+                makeAttribute("modifiedAt", .dateAttributeType),
+                makeAttribute("lastScannedAt", .dateAttributeType)
+            ]
+            model.entities = [fileRecord]
+            return model
+        }()
+        container = NSPersistentContainer(name: "Deduper", managedObjectModel: model)
         
         if inMemory {
             container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
@@ -41,7 +81,7 @@ public final class PersistenceController: ObservableObject {
         
         // Configure for performance
         container.viewContext.automaticallyMergesChangesFromParent = true
-        // Use a custom merge policy to avoid concurrency issues
+        // Using default merge policy to avoid concurrency issues in tests
         // container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
     }
     
@@ -95,17 +135,64 @@ public final class PersistenceController: ObservableObject {
      * Store a file record (simplified version without Core Data for now)
      */
     public func upsertFileRecord(from scannedFile: ScannedFile) async throws {
-        // For now, just log the operation
-        // TODO: Implement actual Core Data storage once model is properly set up
-        logger.debug("Would store file record for: \(scannedFile.url.lastPathComponent)")
+        try await performBackgroundTask { context in
+            // Fetch existing record by URL
+            let fetch: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "FileRecord")
+            fetch.predicate = NSPredicate(format: "url == %@", scannedFile.url as NSURL)
+            fetch.fetchLimit = 1
+            
+            let record: NSManagedObject
+            if let existing = try context.fetch(fetch).first {
+                record = existing
+            } else {
+                guard let entity = NSEntityDescription.entity(forEntityName: "FileRecord", in: context) else {
+                    throw NSError(domain: "app.deduper.persistence", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing FileRecord entity"])
+                }
+                record = NSManagedObject(entity: entity, insertInto: context)
+                record.setValue(UUID(), forKey: "id")
+                record.setValue(scannedFile.url, forKey: "url")
+            }
+            
+            // Update attributes
+            record.setValue(scannedFile.fileSize, forKey: "fileSize")
+            record.setValue(NSNumber(value: scannedFile.mediaType.rawValue), forKey: "mediaType")
+            record.setValue(scannedFile.createdAt, forKey: "createdAt")
+            record.setValue(scannedFile.modifiedAt, forKey: "modifiedAt")
+            record.setValue(Date(), forKey: "lastScannedAt")
+            
+            if context.hasChanges {
+                try context.save()
+            }
+        }
     }
     
     /**
      * Check if a file should be skipped during incremental scanning
      */
     public func shouldSkipFile(url: URL, lastScan: Date) -> Bool {
-        // For now, always return false (don't skip any files) until Core Data model is properly set up
-        // TODO: Implement actual incremental scanning logic with proper Core Data integration
+        let context = container.viewContext
+        let request: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: "FileRecord")
+        request.predicate = NSPredicate(format: "url == %@", url as NSURL)
+        request.fetchLimit = 1
+        
+        do {
+            if let record = try context.fetch(request).first as? NSManagedObject {
+                let recordModifiedAt = record.value(forKey: "modifiedAt") as? Date
+                let recordLastScanned = record.value(forKey: "lastScannedAt") as? Date
+                let recordFileSize = record.value(forKey: "fileSize") as? Int64
+                
+                let values = try url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                let currentModified = values.contentModificationDate
+                let currentSize = (values.fileSize.map { Int64($0) })
+                
+                // Skip if unchanged and scanned recently
+                if let recordModifiedAt, let recordLastScanned, let currentModified, let recordFileSize, let currentSize {
+                    return currentModified <= recordModifiedAt && currentSize == recordFileSize && recordLastScanned >= lastScan
+                }
+            }
+        } catch {
+            logger.error("shouldSkipFile fetch failed: \(error.localizedDescription)")
+        }
         return false
     }
     
@@ -159,17 +246,48 @@ public final class PersistenceController: ObservableObject {
      * Get all file records for a given media type (simplified)
      */
     public func getFileRecords(for mediaType: MediaType) async throws -> [ScannedFile] {
-        // For now, return empty array
-        // TODO: Implement actual Core Data retrieval
-        return []
+        try await performBackgroundTask { context in
+            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "FileRecord")
+            request.predicate = NSPredicate(format: "mediaType == %d", mediaType.rawValue)
+            let results = try context.fetch(request)
+            
+            return results.compactMap { obj in
+                guard let url = obj.value(forKey: "url") as? URL else { return nil }
+                let fileSize = (obj.value(forKey: "fileSize") as? Int64) ?? 0
+                let createdAt = obj.value(forKey: "createdAt") as? Date
+                let modifiedAt = obj.value(forKey: "modifiedAt") as? Date
+                let id = (obj.value(forKey: "id") as? UUID) ?? UUID()
+                
+                return ScannedFile(
+                    id: id,
+                    url: url,
+                    mediaType: mediaType,
+                    fileSize: fileSize,
+                    createdAt: createdAt,
+                    modifiedAt: modifiedAt
+                )
+            }
+        }
     }
     
     /**
      * Delete file records for URLs that no longer exist
      */
     public func cleanupMissingFiles() async throws {
-        // For now, just log the operation
-        logger.debug("Would cleanup missing files")
+        try await performBackgroundTask { context in
+            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "FileRecord")
+            let records = try context.fetch(request)
+            var deleted = 0
+            for record in records {
+                guard let url = record.value(forKey: "url") as? URL else { continue }
+                if !FileManager.default.fileExists(atPath: url.path) {
+                    context.delete(record)
+                    deleted += 1
+                }
+            }
+            if context.hasChanges { try context.save() }
+            self.logger.info("Cleanup removed \(deleted) missing file records")
+        }
     }
 }
 

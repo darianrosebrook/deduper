@@ -28,7 +28,7 @@ let package = Package(
             dependencies: [],
             path: "Sources/DeduperCore",
             resources: [
-                .process("../../Resources")
+                .process("Resources")
             ]
         ),
         .target(

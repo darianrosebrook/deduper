@@ -293,4 +293,39 @@ struct IntegrationTests {
         // but we can at least verify the scan completes without errors
         #expect(secondMetrics.errorCount == 0, "Second scan should not have errors")
     }
+
+    @Test("Monitoring triggers re-scan on file create")
+    func testMonitoringCreateEvent() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? ScanningFixtures.cleanup(at: tempDir) }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        let persistenceController = PersistenceController(inMemory: true)
+        let realtimeMonitor = MonitoringService(config: MonitoringService.realtimeConfig())
+        let orchestrator = ScanOrchestrator(persistenceController: persistenceController, monitoringService: realtimeMonitor)
+
+        var receivedItems = 0
+        var streamFinished = false
+
+        let stream = await orchestrator.startContinuousScan(urls: [tempDir], options: ScanOptions())
+
+        Task {
+            for await event in stream {
+                if case .item = event { receivedItems += 1 }
+                if case .finished = event { streamFinished = true }
+            }
+        }
+
+        // Create a new media file to trigger monitoring
+        let newImage = tempDir.appendingPathComponent("monitor_test.jpg")
+        try Data(count: 1024).write(to: newImage)
+
+        // Allow some time for the monitor debounce and scan to occur
+        try await Task.sleep(nanoseconds: 2_000_000_000) // 2.0s
+
+        #expect(receivedItems >= 1, "Should receive at least one item from monitoring-triggered scan")
+
+        orchestrator.stopAll()
+        _ = streamFinished // not asserting; just ensuring we can reference it without warning
+    }
 }

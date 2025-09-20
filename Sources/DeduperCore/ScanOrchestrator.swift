@@ -69,10 +69,6 @@ public final class ScanOrchestrator: @unchecked Sendable {
         self.scanEventStream = stream
         
         Task {
-            defer {
-                continuation.finish()
-            }
-            
             // Initial scan
             await performInitialScan(urls: urls, options: options, continuation: continuation)
             

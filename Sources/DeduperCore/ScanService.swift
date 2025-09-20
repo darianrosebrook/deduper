@@ -246,6 +246,14 @@ public final class ScanService: @unchecked Sendable {
         var errorCount = 0
         
         do {
+            // Validate directory exists before attempting enumeration
+            var isDirectory: ObjCBool = false
+            if !fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) || !isDirectory.boolValue {
+                logger.error("Directory does not exist: \(url.path, privacy: .public)")
+                continuation.yield(.error(url.path, "Directory does not exist"))
+                return (totalFiles, mediaFiles, skippedFiles, errorCount + 1)
+            }
+
             let resourceKeys: [URLResourceKey] = [
                 .isDirectoryKey,
                 .fileSizeKey,

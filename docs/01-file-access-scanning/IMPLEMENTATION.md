@@ -149,3 +149,15 @@ func enumerate(urls: [URL], options: ScanOptions) async -> AsyncStream<ScanEvent
 - Hashing, grouping, metadata writes (handled by other modules).
 
 
+### Code References (Bi-directional)
+
+- Bookmark lifecycle: `Sources/DeduperCore/BookmarkManager.swift`
+- Folder picking (UI): `Sources/DeduperCore/FolderSelectionService.swift`
+- Scanning and events: `Sources/DeduperCore/ScanService.swift`
+- Monitoring: `Sources/DeduperCore/MonitoringService.swift`
+- Persistence integration (incremental skip): `Sources/DeduperCore/PersistenceController.swift`
+- Orchestration: `Sources/DeduperCore/ScanOrchestrator.swift`
+
+Tests:
+- Unit tests: `Tests/DeduperCoreTests/*`
+- Integration tests: `Tests/DeduperCoreTests/IntegrationTests.swift`

@@ -170,7 +170,7 @@ public final class MonitoringService: @unchecked Sendable {
         // Create dispatch source for file system events
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fileDescriptor,
-            eventMask: [.write, .delete, .rename],
+            eventMask: [.write, .delete, .rename, .extend],
             queue: eventQueue
         )
         
@@ -208,7 +208,7 @@ public final class MonitoringService: @unchecked Sendable {
         // Determine the type of event
         let event: FileSystemEvent
         
-        if eventMask.contains(.write) {
+        if eventMask.contains(.write) || eventMask.contains(.extend) {
             event = .modified(url)
         } else if eventMask.contains(.delete) {
             event = .deleted(url)

@@ -52,11 +52,11 @@ commands:
     outputs: ["/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/sources"]
     description: "Write auxiliary file /Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/sources"
 
-  "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore_DeduperCore.bundle/Resources":
+  "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore_DeduperCore.bundle/Deduper.xcdatamodeld":
     tool: copy-tool
-    inputs: ["/Users/darianrosebrook/Desktop/Projects/deduper/Resources/"]
-    outputs: ["/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore_DeduperCore.bundle/Resources/"]
-    description: "Copying /Users/darianrosebrook/Desktop/Projects/deduper/Resources"
+    inputs: ["/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/Resources/Deduper.xcdatamodeld/"]
+    outputs: ["/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore_DeduperCore.bundle/Deduper.xcdatamodeld/"]
+    description: "Copying /Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/Resources/Deduper.xcdatamodeld"
 
   "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/sources":
     tool: write-auxiliary-file
@@ -133,7 +133,7 @@ commands:
 
   "DeduperCore-arm64-apple-macosx15.0-debug.module-resources":
     tool: phony
-    inputs: ["/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore_DeduperCore.bundle/Resources/"]
+    inputs: ["/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore_DeduperCore.bundle/Deduper.xcdatamodeld/"]
     outputs: ["<DeduperCore-arm64-apple-macosx15.0-debug.module-resources>"]
 
   "PackageStructure":

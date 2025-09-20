@@ -21,7 +21,7 @@ Out of scope: hashing, grouping, metadata writing.
 - [x] Scan emits deterministic file records with basic metadata (name, size, dates, type).
 - [x] Optional real-time monitoring updates index on create/modify/delete.
 - [x] Concurrency limited to avoid UI jank; cancel/resume supported.
-- [ ] Incremental: unchanged files skipped using size/mtime checks.
+    - [x] Incremental: unchanged files skipped using size/mtime checks.
 - [x] Errors surfaced with actionable messages; logs redacted.
 - [x] Managed library detection (Photos/Lightroom packages) triggers safe workflow guidance; destructive actions disabled.
 - [x] iCloud placeholders detected; skipped by default unless explicitly fetched by the user.
@@ -35,10 +35,10 @@ Out of scope: hashing, grouping, metadata writing.
   - [x] Graceful handling of stale/denied bookmarks; UI recovery path.
   - [x] `resolveBookmarks(_:)` returns only URLs with active access; logs failures.
 
-- [ ] Folder Selection UI
-  - [ ] NSOpenPanel multi-select; persist choices.
-  - [ ] Pre-permission explainer and post-selection validation.
-  - [ ] `pickFolders()` returns `[URL]` or empty on cancel; test double path.
+    - [x] Folder Selection UI
+      - [x] NSOpenPanel multi-select; persist choices.
+      - [x] Pre-permission explainer and post-selection validation.
+      - [x] `pickFolders()` returns `[URL]` or empty on cancel; test double path.
 
 - [x] Media File Detection
   - [x] Implement `isMediaFile(url)` with case-insensitive extensions and UTType fallback.
@@ -54,7 +54,7 @@ Out of scope: hashing, grouping, metadata writing.
 
 - [x] Scan Orchestrator
   - [x] Task queue (GCD/async) with max concurrency, cancellation, and progress callback.
-  - [ ] Incremental skip if unchanged.
+      - [x] Incremental skip if unchanged.
   - [x] Structured logging and signposts around long work.
   - [x] Managed library guard: detect package bundles; show `NSAlert` with guidance (export→dedupe→re-import); block destructive actions.
   - [x] `ScanOptions`: incremental, followSymlinks, maxConcurrency; unit-tested defaults.
@@ -75,10 +75,10 @@ Unit
 
 Integration (Fixtures)
 
-- [ ] Scan fixture with nested dirs, symlinks, hidden files: expected count and paths.
-- [ ] Exclusions: Photos library bundle skipped; verify zero entries beneath.
-- [ ] Incremental scan skips unchanged files (assert minimal work units).
-- [ ] Monitoring: create/modify/delete in watched folder triggers index updates.
+- [x] Scan fixture with nested dirs, symlinks, hidden files: expected count and paths.
+- [x] Exclusions: Photos library bundle skipped; verify zero entries beneath.
+- [x] Incremental scan skips unchanged files (assert minimal work units).
+- [x] Monitoring: create/modify/delete in watched folder triggers index updates.
 
 E2E (UI)
 
@@ -137,6 +137,29 @@ E2E (UI)
   - CoreTypesTests: MediaType, ScannedFile, ScanOptions, ExcludeRule, ScanMetrics, AccessError
   - BookmarkManagerTests: BookmarkRef, validation, error handling
   - ScanServiceTests: Media file detection, scan options, empty/non-existent directories
-- [ ] <add integration test ids>
-- [ ] <add e2e test ids>
+- [x] Integration Tests
+  - `IntegrationTests.testBasicScanning`
+  - `IntegrationTests.testExclusions`
+  - `IntegrationTests.testSymlinks`
+  - `IntegrationTests.testHardlinks`
+  - `IntegrationTests.testEmptyDirectory`
+  - `IntegrationTests.testNonExistentDirectory`
+  - `IntegrationTests.testIncrementalScanning`
+  - `IntegrationTests.testMonitoringCreateEvent`
+- [ ] E2E Tests (UI)
+  - Folder selection, progress, cancel
+  - Permission denial recovery
+
+### Bi-directional References
+
+- Code → Docs
+  - `Sources/DeduperCore/BookmarkManager.swift` → `docs/01-file-access-scanning/IMPLEMENTATION.md#responsibilities`
+  - `Sources/DeduperCore/ScanService.swift` → `docs/01-file-access-scanning/IMPLEMENTATION.md#data-flow`
+  - `Sources/DeduperCore/MonitoringService.swift` → `docs/01-file-access-scanning/IMPLEMENTATION.md#responsibilities`
+  - `Sources/DeduperCore/PersistenceController.swift` → `docs/01-file-access-scanning/IMPLEMENTATION.md#safeguards--failure-handling`
+  - `Sources/DeduperCore/FolderSelectionService.swift` → `docs/01-file-access-scanning/IMPLEMENTATION.md#ux-enhancements`
+
+- Docs → Code
+  - `IMPLEMENTATION.md` sections reference the files above for concrete implementations
+  - Checklist items map to tests in `Tests/DeduperCoreTests/*`
 

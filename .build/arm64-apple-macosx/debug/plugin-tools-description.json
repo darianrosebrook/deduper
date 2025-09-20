@@ -7,17 +7,17 @@
     }
   ],
   "copyCommands" : {
-    "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore_DeduperCore.bundle/Resources" : {
+    "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore_DeduperCore.bundle/Deduper.xcdatamodeld" : {
       "inputs" : [
         {
           "kind" : "directory",
-          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Resources"
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/Resources/Deduper.xcdatamodeld"
         }
       ],
       "outputs" : [
         {
           "kind" : "directory",
-          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore_DeduperCore.bundle/Resources"
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore_DeduperCore.bundle/Deduper.xcdatamodeld"
         }
       ]
     }
