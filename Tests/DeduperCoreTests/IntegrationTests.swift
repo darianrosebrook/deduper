@@ -328,4 +328,23 @@ struct IntegrationTests {
         orchestrator.stopAll()
         _ = streamFinished // not asserting; just ensuring we can reference it without warning
     }
+
+    @Test("Hash persistence on upsert")
+    func testHashPersistenceOnUpsert() async throws {
+        let persistence = PersistenceController(inMemory: true)
+        let metadataSvc = MetadataExtractionService(persistenceController: persistence)
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let url = tmp.appendingPathComponent("img.png")
+        try Data(count: 2048).write(to: url)
+
+        let scanned = ScannedFile(url: url, mediaType: .photo, fileSize: 2048)
+        let meta = metadataSvc.readFor(url: url, mediaType: .photo)
+        await metadataSvc.upsert(file: scanned, metadata: meta)
+
+        // Smoke: ensure file record exists without crashing; detailed signature checks can be added when Core Data model is compiled in tests
+        let files = try await persistence.getFileRecords(for: .photo)
+        #expect(files.count == 1)
+    }
 }

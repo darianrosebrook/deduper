@@ -20,16 +20,16 @@ Compute perceptual hashes (aHash/dHash/pHash) for images; support Hamming distan
 
 ### Implementation Tasks
 
-- [ ] Resolve ambiguities (see `../ambiguities.md#03--image-content-analysis`).
-- [ ] Normalization pipeline (resize, grayscale) with Accelerate.
-- [ ] dHash (primary) and optional pHash implementation.
-- [ ] Hamming distance and threshold config.
-- [ ] Persistence of 64-bit hashes; invalidation triggers.
+- [x] Resolve ambiguities (see `../ambiguities.md#03--image-content-analysis`).
+- [x] Normalization pipeline (oriented thumbnail + grayscale) with Image I/O + Core Graphics.
+- [x] dHash (primary) and optional pHash implementation.
+- [x] Hamming distance and threshold config.
+- [x] Persistence of 64-bit hashes; invalidation triggers.
 - [ ] Optional BK-tree or sorted-neighbor scan utility.
   - [ ] Integration hook to plug BK-tree/LSH when dataset is large.
-  - [ ] `makeThumbnail(url, maxSize)` uses Image I/O transform flags.
-  - [ ] `toGrayscale(cgImage)` via Core Graphics.
-  - [ ] `computeDHash(cgImage)` and `computePHash(cgImage)` return `UInt64`.
+  - [x] `makeThumbnail(url, maxSize)` uses Image I/O transform flags.
+  - [x] `toGrayscale(cgImage)` via Core Graphics.
+  - [x] `computeDHash(cgImage)` and `computePHash(cgImage)` return `UInt64`.
   - [ ] `hammingDistance(a,b)` returns `Int` and is unit-tested with vectors.
 
 ### Verification (Automated)

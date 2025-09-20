@@ -9,23 +9,39 @@ Author: @darianrosebrook
 
 ### Pipeline
 
-1) Load downsampled grayscale thumbnail (e.g., 9×8 for dHash / 32×32 for pHash).
-2) Normalize orientation; consistent color space.
+1) Load oriented thumbnail via Image I/O (uses `CGImageSourceCreateThumbnailAtIndex` with `kCGImageSourceCreateThumbnailWithTransform = true`).
+2) Convert to grayscale and downsample to target size (9×8 for dHash / 32×32 for pHash).
 3) Compute hash:
    - dHash: compare adjacent pixels row-wise.
    - pHash (optional): DCT → low-frequency block → median threshold.
 4) Persist 64-bit hash; record algorithm and computedAt.
 
-### Public API (proposed)
+### Public API (implemented)
 
-- ImageHasher
-  - computeDHash(for url: URL) -> UInt64
-  - computePHash(for url: URL) -> UInt64
+- ImageHashingService (see `Sources/DeduperCore/ImageHashingService.swift`)
+  - computeHashes(for url: URL) -> [ImageHashResult]
+  - computeHashes(from cgImage: CGImage) -> [ImageHashResult]
   - hammingDistance(_ a: UInt64, _ b: UInt64) -> Int
+  - makeThumbnail(url: URL, maxSize: Int) -> CGImage?
 
-- HashIndex (in-memory)
-  - add(fileId, hash)
-  - queryWithin(distance: Int, of hash: UInt64) -> [fileId]
+- HashIndexService (see `Sources/DeduperCore/HashIndexService.swift`)
+  - add(fileId: UUID, hashResult: ImageHashResult)
+  - add(fileId: UUID, hashResults: [ImageHashResult])
+  - queryWithin(distance: Int, of hash: UInt64, algorithm: HashAlgorithm, excludeFileId: UUID?) -> [HashMatch]
+  - findExactMatches(for hash: UInt64, algorithm: HashAlgorithm, excludeFileId: UUID?) -> [HashMatch]
+  - findNearDuplicates(for hash: UInt64, algorithm: HashAlgorithm, excludeFileId: UUID?) -> [HashMatch]
+  - getStatistics() -> HashIndexStatistics; clear(); count()
+
+### Implementation Status
+
+- dHash implemented (9×8 grayscale, row-wise comparisons)
+- pHash implemented (32×32 grayscale, 2D DCT, 8×8 low-frequency, median-threshold)
+- Orientation normalization via Image I/O thumbnail transform
+- Grayscale conversion via Core Graphics context
+- Hamming distance utility implemented
+- Thresholds configurable via `HashingConfig` (default near-duplicate ≤ 5)
+- In-memory index for similarity queries implemented; BK-tree reserved for later
+- Persistence wiring to `ImageSignature` entity is pending
 
 ### Safeguards & Failure Handling
 
@@ -33,6 +49,7 @@ Author: @darianrosebrook
 - If decode fails, log and skip; do not crash the pipeline.
 - Memory caps: process in batches; release thumbnails promptly.
 - Determinism: fixed resize kernel and rounding to avoid drift.
+ - Config-driven guards: `HashingConfig.minImageDimension` prevents hashing very small images.
 
 ### Thresholds (initial)
 
@@ -43,6 +60,7 @@ Author: @darianrosebrook
 
 - Unit: golden images for dHash/pHash; distance math; orientation invariance.
 - Integration: batch hashing on fixture folder with distribution analysis; performance measured.
+ - Status: hashing services in place; tests and fixtures to be added next.
 
 ### Metrics & Observability
 
@@ -65,6 +83,9 @@ Author: @darianrosebrook
 - Observability:
   - OSLog categories: hash, imageio; counters for hashes/sec, failures, average distances.
 - See also: `../COMMON_GOTCHAS.md`.
+ 
+Known risks:
+- Current pHash uses a straightforward DCT; consider vDSP-accelerated DCT for throughput if benchmarks require.
 ### Pseudocode
 
 ```swift

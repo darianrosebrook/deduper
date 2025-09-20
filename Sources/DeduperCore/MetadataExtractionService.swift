@@ -12,9 +12,11 @@ import os
 public final class MetadataExtractionService: @unchecked Sendable {
     private let logger = Logger(subsystem: "app.deduper", category: "metadata")
     private let persistenceController: PersistenceController
+    private let imageHasher: ImageHashingService
     
     public init(persistenceController: PersistenceController) {
         self.persistenceController = persistenceController
+        self.imageHasher = ImageHashingService()
     }
     
     // MARK: - Public API
@@ -72,6 +74,17 @@ public final class MetadataExtractionService: @unchecked Sendable {
                         imageSig.setValue(NSNumber(value: dims.width), forKey: "width")
                         imageSig.setValue(NSNumber(value: dims.height), forKey: "height")
                         if let capture = metadata.captureDate { imageSig.setValue(capture, forKey: "captureDate") }
+
+                        // Compute and persist perceptual hashes (dHash primary, pHash optional)
+                        let hashResults = self.imageHasher.computeHashes(for: file.url)
+                        for result in hashResults {
+                            switch result.algorithm {
+                            case .dHash:
+                                imageSig.setValue(NSNumber(value: result.hash), forKey: "dhash")
+                            case .pHash:
+                                imageSig.setValue(NSNumber(value: result.hash), forKey: "phash")
+                            }
+                        }
                     }
                 case .video:
                     if metadata.durationSec != nil || metadata.dimensions != nil {

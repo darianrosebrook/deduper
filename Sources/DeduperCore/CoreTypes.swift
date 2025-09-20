@@ -234,6 +234,80 @@ extension URL {
     }
 }
 
+// MARK: - Image Hashing Types (Module 03)
+
+/**
+ * Supported perceptual hashing algorithms for image content analysis
+ * 
+ * - Author: @darianrosebrook
+ */
+public enum HashAlgorithm: Int16, CaseIterable, Sendable {
+    case dHash = 0  // Difference hash (fast, good for near-duplicates)
+    case pHash = 1  // Perceptual hash (slower, more robust to transformations)
+    
+    public var name: String {
+        switch self {
+        case .dHash: return "dHash"
+        case .pHash: return "pHash"
+        }
+    }
+    
+    /// Expected thumbnail size for optimal hash computation
+    public var thumbnailSize: (width: Int, height: Int) {
+        switch self {
+        case .dHash: return (9, 8)  // 9x8 for row-wise pixel comparisons
+        case .pHash: return (32, 32) // 32x32 for DCT analysis
+        }
+    }
+}
+
+/**
+ * Result of image hash computation
+ * 
+ * - Author: @darianrosebrook
+ */
+public struct ImageHashResult: Sendable, Equatable {
+    public let algorithm: HashAlgorithm
+    public let hash: UInt64
+    public let width: Int32
+    public let height: Int32
+    public let computedAt: Date
+    
+    public init(algorithm: HashAlgorithm, hash: UInt64, width: Int32, height: Int32, computedAt: Date = Date()) {
+        self.algorithm = algorithm
+        self.hash = hash
+        self.width = width
+        self.height = height
+        self.computedAt = computedAt
+    }
+}
+
+/**
+ * Configuration for image hashing thresholds and behavior
+ * 
+ * - Author: @darianrosebrook
+ */
+public struct HashingConfig: Sendable, Equatable {
+    public let duplicateThreshold: Int      // Hamming distance for exact duplicates
+    public let nearDuplicateThreshold: Int  // Hamming distance for near duplicates
+    public let enablePHash: Bool            // Whether to compute pHash in addition to dHash
+    public let minImageDimension: Int       // Skip images smaller than this
+    
+    public static let `default` = HashingConfig(
+        duplicateThreshold: 0,
+        nearDuplicateThreshold: 5,
+        enablePHash: false,
+        minImageDimension: 32
+    )
+    
+    public init(duplicateThreshold: Int = 0, nearDuplicateThreshold: Int = 5, enablePHash: Bool = false, minImageDimension: Int = 32) {
+        self.duplicateThreshold = duplicateThreshold
+        self.nearDuplicateThreshold = nearDuplicateThreshold
+        self.enablePHash = enablePHash
+        self.minImageDimension = minImageDimension
+    }
+}
+
 // MARK: - Metadata Types (Module 02)
 
 public struct MediaMetadata: Sendable, Equatable {

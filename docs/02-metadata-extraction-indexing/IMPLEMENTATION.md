@@ -138,6 +138,10 @@ func normalize(meta: MediaMetadata) -> MediaMetadata {
 - Integration tests with real media files
 - Performance benchmarking
 
+TODO: 
+- Add integration tests with real media files, it requires a fixture folder with media files that have EXIF and GPS data. we can get it by downloading from https://github.com/caesar0301/awesome-public-dataset/tree/master/photo_datasets/streetview or https://github.com/mattnatt/AI-Image-Dataset/tree/main/AI-Image-Dataset/AI-Image-Dataset/data/Public%20Image%20Dataset, verify first before adding to the fixture folder to avoid attack vectors.
+- Add performance benchmarking for metadata extraction and indexing. We want to look for regressions and optimize the code. The metrics we care about are: metadata extraction throughput, indexing throughput, and query performance. The optimal metrics are: metadata extraction throughput ≥ 500 files/sec on Medium dataset, indexing throughput ≥ 500 files/sec on Medium dataset, and query performance ≤ 100ms for the most common queries. We'll veriify by running the benchmarks and checking the metrics after each change, then documenting the metrics in the CHECKLIST.md.
+
 ### See Also — External References
 
 - [Established] Apple — Image I/O: `https://developer.apple.com/documentation/imageio`
