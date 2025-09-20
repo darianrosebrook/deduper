@@ -1,4 +1,5 @@
 import Foundation
+import CoreData
 import os
 
 /**
@@ -15,6 +16,7 @@ public final class ScanOrchestrator: @unchecked Sendable {
     private let scanService: ScanService
     private let monitoringService: MonitoringService
     private let persistenceController: PersistenceController
+    private let metadataService: MetadataExtractionService
     
     /// Active monitoring tasks
     private var activeMonitoringTasks: [URL: Task<Void, Never>] = [:]
@@ -31,6 +33,7 @@ public final class ScanOrchestrator: @unchecked Sendable {
     ) {
         self.persistenceController = persistenceController
         self.scanService = ScanService(persistenceController: persistenceController)
+        self.metadataService = MetadataExtractionService(persistenceController: persistenceController)
         
         // Create monitoring service with config if not provided
         if let monitoringService = monitoringService {
@@ -172,11 +175,12 @@ public final class ScanOrchestrator: @unchecked Sendable {
                 // If it's a media file, create a ScannedFile directly
                 do {
                     let scannedFile = try createScannedFile(from: url)
+                    let meta = self.metadataService.readFor(url: url, mediaType: scannedFile.mediaType)
                     continuation.yield(.item(scannedFile))
-                    
-                    // Persist to Core Data
+
+                    // Persist to Core Data via metadata service
                     Task.detached { [weak self] in
-                        try? await self?.persistenceController.upsertFileRecord(from: scannedFile)
+                        await self?.metadataService.upsert(file: scannedFile, metadata: meta)
                     }
                 } catch {
                     logger.error("Failed to create ScannedFile for \(url.path, privacy: .public): \(error.localizedDescription)")
@@ -185,14 +189,77 @@ public final class ScanOrchestrator: @unchecked Sendable {
             }
             
         case .deleted(let url):
-            // Handle file deletion - could trigger cleanup in Core Data
-            logger.debug("File deleted: \(url.path, privacy: .public)")
-            // TODO: Implement cleanup of deleted files from Core Data
+            // Remove from index immediately to keep UI and persistence consistent
+            logger.debug("File deleted on disk, removing from index: \(url.path, privacy: .public)")
+            continuation.yield(.skipped(url, reason: "Deleted from disk"))
+            Task.detached { [weak self] in
+                await self?.deleteRecord(for: url)
+            }
             
         case .renamed(let oldURL, let newURL):
-            // Handle file rename
-            logger.debug("File renamed from \(oldURL.path, privacy: .public) to \(newURL.path, privacy: .public)")
-            // TODO: Implement rename handling in Core Data
+            // Update index to point to the new location and refresh metadata
+            logger.debug("Updating index for renamed file: \(oldURL.path, privacy: .public) → \(newURL.path, privacy: .public)")
+            continuation.yield(.skipped(oldURL, reason: "Renamed/moved"))
+            Task.detached { [weak self] in
+                guard let self else { return }
+                await self.renameRecord(from: oldURL, to: newURL)
+                // Emit updated item to downstream consumers
+                do {
+                    let scanned = try self.createScannedFile(from: newURL)
+                    let meta = self.metadataService.readFor(url: newURL, mediaType: scanned.mediaType)
+                    continuation.yield(.item(scanned))
+                    await self.metadataService.upsert(file: scanned, metadata: meta)
+                } catch {
+                    self.logger.error("Failed to refresh renamed file: \(newURL.path, privacy: .public) - \(error.localizedDescription)")
+                    continuation.yield(.error(newURL.path, error.localizedDescription))
+                }
+            }
+        }
+    }
+    
+    // MARK: - Index maintenance
+    
+    /// Delete a persisted record (and related signatures) for a given URL.
+    private func deleteRecord(for url: URL) async {
+        do {
+            try await persistenceController.performBackgroundTask { context in
+                let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "FileRecord")
+                request.predicate = NSPredicate(format: "url == %@", url as NSURL)
+                request.fetchLimit = 1
+                guard let record = try context.fetch(request).first else { return }
+                if let imageSig = record.value(forKey: "imageSignature") as? NSManagedObject {
+                    context.delete(imageSig)
+                }
+                if let videoSig = record.value(forKey: "videoSignature") as? NSManagedObject {
+                    context.delete(videoSig)
+                }
+                context.delete(record)
+                if context.hasChanges { try context.save() }
+            }
+        } catch {
+            logger.error("Failed to delete index record for \(url.path, privacy: .public): \(error.localizedDescription)")
+        }
+    }
+    
+    /// Update the persisted record URL when a file is renamed or moved.
+    private func renameRecord(from oldURL: URL, to newURL: URL) async {
+        do {
+            try await persistenceController.performBackgroundTask { context in
+                let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "FileRecord")
+                request.predicate = NSPredicate(format: "url == %@", oldURL as NSURL)
+                request.fetchLimit = 1
+                guard let record = try context.fetch(request).first else { return }
+                record.setValue(newURL, forKey: "url")
+                // Opportunistically refresh basic timestamps from filesystem
+                if let values = try? newURL.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey]) {
+                    if let created = values.creationDate { record.setValue(created, forKey: "createdAt") }
+                    if let modified = values.contentModificationDate { record.setValue(modified, forKey: "modifiedAt") }
+                }
+                record.setValue(Date(), forKey: "lastScannedAt")
+                if context.hasChanges { try context.save() }
+            }
+        } catch {
+            logger.error("Failed to update index for rename: \(oldURL.path, privacy: .public) → \(newURL.path, privacy: .public): \(error.localizedDescription)")
         }
     }
     

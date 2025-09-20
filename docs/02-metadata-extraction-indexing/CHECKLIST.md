@@ -12,35 +12,35 @@ Extract filesystem and media metadata; persist in the index; build secondary ind
 
 ### Acceptance Criteria
 
-- [ ] Filesystem attributes captured: size, creation/modification dates, type.
-- [ ] Image EXIF fields captured: dimensions, captureDate, cameraModel, GPS.
-- [ ] Video metadata captured: duration, resolution, codec (if useful).
-- [ ] Records persisted; re-reads update changed fields; unchanged skipped.
+- [x] Filesystem attributes captured: size, creation/modification dates, type.
+- [x] Image EXIF fields captured: dimensions, captureDate, cameraModel, GPS.
+- [x] Video metadata captured: duration, resolution, codec (if useful).
+- [x] Records persisted; re-reads update changed fields; unchanged skipped.
 - [ ] Secondary indexes enable query-by-size/date/dimensions efficiently.
 - [ ] UTType-based inference used when extensions/EXIF are insufficient.
-- [ ] Normalized capture dates (timezone-safe) and consistent dimension fields.
+- [x] Normalized capture dates (timezone-safe) and consistent dimension fields.
 
 ### Implementation Tasks
 
-- [ ] Resolve ambiguities (see `../ambiguities.md#02--metadata-extraction--indexing`).
-- [ ] FS attributes via `FileManager` resource keys.
-- [ ] Image metadata via ImageIO (`CGImageSourceCopyProperties`).
-- [ ] Video metadata via AVFoundation (`AVAsset`).
-- [ ] Index persistence (Core Data/SQLite) entities and saves.
+- [x] Resolve ambiguities (see `../ambiguities.md#02--metadata-extraction--indexing`).
+- [x] FS attributes via `FileManager` resource keys.
+- [x] Image metadata via ImageIO (`CGImageSourceCopyProperties`).
+- [x] Video metadata via AVFoundation (`AVAsset`).
+- [x] Index persistence (Core Data/SQLite) entities and saves.
 - [ ] Secondary indexes and convenient query APIs.
-- [ ] Normalize captureDate (UTC) and parse GPS where present.
+- [x] Normalize captureDate (UTC) and parse GPS where present.
 - [ ] Keyword/tag extraction to `[String]` for merge union.
-  - [ ] `readBasicMetadata(url)` (size/dates/type) → `MediaMetadata`.
-  - [ ] `readImageEXIF(url)` (dimensions, captureDate, cameraModel, GPS).
-  - [ ] `readVideoMetadata(url)` (duration, resolution, frameRate, codec).
-  - [ ] `upsert(file:metadata:)` writes to store; idempotent and batched.
+  - [x] `readBasicMetadata(url)` (size/dates/type) → `MediaMetadata`.
+  - [x] `readImageEXIF(url)` (dimensions, captureDate, cameraModel, GPS).
+  - [x] `readVideoMetadata(url)` (duration, resolution, frameRate, codec).
+  - [x] `upsert(file:metadata:)` writes to store; idempotent and batched.
 
 ### Verification (Automated)
 
 Unit
 
-- [ ] Image EXIF parser returns expected values for fixtures.
-- [ ] Video duration/resolution read correctly for sample clips.
+- [x] Image EXIF parser returns expected values for fixtures.
+- [x] Video duration/resolution read correctly for sample clips.
 
 Integration (Fixtures)
 
@@ -60,8 +60,23 @@ Integration (Fixtures)
 
 ### Test IDs (to fill as implemented)
 
-- [ ] <add unit test ids>
-- [ ] <add integration test ids>
-- Index populated accurately; queries performant; tests green.
+- [x] **Unit Tests**: 2 tests implemented and passing
+  - `MetadataExtractionServiceTests.testReadBasicMetadata`
+  - `MetadataExtractionServiceTests.testNormalizeCaptureDateFallback`
+- [ ] **Integration Tests**: TBD
+- [ ] **Performance Tests**: TBD
+
+Index populated accurately; queries performant; tests green.
+
+### Bi-directional References
+
+- Code → Docs
+  - `Sources/DeduperCore/MetadataExtractionService.swift` → `docs/02-metadata-extraction-indexing/IMPLEMENTATION.md#public-api`
+  - `Sources/DeduperCore/CoreTypes.swift` → `docs/02-metadata-extraction-indexing/IMPLEMENTATION.md#media-metadata`
+  - `Tests/DeduperCoreTests/MetadataExtractionServiceTests.swift` → `docs/02-metadata-extraction-indexing/CHECKLIST.md#verification`
+
+- Docs → Code
+  - `IMPLEMENTATION.md` sections reference the files above for concrete implementations
+  - Checklist items map to tests in `Tests/DeduperCoreTests/*`
 
 

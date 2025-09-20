@@ -18,6 +18,7 @@ public final class ScanService: @unchecked Sendable {
     private let persistenceController: PersistenceController
     private let monitoringService: MonitoringService
     private let performanceMetrics: PerformanceMetrics
+    private let metadataService: MetadataExtractionService
     
     /// Active scan tasks for cancellation support
     private var activeTasks: [UUID: Task<Void, Never>] = [:]
@@ -50,6 +51,7 @@ public final class ScanService: @unchecked Sendable {
         self.persistenceController = persistenceController
         self.monitoringService = monitoringService
         self.performanceMetrics = performanceMetrics
+        self.metadataService = MetadataExtractionService(persistenceController: persistenceController)
         
         // Build set of all supported extensions from MediaType cases
         var extensions: Set<String> = []
@@ -341,13 +343,14 @@ public final class ScanService: @unchecked Sendable {
                     }
                 }
                 
-                // Create ScannedFile and persist to Core Data
+                // Create ScannedFile and persist to Core Data with enriched metadata
                 do {
                     let scannedFile = try createScannedFile(from: fileURL)
+                    let mediaMeta = self.metadataService.readFor(url: fileURL, mediaType: scannedFile.mediaType)
                     
-                    // Persist to Core Data in background
+                    // Persist to Core Data in background using metadata service
                     Task.detached { [weak self] in
-                        try? await self?.persistenceController.upsertFileRecord(from: scannedFile)
+                        await self?.metadataService.upsert(file: scannedFile, metadata: mediaMeta)
                     }
                     
                     continuation.yield(.item(scannedFile))
@@ -399,18 +402,12 @@ public final class ScanService: @unchecked Sendable {
     
     private func determineMediaType(from url: URL) -> MediaType {
         let fileExtension = url.pathExtension.lowercased()
-        
-        // Check photo extensions
-        if MediaType.photo.commonExtensions.contains(fileExtension) {
-            return .photo
+        if MediaType.photo.commonExtensions.contains(fileExtension) { return .photo }
+        if MediaType.video.commonExtensions.contains(fileExtension) { return .video }
+        if let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType {
+            if type.conforms(to: .image) { return .photo }
+            if type.conforms(to: .movie) { return .video }
         }
-        
-        // Check video extensions
-        if MediaType.video.commonExtensions.contains(fileExtension) {
-            return .video
-        }
-        
-        // Default to photo for unknown extensions
         return .photo
     }
     

@@ -112,13 +112,35 @@ func normalize(meta: MediaMetadata) -> MediaMetadata {
 ```
 
 
+### Code References
+
+- `Sources/DeduperCore/MetadataExtractionService.swift` - Main service implementation
+- `Sources/DeduperCore/CoreTypes.swift` - MediaMetadata struct definition
+- `Tests/DeduperCoreTests/MetadataExtractionServiceTests.swift` - Unit tests
+
+### Implementation Status
+
+✅ **Completed:**
+- Basic filesystem metadata extraction via FileManager
+- Image EXIF metadata extraction via ImageIO (dimensions, capture date, camera model, GPS)
+- Video metadata extraction via AVFoundation (duration, resolution)
+- Metadata normalization (GPS precision, date fallbacks)
+- Core Data persistence integration with FileRecord/ImageSignature/VideoSignature entities
+- Custom Equatable conformance for MediaMetadata
+- Unit tests for basic metadata and normalization
+
+🔄 **In Progress:**
+- Secondary indexes for efficient querying
+- Integration tests with real media files
+- Performance benchmarking
+
 ### See Also — External References
 
 - [Established] Apple — Image I/O: `https://developer.apple.com/documentation/imageio`
 - [Established] Apple — AVFoundation: `https://developer.apple.com/documentation/avfoundation`
 - [Established] Apple — UniformTypeIdentifiers: `https://developer.apple.com/documentation/uniformtypeidentifiers`
 - [Established] EXIF Tag Reference (EXIF.org): `https://exif.org/Exif2-2.PDF`
-- [Cutting-edge] HEIC/HEIF metadata caveats (WWDC talk): `https://developer.apple.com/videos/` (search “HEIF and HEVC”)
+- [Cutting-edge] HEIC/HEIF metadata caveats (WWDC talk): `https://developer.apple.com/videos/` (search "HEIF and HEVC")
 
 - Inconsistent EXIF across vendors → robust key mapping; test against diverse fixtures.
 - Large RAW files → avoid decode; skip image hashing until needed.

@@ -233,3 +233,37 @@ extension URL {
         return values.ubiquitousItemDownloadingStatus == .notDownloaded
     }
 }
+
+// MARK: - Metadata Types (Module 02)
+
+public struct MediaMetadata: Sendable, Equatable {
+    public let fileName: String
+    public let fileSize: Int64
+    public let mediaType: MediaType
+    public let createdAt: Date?
+    public let modifiedAt: Date?
+    public var dimensions: (width: Int, height: Int)?
+    public var captureDate: Date?
+    public var cameraModel: String?
+    public var gpsLat: Double?
+    public var gpsLon: Double?
+    public var durationSec: Double?
+}
+
+extension MediaMetadata {
+    public static func == (lhs: MediaMetadata, rhs: MediaMetadata) -> Bool {
+        let lhsDim = lhs.dimensions.map { ($0.width, $0.height) }
+        let rhsDim = rhs.dimensions.map { ($0.width, $0.height) }
+        return lhs.fileName == rhs.fileName &&
+            lhs.fileSize == rhs.fileSize &&
+            lhs.mediaType == rhs.mediaType &&
+            lhs.createdAt == rhs.createdAt &&
+            lhs.modifiedAt == rhs.modifiedAt &&
+            lhsDim?.0 == rhsDim?.0 && lhsDim?.1 == rhsDim?.1 &&
+            lhs.captureDate == rhs.captureDate &&
+            lhs.cameraModel == rhs.cameraModel &&
+            lhs.gpsLat == rhs.gpsLat &&
+            lhs.gpsLon == rhs.gpsLon &&
+            lhs.durationSec == rhs.durationSec
+    }
+}
