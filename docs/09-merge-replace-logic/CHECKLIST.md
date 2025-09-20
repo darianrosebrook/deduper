@@ -1,6 +1,11 @@
 ## 09 · Merge & Replace Logic — Checklist
 Author: @darianrosebrook
 
+### For Agents
+
+- Read `docs/agents.md`. Build a merge plan preview; write EXIF atomically; enable undo.
+- Do not overwrite keeper fields unless explicitly requested.
+
 ### Scope
 
 Select keeper, merge metadata from duplicates, and move redundant files to Trash with undo support.

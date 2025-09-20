@@ -1,6 +1,11 @@
 ## 15 · Safe File Operations, Undo, and Recovery — Checklist
 Author: @darianrosebrook
 
+### For Agents
+
+- Read `docs/agents.md`. Implement transaction log; write atomically; provide one-click undo.
+- Never permanently delete by default.
+
 ### Scope
 
 Atomic metadata writes, move-to-trash, conflict handling, transaction log, and undo/restore.

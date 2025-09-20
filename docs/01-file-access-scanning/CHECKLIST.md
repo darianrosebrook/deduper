@@ -29,6 +29,7 @@ Out of scope: hashing, grouping, metadata writing.
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#01--file-access--scanning`).
 - [ ] Bookmark Manager
   - [ ] Create/read/update security-scoped bookmarks for selected folders.
   - [ ] Graceful handling of stale/denied bookmarks; UI recovery path.
@@ -129,4 +130,10 @@ E2E (UI)
   - OSLog categories: scan, access; signposts around enumeration; counters for skipped/denied/placeholder items.
 - See also: `../COMMON_GOTCHAS.md`.
 
+
+### Test IDs (to fill as implemented)
+
+- [ ] <add unit test ids>
+- [ ] <add integration test ids>
+- [ ] <add e2e test ids>
 

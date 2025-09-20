@@ -20,6 +20,7 @@ Extract representative frames; compute per-frame image hashes; assemble video si
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#04--video-content-analysis`).
 - [ ] AVAssetImageGenerator setup with `appliesPreferredTrackTransform`.
 - [ ] Frame time selection (0%, 50%, end-1s) with guard for short videos.
 - [ ] Reuse image hashing; store `frameHashes: [UInt64]`.
@@ -45,6 +46,10 @@ Integration
 
 ### Done Criteria
 
+### Test IDs (to fill as implemented)
+
+- [ ] <add unit test ids>
+- [ ] <add integration test ids>
 - Robust signature and compare; tests green; perf target met.
 
 

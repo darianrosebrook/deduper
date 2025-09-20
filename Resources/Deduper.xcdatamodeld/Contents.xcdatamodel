@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="22758" systemVersion="23A344" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="File" representedClassName="File" syncable="YES">
+        <attribute name="bookmarkData" optional="YES" attributeType="Binary" usesScalarValueType="NO"/>
+        <attribute name="checksumSHA256" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="fileSize" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="inodeOrFileId" optional="YES" attributeType="String"/>
+        <attribute name="isTrashed" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="mediaType" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="modifiedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="path" attributeType="String"/>
+        <relationship name="imageSignatures" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ImageSignature" inverseName="file" inverseEntity="ImageSignature"/>
+        <relationship name="metadata" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="Metadata" inverseName="file" inverseEntity="Metadata"/>
+        <relationship name="videoSignatures" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="VideoSignature" inverseName="file" inverseEntity="VideoSignature"/>
+    </entity>
+    <entity name="ImageSignature" representedClassName="ImageSignature" syncable="YES">
+        <attribute name="computedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="hash64" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="hashType" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="height" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="width" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="file" maxCount="1" deletionRule="Nullify" destinationEntity="File" inverseName="imageSignatures" inverseEntity="File"/>
+    </entity>
+    <entity name="VideoSignature" representedClassName="VideoSignature" syncable="YES">
+        <attribute name="computedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="durationSec" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="frameHashes" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="[UInt64]"/>
+        <attribute name="height" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="width" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="file" maxCount="1" deletionRule="Nullify" destinationEntity="File" inverseName="videoSignatures" inverseEntity="File"/>
+    </entity>
+    <entity name="Metadata" representedClassName="Metadata" syncable="YES">
+        <attribute name="cameraModel" optional="YES" attributeType="String"/>
+        <attribute name="captureDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="exifBlob" optional="YES" attributeType="Binary"/>
+        <attribute name="gpsLat" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="gpsLon" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="keywords" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="[String]"/>
+        <relationship name="file" maxCount="1" deletionRule="Nullify" destinationEntity="File" inverseName="metadata" inverseEntity="File"/>
+    </entity>
+    <entity name="DuplicateGroup" representedClassName="DuplicateGroup" syncable="YES">
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="rationale" attributeType="String"/>
+        <attribute name="status" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="members" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="GroupMember" inverseName="group" inverseEntity="GroupMember"/>
+    </entity>
+    <entity name="GroupMember" representedClassName="GroupMember" syncable="YES">
+        <attribute name="hammingDistance" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="isKeeperSuggestion" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="nameSimilarity" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <relationship name="file" maxCount="1" deletionRule="Nullify" destinationEntity="File" inverseName="groupMembers" inverseEntity="File"/>
+        <relationship name="group" maxCount="1" deletionRule="Nullify" destinationEntity="DuplicateGroup" inverseName="members" inverseEntity="DuplicateGroup"/>
+    </entity>
+    <entity name="UserDecision" representedClassName="UserDecision" syncable="YES">
+        <attribute name="action" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="mergedFields" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="[String : Any]"/>
+        <attribute name="performedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="group" maxCount="1" deletionRule="Nullify" destinationEntity="DuplicateGroup" inverseName="userDecisions" inverseEntity="DuplicateGroup"/>
+        <relationship name="keeperFile" maxCount="1" deletionRule="Nullify" destinationEntity="File" inverseName="userDecisions" inverseEntity="File"/>
+    </entity>
+    <entity name="Preference" representedClassName="Preference" syncable="YES">
+        <attribute name="key" attributeType="String"/>
+        <attribute name="value" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="Any"/>
+    </entity>
+</model>

@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCorePackageTests.build/master.swiftdeps"
+  },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCorePackageTests.derived/runner.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCorePackageTests.build/runner.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCorePackageTests.build/runner.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCorePackageTests.build/runner~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCorePackageTests.build/runner.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCorePackageTests.build/runner.dia"
+  }
+}

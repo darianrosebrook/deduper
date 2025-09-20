@@ -1,6 +1,11 @@
 ## 19 · Testing Strategy (Unit, Integration, E2E) — Checklist
 Author: @darianrosebrook
 
+### For Agents
+
+- Read `docs/agents.md`. Add tests alongside code; keep test names in Verification lists.
+- Maintain ≥ 80% coverage for `DeduperCore`; wire XCUITests for critical flows.
+
 ### Scope
 
 Establish coverage for core logic, integration on fixtures, and UI flows.

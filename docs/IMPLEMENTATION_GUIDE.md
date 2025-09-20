@@ -713,6 +713,8 @@ func preloadThumbnails(for groups: [DuplicateGroup]) {
 - "False positives": Tighten similarity thresholds; verify evidence panel shows distances near threshold
 - "Managed library flagged": Confirm protection modal is shown and destructive actions disabled
 
+See also: `docs/ambiguities.md` for open decisions and resolutions that affect implementation details.
+
 ## Done Criteria (Release Readiness)
 
 - All modules implemented with tests green

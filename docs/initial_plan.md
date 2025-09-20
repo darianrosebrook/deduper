@@ -4,6 +4,8 @@ Author: @darianrosebrook
 
 This directory contains per-module checklists to track implementation and verification. Work through modules sequentially; each checklist includes: scope, acceptance criteria, implementation tasks, verification via tests, fixtures, metrics, manual QA, and done criteria.
 
+- Track open questions and decisions in `docs/ambiguities.md` and resolve them before implementation when possible.
+
 - [01 · File Access & Scanning](./01-file-access-scanning/CHECKLIST.md)
 - [02 · Metadata Extraction & Indexing](./02-metadata-extraction-indexing/CHECKLIST.md)
 - [03 · Image Content Analysis](./03-image-content-analysis/CHECKLIST.md)

@@ -1,0 +1,33 @@
+{
+  "": {
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/master.swiftdeps"
+  },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/BookmarkManagerTests.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/BookmarkManagerTests.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/BookmarkManagerTests.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/BookmarkManagerTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/BookmarkManagerTests.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/BookmarkManagerTests.dia"
+  },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/CoreTypesTests.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/CoreTypesTests.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/CoreTypesTests.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/CoreTypesTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/CoreTypesTests.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/CoreTypesTests.dia"
+  },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/DeduperCoreTests.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/DeduperCoreTests.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/DeduperCoreTests.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/DeduperCoreTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/DeduperCoreTests.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/DeduperCoreTests.dia"
+  },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/ScanServiceTests.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanServiceTests.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanServiceTests.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanServiceTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanServiceTests.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanServiceTests.dia"
+  }
+}

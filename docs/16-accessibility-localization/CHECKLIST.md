@@ -1,6 +1,10 @@
 ## 16 · Accessibility and Localization — Checklist
 Author: @darianrosebrook
 
+### For Agents
+
+- See `docs/agents.md`. Add VoiceOver labels and keyboard navigation from day one; test pseudolocalization.
+
 ### Scope
 
 Ensure full accessibility support and prepare for localization.

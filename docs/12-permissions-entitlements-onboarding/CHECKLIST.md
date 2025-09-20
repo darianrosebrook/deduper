@@ -1,6 +1,10 @@
 ## 12 · Permissions, Entitlements, and Onboarding — Checklist
 Author: @darianrosebrook
 
+### For Agents
+
+- See `docs/agents.md`. Use least privilege; resolve/start/stop access correctly; present pre-permission explainer.
+
 ### Scope
 
 Entitlements, bookmarks, TCC prompts, and onboarding UX.

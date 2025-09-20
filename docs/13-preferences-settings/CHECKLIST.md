@@ -1,6 +1,11 @@
 ## 13 · Preferences & Settings — Checklist
 Author: @darianrosebrook
 
+### For Agents
+
+- Read `docs/agents.md`. Settings must be persisted and reflected live in engine behavior.
+- Provide reset-to-defaults and diagnostics toggles.
+
 ### Scope
 
 Detection thresholds, automation, performance, safety, privacy, and advanced controls.

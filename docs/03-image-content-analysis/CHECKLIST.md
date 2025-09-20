@@ -20,6 +20,7 @@ Compute perceptual hashes (aHash/dHash/pHash) for images; support Hamming distan
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#03--image-content-analysis`).
 - [ ] Normalization pipeline (resize, grayscale) with Accelerate.
 - [ ] dHash (primary) and optional pHash implementation.
 - [ ] Hamming distance and threshold config.
@@ -47,6 +48,10 @@ Integration
 
 ### Done Criteria
 
+### Test IDs (to fill as implemented)
+
+- [ ] <add unit test ids>
+- [ ] <add integration test ids>
 - Hashes computed, persisted, and queryable; tests green; perf target met.
 
 

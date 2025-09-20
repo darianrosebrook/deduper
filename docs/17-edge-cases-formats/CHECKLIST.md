@@ -1,6 +1,10 @@
 ## 17 · Edge Cases & File Format Support — Checklist
 Author: @darianrosebrook
 
+### For Agents
+
+- Read `docs/agents.md`. Handle iCloud placeholders, Live Photos, and RAW/XMP correctly; never double-count hardlinks.
+
 ### Scope
 
 Robust handling across formats, Live Photos, cloud placeholders, links, bundles, and corruption.

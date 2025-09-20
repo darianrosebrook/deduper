@@ -1,6 +1,10 @@
 ## 14 · Logging, Error Handling, and Observability — Checklist
 Author: @darianrosebrook
 
+### For Agents
+
+- See `docs/agents.md`. Use OSLog with categories; add signposts; export diagnostics bundle.
+
 ### Scope
 
 Structured logging, error taxonomy, diagnostics export, and performance signposts.

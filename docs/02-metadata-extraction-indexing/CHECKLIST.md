@@ -22,6 +22,7 @@ Extract filesystem and media metadata; persist in the index; build secondary ind
 
 ### Implementation Tasks
 
+- [ ] Resolve ambiguities (see `../ambiguities.md#02--metadata-extraction--indexing`).
 - [ ] FS attributes via `FileManager` resource keys.
 - [ ] Image metadata via ImageIO (`CGImageSourceCopyProperties`).
 - [ ] Video metadata via AVFoundation (`AVAsset`).
@@ -57,6 +58,10 @@ Integration (Fixtures)
 
 ### Done Criteria
 
+### Test IDs (to fill as implemented)
+
+- [ ] <add unit test ids>
+- [ ] <add integration test ids>
 - Index populated accurately; queries performant; tests green.
 
 

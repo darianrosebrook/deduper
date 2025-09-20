@@ -1,6 +1,10 @@
 ## 18 · Benchmarking Plan and Performance Targets — Checklist
 Author: @darianrosebrook
 
+### For Agents
+
+- See `docs/agents.md`. Run harness in CI; store JSON artifacts; track regressions.
+
 ### Scope
 
 Datasets, metrics, targets, and methodology for repeatable performance measurement.

@@ -1,6 +1,11 @@
 ## 10 · Performance Optimizations — Checklist
 Author: @darianrosebrook
 
+### For Agents
+
+- See `docs/agents.md`. Cap concurrency; stream early results; add signposts.
+- Use BK-tree/neighbor search when comparisons explode.
+
 ### Scope
 
 Concurrency limits, incremental processing, memory usage, and efficient comparisons.

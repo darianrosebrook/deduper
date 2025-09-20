@@ -1,6 +1,11 @@
 ## 08 · Thumbnails & Caching — Checklist
 Author: @darianrosebrook
 
+### For Agents
+
+- See `docs/agents.md`. Downsample aggressively; invalidate on mtime/size change.
+- Measure hit rate; avoid full decodes in UI.
+
 ### Scope
 
 Efficient thumbnail generation and caching for images and video posters with reliable invalidation.

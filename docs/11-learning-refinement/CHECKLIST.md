@@ -1,6 +1,11 @@
 ## 11 · Learning & Refinement — Checklist
 Author: @darianrosebrook
 
+### For Agents
+
+- Read `docs/agents.md`. Persist ignore pairs; keep learning opt-in and reversible.
+- Never auto-delete based on learned rules.
+
 ### Scope
 
 Feedback loop: adjust thresholds, store ignore pairs/groups, and optional user preferences.
