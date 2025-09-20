@@ -16,6 +16,7 @@ Datasets, metrics, targets, and methodology for repeatable performance measureme
 - [ ] Baseline targets documented and measured.
 - [ ] Metrics include: time to first result, total scan time, hashes/sec (image/video), peak memory, CPU median/p95, group formation latency, UI list render latency.
 - [ ] Methodology documented: fixed concurrency, cache warm/cold runs, 3 trials, median + p95.
+ - [ ] Datasets organized per `docs/FIXTURES_POLICY.md`; sources and licenses documented.
 
 ### Verification
 

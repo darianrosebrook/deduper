@@ -17,6 +17,7 @@ Entitlements, bookmarks, TCC prompts, and onboarding UX.
 - [ ] Info.plist usage descriptions present and user-facing text reviewed.
 - [ ] Onboarding explains managed library risks and proposes safe workflows.
  - [ ] Aligns with `docs/SECURITY_PRIVACY_MODEL.md` mitigations and validation.
+ - [ ] Adheres to `docs/ONBOARDING_SPEC.md` (flow and copy).
 
 ### Verification (Automated)
 

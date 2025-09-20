@@ -725,6 +725,30 @@ See `docs/TELEMETRY_SCHEMA.md` for event names, fields, redaction rules, and sam
 
 See `docs/SECURITY_PRIVACY_MODEL.md` for data flows, STRIDE threats, mitigations, validation, and incident response.
 
+## Feature Flags
+
+See `docs/FEATURE_FLAGS.md` for risky/experimental toggles, defaults, and evaluation process.
+
+## CI/CD and Release
+
+See `docs/CI_CD_PLAN.md` for the pipeline and gates, and `docs/RELEASE_CHECKLIST.md` for release steps.
+
+## Runbooks & Fixtures
+
+See `docs/RUNBOOKS.md` for common incident playbooks and `docs/FIXTURES_POLICY.md` for fixture structure, licensing, and golden files.
+
+## UX Copy & PR Template
+
+See `docs/UX_COPY_STYLE.md` for UX writing guidance and `.github/pull_request_template.md` for PR requirements.
+
+## UI & Merge Specs
+
+See `docs/EVIDENCE_PANEL_SPEC.md`, `docs/MERGE_POLICY_MATRIX.md`, `docs/DRY_RUN_MODE.md`, and `docs/SHORTCUTS_AND_BATCH_UX.md`.
+
+## Additional Ops & Testing Aids
+
+See `docs/UX_PERF_BUDGETS.md`, `docs/DISK_SPACE_AND_INTEGRITY.md`, `docs/EXTERNAL_MEDIA_HANDLING.md`, and `docs/TEST_ID_NAMING.md`.
+
 ## Troubleshooting
 
 - "No files found": Verify security-scoped bookmark access; re-prompt user to re-authorize folder

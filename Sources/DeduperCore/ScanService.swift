@@ -16,6 +16,8 @@ public final class ScanService: @unchecked Sendable {
     private let logger = Logger(subsystem: "app.deduper", category: "scan")
     private let fileManager = FileManager.default
     private let persistenceController: PersistenceController
+    private let monitoringService: MonitoringService
+    private let performanceMetrics: PerformanceMetrics
     
     /// Active scan tasks for cancellation support
     private var activeTasks: [UUID: Task<Void, Never>] = [:]
@@ -44,8 +46,10 @@ public final class ScanService: @unchecked Sendable {
     
     // MARK: - Initialization
     
-    public init(persistenceController: PersistenceController) {
+    public init(persistenceController: PersistenceController, monitoringService: MonitoringService = MonitoringService(), performanceMetrics: PerformanceMetrics = PerformanceMetrics()) {
         self.persistenceController = persistenceController
+        self.monitoringService = monitoringService
+        self.performanceMetrics = performanceMetrics
         
         // Build set of all supported extensions from MediaType cases
         var extensions: Set<String> = []
@@ -77,6 +81,7 @@ public final class ScanService: @unchecked Sendable {
                 }
                 
                 let startTime = Date()
+                let timer = performanceMetrics.startTiming("directory_scan")
                 var totalFiles = 0
                 var mediaFiles = 0
                 var skippedFiles = 0
@@ -121,6 +126,9 @@ public final class ScanService: @unchecked Sendable {
                     errorCount: errorCount,
                     duration: duration
                 )
+                
+                // Record performance metrics
+                timer.stop(itemsProcessed: totalFiles)
                 
                 continuation.yield(.finished(finalMetrics))
                 continuation.finish()
@@ -179,6 +187,46 @@ public final class ScanService: @unchecked Sendable {
                 self.logger.debug("Cancelled scan task: \(taskId)")
             }
         }
+    }
+    
+    /**
+     * Start monitoring specified URLs for file system changes
+     *
+     * - Parameter urls: URLs to monitor
+     * - Returns: AsyncStream of file system events
+     */
+    public func startMonitoring(_ urls: [URL]) -> AsyncStream<MonitoringService.FileSystemEvent> {
+        logger.info("Starting file system monitoring for \(urls.count) URLs")
+        return monitoringService.watch(urls: urls)
+    }
+    
+    /**
+     * Stop all file system monitoring
+     */
+    public func stopMonitoring() {
+        logger.info("Stopping file system monitoring")
+        monitoringService.stopAllMonitoring()
+    }
+    
+    /**
+     * Trigger incremental scan for specific URLs (used by monitoring)
+     *
+     * - Parameter urls: URLs to scan incrementally
+     * - Returns: AsyncStream of scan events
+     */
+    public func incrementalScan(_ urls: [URL]) async -> AsyncStream<ScanEvent> {
+        logger.info("Triggering incremental scan for \(urls.count) URLs")
+        let options = ScanOptions(incremental: true)
+        return await enumerate(urls: urls, options: options)
+    }
+    
+    /**
+     * Get performance metrics for this scan service
+     *
+     * - Returns: Performance metrics instance
+     */
+    public func getPerformanceMetrics() -> PerformanceMetrics {
+        return performanceMetrics
     }
     
     // MARK: - Private Methods
@@ -276,9 +324,13 @@ public final class ScanService: @unchecked Sendable {
                 
                 // Incremental scanning check
                 if options.incremental {
-                    // For now, skip incremental scanning to avoid actor isolation issues
-                    // TODO: Implement proper incremental scanning
-                    logger.debug("Incremental scanning requested but not yet implemented")
+                    let lastScanDate = Date().addingTimeInterval(-24 * 60 * 60) // 24 hours ago
+                    let shouldSkip = await persistenceController.shouldSkipFileThreadSafe(url: fileURL, lastScan: lastScanDate)
+                    if shouldSkip {
+                        logger.debug("Skipping unchanged file: \(fileURL.path, privacy: .public)")
+                        skippedFiles += 1
+                        continue
+                    }
                 }
                 
                 // Create ScannedFile and persist to Core Data

@@ -17,6 +17,7 @@ Concurrency limits, incremental processing, memory usage, and efficient comparis
 - [ ] BK-tree or neighbor-optimized comparisons for large sets.
 - [ ] Two-phase pipeline: coarse candidate pass then lazy perceptual hashing.
 - [ ] Time-to-first-result and hashing throughput meet benchmark targets.
+ - [ ] UI performance adheres to `docs/UX_PERF_BUDGETS.md`.
 
 ### Verification (Automated)
 

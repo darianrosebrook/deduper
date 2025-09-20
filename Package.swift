@@ -14,6 +14,10 @@ let package = Package(
             name: "DeduperCore",
             targets: ["DeduperCore"]
         ),
+        .library(
+            name: "DeduperUI",
+            targets: ["DeduperUI"]
+        ),
     ],
     dependencies: [
         // No external dependencies - using only Apple frameworks
@@ -26,6 +30,11 @@ let package = Package(
             resources: [
                 .process("../../Resources")
             ]
+        ),
+        .target(
+            name: "DeduperUI",
+            dependencies: ["DeduperCore"],
+            path: "Sources/DeduperUI"
         ),
         .testTarget(
             name: "DeduperCoreTests",

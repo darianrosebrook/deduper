@@ -18,10 +18,12 @@ Establish coverage for core logic, integration on fixtures, and UI flows.
 - [ ] Coverage ≥ 80% for core library.
 - [ ] Fixture generators for edge cases (RAW+JPEG, Live Photos, XMP, iCloud placeholder stubs).
 - [ ] CLI/test harness to run scans on fixtures for perf checks outputs JSON.
+ - [ ] Adheres to `docs/FIXTURES_POLICY.md` structure and licensing.
 
 ### Verification
 
 - [ ] CI `xcodebuild test` scheme configured; green on main branch.
+ - [ ] Test names follow `docs/TEST_ID_NAMING.md`.
 
 ### Implementation Tasks
 
@@ -30,6 +32,7 @@ Establish coverage for core logic, integration on fixtures, and UI flows.
 - [ ] Integration tests for: scanning, video signatures, merge, caching.
 - [ ] XCUITests for: select folder, review group, merge, undo.
 - [ ] Fixture generators for edge cases; CLI perf harness in SPM tool.
+ - [ ] Organize fixtures per `docs/FIXTURES_POLICY.md`; include golden files.
 
 ### Done Criteria
 

@@ -15,6 +15,7 @@ Robust handling across formats, Live Photos, cloud placeholders, links, bundles,
 - [ ] Live Photos treated as linked photo+video pair.
 - [ ] iCloud placeholders detected; skipped or prompted.
 - [ ] Symlinks/hardlinks handled; bundles excluded by default.
+ - [ ] External media (disconnected/ejected) flows adhere to `docs/EXTERNAL_MEDIA_HANDLING.md`.
 - [ ] RAW+JPEG pairs treated per policy (default RAW master; JPEG used for metadata fill).
 - [ ] Sidecars (.xmp/.XMP) linked and considered metadata extensions.
 

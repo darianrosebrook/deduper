@@ -53,11 +53,23 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/FolderSelectionService.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/MonitoringService.swift"
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PerformanceMetrics.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PersistenceController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/ScanOrchestrator.swift"
         },
         {
           "kind" : "file",
@@ -87,8 +99,11 @@
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/BookmarkManager.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/CoreTypes.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/DeduperCore.swift.o",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/FolderSelectionService.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/MonitoringService.swift.o",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PerformanceMetrics.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PersistenceController.swift.o",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/ScanOrchestrator.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/ScanService.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/resource_bundle_accessor.swift.o"
       ],
@@ -163,11 +178,23 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/FolderSelectionService.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/MonitoringService.swift.o"
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PerformanceMetrics.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PersistenceController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/ScanOrchestrator.swift.o"
         },
         {
           "kind" : "file",
@@ -187,8 +214,11 @@
         "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/BookmarkManager.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/CoreTypes.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/DeduperCore.swift",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/FolderSelectionService.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/MonitoringService.swift",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PerformanceMetrics.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PersistenceController.swift",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/ScanOrchestrator.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/ScanService.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/DerivedSources/resource_bundle_accessor.swift"
       ],
@@ -315,6 +345,18 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/Fixtures/ScanningFixtures.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/IntegrationTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/ScanOrchestratorTests.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/ScanServiceTests.swift"
         },
         {
@@ -337,6 +379,9 @@
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/BookmarkManagerTests.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/CoreTypesTests.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/DeduperCoreTests.swift.o",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanningFixtures.swift.o",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/IntegrationTests.swift.o",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanOrchestratorTests.swift.o",
         "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanServiceTests.swift.o"
       ],
       "otherArguments" : [
@@ -409,6 +454,18 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanningFixtures.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/IntegrationTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanOrchestratorTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanServiceTests.swift.o"
         },
         {
@@ -421,9 +478,153 @@
         "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/BookmarkManagerTests.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/CoreTypesTests.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/DeduperCoreTests.swift",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/Fixtures/ScanningFixtures.swift",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/IntegrationTests.swift",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/ScanOrchestratorTests.swift",
         "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/ScanServiceTests.swift"
       ],
       "tempsPath" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.DeduperUI-arm64-apple-macosx15.0-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/sources",
+      "importPath" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/ConfidenceMeter.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/EvidencePanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/MergePlanSheet.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/MetadataDiff.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/SignalBadge.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/Modules/DeduperCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "DeduperUI",
+      "moduleOutputPath" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/Modules/DeduperUI.swiftmodule",
+      "objects" : [
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/ConfidenceMeter.swift.o",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/EvidencePanel.swift.o",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MergePlanSheet.swift.o",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MetadataDiff.swift.o",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/SignalBadge.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx13.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j10",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/include/DeduperUI-Swift.h",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "deduper"
+      ],
+      "outputFileMapPath" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/ConfidenceMeter.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/EvidencePanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MergePlanSheet.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MetadataDiff.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/SignalBadge.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/Modules/DeduperUI.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/ConfidenceMeter.swift",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/EvidencePanel.swift",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/MergePlanSheet.swift",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/MetadataDiff.swift",
+        "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/SignalBadge.swift"
+      ],
+      "tempsPath" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build",
       "wholeModuleOptimization" : false
     }
   },
@@ -441,8 +642,11 @@
       "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/BookmarkManager.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/CoreTypes.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/DeduperCore.swift",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/FolderSelectionService.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/MonitoringService.swift",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PerformanceMetrics.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PersistenceController.swift",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/ScanOrchestrator.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/ScanService.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/DerivedSources/resource_bundle_accessor.swift",
       "-I",
@@ -579,6 +783,9 @@
       "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/BookmarkManagerTests.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/CoreTypesTests.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/DeduperCoreTests.swift",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/Fixtures/ScanningFixtures.swift",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/IntegrationTests.swift",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/ScanOrchestratorTests.swift",
       "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/ScanServiceTests.swift",
       "-I",
       "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/Modules",
@@ -636,6 +843,76 @@
       "deduper",
       "-driver-use-frontend-path",
       "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "DeduperUI" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "DeduperUI",
+      "-package-name",
+      "deduper",
+      "-c",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/ConfidenceMeter.swift",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/EvidencePanel.swift",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/MergePlanSheet.swift",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/MetadataDiff.swift",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/SignalBadge.swift",
+      "-I",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx13.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j10",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/include/DeduperUI-Swift.h",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "deduper",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
     ]
   },
   "targetDependencyMap" : {
@@ -647,6 +924,9 @@
       "DeduperCore"
     ],
     "DeduperCoreTests" : [
+      "DeduperCore"
+    ],
+    "DeduperUI" : [
       "DeduperCore"
     ]
   },
@@ -693,11 +973,23 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/FolderSelectionService.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/MonitoringService.swift"
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PerformanceMetrics.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/PersistenceController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperCore/ScanOrchestrator.swift"
         },
         {
           "kind" : "file",
@@ -745,11 +1037,23 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/FolderSelectionService.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/MonitoringService.swift.o"
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PerformanceMetrics.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/PersistenceController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCore.build/ScanOrchestrator.swift.o"
         },
         {
           "kind" : "file",
@@ -777,7 +1081,19 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/IntegrationTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanOrchestratorTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanServiceTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanningFixtures.swift.o"
         }
       ],
       "outputFilePath" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCorePackageTests.product/Objects.LinkFileList"
@@ -803,10 +1119,52 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/Fixtures/ScanningFixtures.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/IntegrationTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/ScanOrchestratorTests.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/ScanServiceTests.swift"
         }
       ],
       "outputFilePath" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/sources"
+    },
+    "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/ConfidenceMeter.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/EvidencePanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/MergePlanSheet.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/MetadataDiff.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/SignalBadge.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/sources"
     },
     "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt" : {
       "alwaysOutOfDate" : true,

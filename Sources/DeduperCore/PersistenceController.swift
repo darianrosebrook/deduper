@@ -104,9 +104,55 @@ public final class PersistenceController: ObservableObject {
      * Check if a file should be skipped during incremental scanning
      */
     public func shouldSkipFile(url: URL, lastScan: Date) -> Bool {
-        // For now, always return false (don't skip any files)
-        // TODO: Implement actual incremental scanning logic
+        // For now, always return false (don't skip any files) until Core Data model is properly set up
+        // TODO: Implement actual incremental scanning logic with proper Core Data integration
         return false
+    }
+    
+    /**
+     * Check if a file should be skipped during incremental scanning (thread-safe version)
+     */
+    public func shouldSkipFileThreadSafe(url: URL, lastScan: Date) async -> Bool {
+        return await withCheckedContinuation { continuation in
+            Task {
+                do {
+                    let result = try await self.performBackgroundTask { context in
+                        // Check if file exists in database and hasn't changed
+                        let request: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: "FileRecord")
+                        request.predicate = NSPredicate(format: "url == %@", url as NSURL)
+                        request.fetchLimit = 1
+                        
+                        do {
+                            let results = try context.fetch(request)
+                            guard let record = results.first as? NSManagedObject else {
+                                return false // File not in database, should scan
+                            }
+                            
+                            // Check modification time
+                            if let recordModifiedAt = record.value(forKey: "modifiedAt") as? Date,
+                               let recordLastScanned = record.value(forKey: "lastScannedAt") as? Date {
+                                // Get current file modification time
+                                let currentFileModified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+                                
+                                if let currentModified = currentFileModified {
+                                    // Skip if file hasn't changed and was scanned after lastScan date
+                                    return currentModified <= recordModifiedAt && recordLastScanned >= lastScan
+                                }
+                            }
+                            
+                            return false // Default to scanning if we can't determine
+                        } catch {
+                            self.logger.error("Failed to check file skip status: \(error.localizedDescription)")
+                            return false
+                        }
+                    }
+                    continuation.resume(returning: result)
+                } catch {
+                    self.logger.error("Failed to perform background task for incremental scanning: \(error.localizedDescription)")
+                    continuation.resume(returning: false)
+                }
+            }
+        }
     }
     
     /**

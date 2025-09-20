@@ -23,6 +23,27 @@
     "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/DeduperCoreTests.swiftdeps",
     "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/DeduperCoreTests.dia"
   },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/Fixtures/ScanningFixtures.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanningFixtures.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanningFixtures.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanningFixtures~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanningFixtures.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanningFixtures.dia"
+  },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/IntegrationTests.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/IntegrationTests.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/IntegrationTests.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/IntegrationTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/IntegrationTests.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/IntegrationTests.dia"
+  },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/ScanOrchestratorTests.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanOrchestratorTests.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanOrchestratorTests.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanOrchestratorTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanOrchestratorTests.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanOrchestratorTests.dia"
+  },
   "/Users/darianrosebrook/Desktop/Projects/deduper/Tests/DeduperCoreTests/ScanServiceTests.swift": {
     "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanServiceTests.d",
     "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperCoreTests.build/ScanServiceTests.swift.o",

@@ -1,0 +1,40 @@
+{
+  "": {
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/master.swiftdeps"
+  },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/ConfidenceMeter.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/ConfidenceMeter.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/ConfidenceMeter.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/ConfidenceMeter~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/ConfidenceMeter.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/ConfidenceMeter.dia"
+  },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/EvidencePanel.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/EvidencePanel.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/EvidencePanel.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/EvidencePanel~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/EvidencePanel.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/EvidencePanel.dia"
+  },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/MergePlanSheet.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MergePlanSheet.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MergePlanSheet.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MergePlanSheet~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MergePlanSheet.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MergePlanSheet.dia"
+  },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/MetadataDiff.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MetadataDiff.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MetadataDiff.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MetadataDiff~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MetadataDiff.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/MetadataDiff.dia"
+  },
+  "/Users/darianrosebrook/Desktop/Projects/deduper/Sources/DeduperUI/SignalBadge.swift": {
+    "dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/SignalBadge.d",
+    "object": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/SignalBadge.swift.o",
+    "swiftmodule": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/SignalBadge~partial.swiftmodule",
+    "swift-dependencies": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/SignalBadge.swiftdeps",
+    "diagnostics": "/Users/darianrosebrook/Desktop/Projects/deduper/.build/arm64-apple-macosx/debug/DeduperUI.build/SignalBadge.dia"
+  }
+}

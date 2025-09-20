@@ -16,7 +16,9 @@ Select keeper, merge metadata from duplicates, and move redundant files to Trash
 - [ ] Metadata merge copies missing EXIF fields without overwriting desired data.
 - [ ] Files moved to Trash; transaction log enables undo.
 - [ ] Deterministic policy documented (resolution/size/format preference; earliest capture date; union of keywords; GPS from most complete).
+ - [ ] Aligns with `docs/MERGE_POLICY_MATRIX.md` and ADR-0003 undo policy.
 - [ ] Merge Planner preview lists field-by-field changes; user can override before commit.
+ - [ ] Dry Run mode available per group and batch; aligns with `docs/DRY_RUN_MODE.md`.
 
 ### Implementation Tasks
 

@@ -43,6 +43,9 @@ public struct DeduperCore {
 // - ScanService.swift  
 // - MonitoringService.swift
 // - PersistenceController.swift
+// - FolderSelectionService.swift
+// - PerformanceMetrics.swift
+// - ScanOrchestrator.swift
 
 // MARK: - Library Information
 
