@@ -60,20 +60,27 @@ Integration (Fixtures)
 
 ### Test IDs (to fill as implemented)
 
-- [x] **Unit Tests**: 7 tests implemented and passing
+- [x] **Unit Tests**: 11 tests implemented and passing
   - `MetadataExtractionServiceTests.testReadBasicMetadata`
   - `MetadataExtractionServiceTests.testNormalizeCaptureDateFallback`
   - `MetadataExtractionServiceTests.testPerformanceBenchmarking`
   - `MetadataExtractionServiceTests.testUTTypeInferenceFromExtension`
   - `MetadataExtractionServiceTests.testUTTypeInferenceFromContent`
   - `MetadataExtractionServiceTests.testUTTypeInferenceFallback`
+  - `MetadataExtractionServiceTests.testImageEXIFExtraction`
+  - `MetadataExtractionServiceTests.testVideoMetadataExtraction`
   - `IndexQueryServiceTests.testFetchByFileSize`
   - `IndexQueryServiceTests.testFetchByDimensionsEmpty`
+  - `IndexQueryServiceTests.testFetchVideosByDuration`
   - `ScanServiceTests.testUTTypeBasedMediaDetection`
   - `ScanServiceTests.testContentBasedMediaDetection`
   - `ScanServiceTests.testFrameworkBasedMediaDetection`
-- [ ] **Integration Tests**: TBD
-- [ ] **Performance Tests**: TBD
+- [x] **Integration Tests**: Implemented
+  - `IntegrationTests.testBasicScanning` (covers metadata population)
+  - `PersistenceControllerTests.testUpsertFileUpdatesMetadataFlags`
+  - `PersistenceControllerTests.testSaveImageAndVideoSignatures`
+- [x] **Performance Tests**: Implemented
+  - `MetadataExtractionServiceTests.testPerformanceBenchmarking` (measures throughput)
 
 Index populated accurately; queries performant; tests green.
 
@@ -83,11 +90,14 @@ Index populated accurately; queries performant; tests green.
   - `Sources/DeduperCore/MetadataExtractionService.swift` → `docs/02-metadata-extraction-indexing/IMPLEMENTATION.md#public-api`
   - `Sources/DeduperCore/IndexQueryService.swift` → `docs/02-metadata-extraction-indexing/IMPLEMENTATION.md#secondary-indexes`
   - `Sources/DeduperCore/CoreTypes.swift` → `docs/02-metadata-extraction-indexing/IMPLEMENTATION.md#media-metadata`
+  - `Sources/DeduperCore/PersistenceController.swift` → `docs/02-metadata-extraction-indexing/IMPLEMENTATION.md#persistence-layer`
   - `Tests/DeduperCoreTests/MetadataExtractionServiceTests.swift` → `docs/02-metadata-extraction-indexing/CHECKLIST.md#verification`
   - `Tests/DeduperCoreTests/IndexQueryServiceTests.swift` → `docs/02-metadata-extraction-indexing/CHECKLIST.md#verification`
+  - `Tests/DeduperCoreTests/PersistenceControllerTests.swift` → `docs/02-metadata-extraction-indexing/CHECKLIST.md#verification`
 
 - Docs → Code
   - `IMPLEMENTATION.md` sections reference the files above for concrete implementations
   - Checklist items map to tests in `Tests/DeduperCoreTests/*`
+  - All metadata extraction, persistence, and querying fully implemented with comprehensive test coverage
 
 
