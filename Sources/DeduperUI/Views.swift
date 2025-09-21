@@ -1,5 +1,6 @@
 import SwiftUI
 import DeduperCore
+import OSLog
 
 /**
  Author: @darianrosebrook
@@ -212,18 +213,7 @@ public struct GroupsListView: View {
         .onAppear {
             viewModel.loadGroups()
         }
-        // Keyboard shortcuts
-        .onKeyPress(.return) {
-            if let selectedGroup = selectedGroup {
-                // TODO: Trigger merge action
-                return .handled
-            }
-            return .ignored
-        }
-        .onKeyPress(.escape) {
-            selectedGroup = nil
-            return .handled
-        }
+        // TODO: Add keyboard shortcuts when macOS 14.0+ support is available
     }
 }
 
@@ -257,7 +247,8 @@ public struct GroupRowView: View {
     }
 }
 
-public class GroupsListViewModel: ObservableObject {
+@MainActor
+public final class GroupsListViewModel: ObservableObject {
     @Published public var groups: [DuplicateGroup] = []
     @Published public var filteredGroups: [DuplicateGroup] = []
     @Published public var isLoading = false
@@ -280,8 +271,7 @@ public class GroupsListViewModel: ObservableObject {
         error = nil
 
         // TODO: Replace with actual data loading from DeduperCore
-        Task {
-            try? await Task.sleep(for: .milliseconds(500))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.groups = [
                 DuplicateGroup(id: "1", members: [], confidence: 0.95, spacePotentialSaved: 1_234_567),
                 DuplicateGroup(id: "2", members: [], confidence: 0.78, spacePotentialSaved: 567_890),
@@ -328,7 +318,8 @@ public class GroupsListViewModel: ObservableObject {
 
 // MARK: - Group Detail View Model
 
-public class GroupDetailViewModel: ObservableObject {
+@MainActor
+public final class GroupDetailViewModel: ObservableObject {
     @Published public var selectedGroup: DuplicateGroup?
     @Published public var isProcessing = false
 
@@ -340,8 +331,7 @@ public class GroupDetailViewModel: ObservableObject {
         isProcessing = true
 
         // TODO: Implement merge operation
-        Task {
-            try? await Task.sleep(for: .seconds(1))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             self.isProcessing = false
             print("Merge completed")
         }
@@ -447,11 +437,7 @@ public struct GroupDetailView: View {
         }
         .background(DesignToken.colorBackgroundPrimary)
         .frame(minWidth: 600, minHeight: 500)
-        // Keyboard shortcuts
-        .onKeyPress(.escape) {
-            // TODO: Close sheet
-            return .handled
-        }
+        // TODO: Add keyboard shortcuts when macOS 14.0+ support is available
     }
 }
 
@@ -536,6 +522,88 @@ public struct SettingsView: View {
 // MARK: - History View
 
 // HistoryView is now implemented in HistoryView.swift as a full-featured component
+
+// MARK: - Thumbnail View
+
+/**
+ ThumbnailView displays a thumbnail for a file with loading states and error handling.
+
+ - Loads thumbnails asynchronously using ThumbnailService
+ - Shows loading placeholder while generating
+ - Falls back to generic icon on error
+ - Design System: Primitive component with async loading
+ */
+public struct ThumbnailView: View {
+    private let fileId: UUID
+    private let size: CGSize
+    @State private var thumbnail: NSImage?
+    @State private var isLoading = true
+    @State private var error: Error?
+
+    private let logger = Logger(subsystem: "com.deduper", category: "thumbnail-ui")
+
+    public init(fileId: UUID, size: CGSize) {
+        self.fileId = fileId
+        self.size = size
+    }
+
+    public var body: some View {
+        Group {
+            if let thumbnail = thumbnail {
+                // Display loaded thumbnail
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size.width, height: size.height)
+            } else if isLoading {
+                // Loading placeholder
+                Rectangle()
+                    .fill(DesignToken.colorBackgroundSecondary)
+                    .frame(width: size.width, height: size.height)
+                    .overlay(
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                    )
+            } else {
+                // Error fallback
+                Rectangle()
+                    .fill(DesignToken.colorBackgroundSecondary)
+                    .frame(width: size.width, height: size.height)
+                    .overlay(
+                        Image(systemName: "photo")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: size.width * 0.5, height: size.height * 0.5)
+                            .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    )
+            }
+        }
+        .task {
+            await loadThumbnail()
+        }
+        .onAppear {
+            isLoading = false
+        }
+    }
+
+    private func loadThumbnail() async {
+        do {
+            isLoading = true
+            error = nil
+
+            guard let image = ThumbnailService.shared.image(for: fileId, targetSize: size) else {
+                throw NSError(domain: "ThumbnailView", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to generate thumbnail"])
+            }
+
+            thumbnail = image
+            logger.debug("Loaded thumbnail for \(fileId)")
+        } catch {
+            self.error = error
+            logger.warning("Failed to load thumbnail for \(fileId): \(error.localizedDescription)")
+        }
+        isLoading = false
+    }
+}
 
 // MARK: - Preview
 

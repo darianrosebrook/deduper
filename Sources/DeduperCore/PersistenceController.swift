@@ -465,6 +465,15 @@ public final class PersistenceController: ObservableObject {
             if sizeChanged || modifiedChanged {
                 self.setValue(true, key: "needsMetadataRefresh", on: fileObject)
                 self.setValue(true, key: "needsSignatureRefresh", on: fileObject)
+
+                // Notify ThumbnailService of file changes
+                if let fileId = fileObject.value(forKey: "id") as? UUID {
+                    NotificationCenter.default.post(
+                        name: .fileChanged,
+                        object: nil,
+                        userInfo: ["fileId": fileId]
+                    )
+                }
             } else if !wasInserted {
                 self.setValue(false, key: "needsMetadataRefresh", on: fileObject)
                 self.setValue(false, key: "needsSignatureRefresh", on: fileObject)
@@ -874,7 +883,7 @@ public final class PersistenceController: ObservableObject {
         return try context.fetch(request).first
     }
 
-    nonisolated private func fetchGroup(id: UUID, in context: NSManagedObjectContext) throws -> NSManagedObject? {
+    nonisolated internal func fetchGroup(id: UUID, in context: NSManagedObjectContext) throws -> NSManagedObject? {
         let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "DuplicateGroup")
         request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
         request.fetchLimit = 1

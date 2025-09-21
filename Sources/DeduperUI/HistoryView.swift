@@ -194,7 +194,7 @@ public struct HistoryItem: Identifiable, Equatable {
 // MARK: - View Model
 
 @MainActor
-public class HistoryViewModel: ObservableObject {
+public final class HistoryViewModel: ObservableObject {
     @Published public var historyItems: [HistoryItem] = []
     @Published public var totalSpaceFreed: Int64 = 0
     @Published public var isLoading = false

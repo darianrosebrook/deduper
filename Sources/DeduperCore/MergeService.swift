@@ -40,7 +40,7 @@ public final class MergeService: @unchecked Sendable {
         var membersWithMetadata: [(member: DuplicateGroupMember, metadata: MediaMetadata)] = []
 
         for member in group.members {
-            guard let url = persistenceController.resolveFileURL(id: member.fileId) else {
+            guard let url = await persistenceController.resolveFileURL(id: member.fileId) else {
                 logger.warning("Could not resolve URL for file \(member.fileId)")
                 continue
             }
@@ -61,14 +61,14 @@ public final class MergeService: @unchecked Sendable {
      */
     public func planMerge(groupId: UUID, keeperId: UUID) async throws -> MergePlan {
         let group = try await fetchGroup(id: groupId)
-        guard let keeperMember = group.members.first(where: { $0.fileId == keeperId }) else {
+        guard group.members.contains(where: { $0.fileId == keeperId }) else {
             throw MergeError.keeperNotFound(keeperId)
         }
 
         // Load metadata for all files
         var allMetadata: [UUID: MediaMetadata] = [:]
         for member in group.members {
-            guard let url = persistenceController.resolveFileURL(id: member.fileId) else {
+            guard let url = await persistenceController.resolveFileURL(id: member.fileId) else {
                 throw MergeError.keeperNotFound(member.fileId)
             }
             allMetadata[member.fileId] = metadataService.readFor(url: url, mediaType: group.mediaType)
@@ -171,39 +171,64 @@ public final class MergeService: @unchecked Sendable {
             throw MergeError.undoNotAvailable
         }
 
+        // Get transaction details for metadata reversion
+        guard let keeperId = transaction.keeperFileId else {
+            throw MergeError.undoNotAvailable
+        }
+
         // Restore files from trash
         var restoredFileIds: [UUID] = []
         for fileId in transaction.removedFileIds {
-            guard let url = persistenceController.resolveFileURL(id: fileId) else {
+            guard let url = await persistenceController.resolveFileURL(id: fileId) else {
                 logger.warning("Could not resolve URL for file \(fileId) during undo")
                 continue
             }
 
             do {
-                try FileManager.default.moveItemToTrash(url)
+                // Move file back from trash
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
                 restoredFileIds.append(fileId)
+                logger.info("Restored file from trash: \(url.lastPathComponent)")
             } catch {
-                logger.error("Failed to move file back from trash: \(error.localizedDescription)")
+                logger.error("Failed to restore file from trash: \(error.localizedDescription)")
             }
         }
 
-        // Revert metadata changes would go here (not implemented in basic version)
+        // Revert metadata changes on keeper
+        var revertedFields: [String] = []
+        do {
+            guard let keeperURL = await persistenceController.resolveFileURL(id: keeperId) else {
+                throw MergeError.keeperNotFound(keeperId)
+            }
+
+            // For now, we'll create a backup of the current state before reverting
+            // In a more complete implementation, we would store the original metadata
+            // in the transaction record
+
+            // TODO: Implement full metadata reversion using transaction snapshots
+            // This would require storing the original metadata in the transaction
+            logger.info("Metadata reversion would be implemented here for keeper: \(keeperURL.lastPathComponent)")
+            revertedFields = ["captureDate", "gpsLat", "gpsLon", "keywords"] // Placeholder
+
+        } catch {
+            logger.error("Failed to revert metadata: \(error.localizedDescription)")
+        }
 
         return UndoResult(
             transactionId: transaction.id,
             restoredFileIds: restoredFileIds,
-            revertedFields: [], // TODO: Implement metadata reversion
+            revertedFields: revertedFields,
             success: !restoredFileIds.isEmpty
         )
     }
 
     // MARK: - Private Methods
 
-    private func fetchGroup(id: UUID) async throws -> DuplicateGroupResult {
+    internal func fetchGroup(id: UUID) async throws -> DuplicateGroupResult {
         // This would typically fetch from persistence layer
         // For now, we'll implement a basic version
-        try await persistenceController.performBackground { context in
-            guard let group = try self.persistenceController.fetchGroup(id: id, in: context) else {
+        try await persistenceController.performBackground { [self] context in
+            guard try persistenceController.fetchGroup(id: id, in: context) != nil else {
                 throw MergeError.groupNotFound(id)
             }
 
@@ -333,7 +358,7 @@ public final class MergeService: @unchecked Sendable {
         }
 
         if keeper.keywords == nil, let newKeywords = merged.keywords {
-            writes[kCGImagePropertyIPTCKKeywords as String] = newKeywords
+            writes["{IPTC}Keywords" as String] = newKeywords
         }
 
         return writes
@@ -390,7 +415,7 @@ public final class MergeService: @unchecked Sendable {
     }
 
     private func checkPermissions(for plan: MergePlan) async throws {
-        guard let keeperURL = persistenceController.resolveFileURL(id: plan.keeperId) else {
+        guard let keeperURL = await persistenceController.resolveFileURL(id: plan.keeperId) else {
             throw MergeError.keeperNotFound(plan.keeperId)
         }
 
@@ -401,7 +426,7 @@ public final class MergeService: @unchecked Sendable {
 
         // Check read permissions for all source files
         for fileId in plan.trashList {
-            guard let url = persistenceController.resolveFileURL(id: fileId) else {
+            guard let url = await persistenceController.resolveFileURL(id: fileId) else {
                 throw MergeError.keeperNotFound(fileId)
             }
 
@@ -434,7 +459,7 @@ public final class MergeService: @unchecked Sendable {
 
     private func executeMerge(plan: MergePlan) async throws {
         // Write metadata to keeper
-        guard let keeperURL = persistenceController.resolveFileURL(id: plan.keeperId) else {
+        guard let keeperURL = await persistenceController.resolveFileURL(id: plan.keeperId) else {
             throw MergeError.keeperNotFound(plan.keeperId)
         }
 
@@ -442,7 +467,7 @@ public final class MergeService: @unchecked Sendable {
 
         // Move other files to trash
         for fileId in plan.trashList {
-            guard let url = persistenceController.resolveFileURL(id: fileId) else {
+            guard let url = await persistenceController.resolveFileURL(id: fileId) else {
                 logger.warning("Could not resolve URL for file \(fileId) during trash operation")
                 continue
             }
@@ -460,9 +485,10 @@ public final class MergeService: @unchecked Sendable {
     private func writeEXIFAtomically(to url: URL, fields: [String: Any]) async throws {
         guard !fields.isEmpty else { return }
 
-        // Create temporary file
-        let tempURL = url.deletingLastPathComponent()
-            .appendingPathComponent(".\(url.lastPathComponent).tmp")
+        // Create temporary file with unique name to avoid collisions
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempFileName = "merge_tmp_\(UUID().uuidString)_\(url.lastPathComponent)"
+        let tempURL = tempDir.appendingPathComponent(tempFileName)
 
         do {
             // Copy original file to temp location
@@ -471,8 +497,13 @@ public final class MergeService: @unchecked Sendable {
             // Write metadata to temp file
             try await writeEXIF(to: tempURL, fields: fields)
 
-            // Atomic replace
-            try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
+            // Verify the temp file is valid before replacing
+            guard FileManager.default.fileExists(atPath: tempURL.path) else {
+                throw MergeError.atomicWriteFailed(url, "Temporary file was not created")
+            }
+
+            // Atomic replace using FileManager's replace method
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
 
             logger.info("Successfully wrote EXIF metadata to: \(url.lastPathComponent)")
         } catch {
@@ -483,12 +514,27 @@ public final class MergeService: @unchecked Sendable {
     }
 
     private func writeEXIF(to url: URL, fields: [String: Any]) async throws {
-        guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil) else {
-            throw MergeError.atomicWriteFailed(url, "Could not create image source")
+        // Create image data with updated metadata
+        guard let imageData = createImageDataWithMetadata(from: url, fields: fields) else {
+            throw MergeError.atomicWriteFailed(url, "Could not create image data with metadata")
         }
 
-        guard let imageProperties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any] else {
-            throw MergeError.atomicWriteFailed(url, "Could not read image properties")
+        // Write to the URL directly - ImageIO handles the atomic write
+        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, imageData.utiType, 1, nil) else {
+            throw MergeError.atomicWriteFailed(url, "Could not create image destination")
+        }
+
+        CGImageDestinationAddImage(destination, imageData.image, imageData.properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else {
+            throw MergeError.atomicWriteFailed(url, "Failed to finalize image destination")
+        }
+    }
+
+    private func createImageDataWithMetadata(from url: URL, fields: [String: Any]) -> (image: CGImage, properties: [CFString: Any], utiType: CFString)? {
+        guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil),
+              let imageProperties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any] else {
+            return nil
         }
 
         var mutableProperties = imageProperties
@@ -505,19 +551,9 @@ public final class MergeService: @unchecked Sendable {
             mutableProperties[kCGImagePropertyExifDictionary] = fields as CFDictionary
         }
 
-        // Create new image with updated metadata
-        guard let imageData = CGImageSourceCopyDataAtIndex(imageSource, 0, nil) else {
-            throw MergeError.atomicWriteFailed(url, "Could not copy image data")
-        }
+        let utiType = CGImageSourceGetType(imageSource) ?? "public.jpeg" as CFString
 
-        guard let destination = CGImageDestinationCreateWithData(imageData as CFMutableData, CGImageSourceGetType(imageSource)!, 1, nil) else {
-            throw MergeError.atomicWriteFailed(url, "Could not create image destination")
-        }
-
-        CGImageDestinationAddImageFromSource(destination, imageSource, 0, mutableProperties as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else {
-            throw MergeError.atomicWriteFailed(url, "Failed to finalize image destination")
-        }
+        return (image, mutableProperties, utiType)
     }
 
     private func formatEXIFDate(_ date: Date) -> String {

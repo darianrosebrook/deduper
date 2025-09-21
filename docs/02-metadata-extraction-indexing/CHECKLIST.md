@@ -29,7 +29,7 @@ Extract filesystem and media metadata; persist in the index; build secondary ind
 - [x] Index persistence (Core Data/SQLite) entities and saves.
 - [x] Secondary indexes and convenient query APIs.
 - [x] Normalize captureDate (UTC) and parse GPS where present.
-- [ ] Keyword/tag extraction to `[String]` for merge union.
+- [x] Keyword/tag extraction to `[String]` for merge union (implemented in MetadataExtractionService).
   - [x] `readBasicMetadata(url)` (size/dates/type) → `MediaMetadata`.
   - [x] `readImageEXIF(url)` (dimensions, captureDate, cameraModel, GPS).
   - [x] `readVideoMetadata(url)` (duration, resolution, frameRate, codec).

@@ -595,7 +595,7 @@ public struct UndoResult: Sendable, Equatable {
 /**
  * Plan for a merge operation showing what will be changed
  */
-public struct MergePlan: Sendable, Equatable {
+public struct MergePlan: Equatable {
     public let groupId: UUID
     public let keeperId: UUID
     public let keeperMetadata: MediaMetadata
@@ -620,6 +620,16 @@ public struct MergePlan: Sendable, Equatable {
         self.exifWrites = exifWrites
         self.trashList = trashList
         self.fieldChanges = fieldChanges
+    }
+
+    public static func == (lhs: MergePlan, rhs: MergePlan) -> Bool {
+        return lhs.groupId == rhs.groupId &&
+               lhs.keeperId == rhs.keeperId &&
+               lhs.keeperMetadata == rhs.keeperMetadata &&
+               lhs.mergedMetadata == rhs.mergedMetadata &&
+               NSDictionary(dictionary: lhs.exifWrites).isEqual(to: rhs.exifWrites) &&
+               lhs.trashList == rhs.trashList &&
+               lhs.fieldChanges == rhs.fieldChanges
     }
 }
 
