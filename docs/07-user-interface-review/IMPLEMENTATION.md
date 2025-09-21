@@ -51,9 +51,10 @@ Following `/Sources/DesignSystem/COMPONENT_STANDARDS.md`, all UI components are 
 - **SimilarityControlsView**: ✅ Implemented - Threshold adjustment and signal weighting controls with real-time re-ranking.
 
 #### Application Assemblies (Product-specific)
-- **MainApp**: Top-level navigation and window management, composed of navigation, content areas, and status indicators.
-- **SettingsWindow**: Preferences with tabbed organization, orchestrating multiple setting categories.
-- **OnboardingFlow**: Multi-step guided setup with permissions, managing complex workflow state.
+- **MainApp**: ✅ Implemented - Top-level navigation and window management with NavigationSplitView, sidebar navigation, and proper state management.
+- **HistoryView**: ✅ Implemented - Recent operations with restore capabilities, space freed tracking, and operation history display.
+- **SettingsWindow**: Preferences with tabbed organization, orchestrating multiple setting categories (placeholder structure).
+- **OnboardingFlow**: Multi-step guided setup with permissions, managing complex workflow state (placeholder structure).
 
 ### Design Token Integration
 

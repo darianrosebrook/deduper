@@ -200,6 +200,7 @@ public struct GroupsListView: View {
                 Button(action: { showSimilarityControls.toggle() }) {
                     Label("Settings", systemImage: "gear")
                 }
+                .keyboardShortcut("s", modifiers: .command)
             }
         }
         .sheet(item: $selectedGroup) { group in
@@ -211,6 +212,18 @@ public struct GroupsListView: View {
         .onAppear {
             viewModel.loadGroups()
         }
+        // Keyboard shortcuts
+        .onKeyPress(.return) {
+            if let selectedGroup = selectedGroup {
+                // TODO: Trigger merge action
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.escape) {
+            selectedGroup = nil
+            return .handled
+        }
     }
 }
 
@@ -219,10 +232,8 @@ public struct GroupRowView: View {
 
     public var body: some View {
         HStack(spacing: DesignToken.spacingMD) {
-            // Thumbnail placeholder
-            Rectangle()
-                .fill(DesignToken.colorBackgroundSecondary)
-                .frame(width: 60, height: 60)
+            // Thumbnail from first group member
+            ThumbnailView(fileId: group.members.first?.id ?? UUID(), size: DesignToken.thumbnailSizeMD)
                 .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
 
             VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
@@ -436,6 +447,11 @@ public struct GroupDetailView: View {
         }
         .background(DesignToken.colorBackgroundPrimary)
         .frame(minWidth: 600, minHeight: 500)
+        // Keyboard shortcuts
+        .onKeyPress(.escape) {
+            // TODO: Close sheet
+            return .handled
+        }
     }
 }
 

@@ -20,7 +20,7 @@ SwiftUI screens for onboarding/permissions, scan status, groups list, group deta
  - [x] Evidence Panel adheres to `/Sources/DesignSystem/component-complexity/` standards.
 - [x] Dynamic similarity controls re-rank groups without rescanning; changes are reversible (composer state management).
 - [x] Merge Planner preview with deterministic policy explanation and per-field overrides; dry-run option (composer with complex state).
-- [ ] History/Undo screen lists recent actions; restore from Trash works (assembly-level component).
+- [x] History/Undo screen lists recent actions; restore from Trash works (assembly-level component).
 - [x] Large groups paginate or allow collapsing to protect memory/CPU (virtualization with back-pressure).
 - [ ] Error/permission callouts unblock the user with clear guidance (token-based error states).
 - [x] Performance: time-to-first-group < 3s on test set; scroll stays > 60fps (list virtualization metrics).
@@ -37,7 +37,7 @@ SwiftUI screens for onboarding/permissions, scan status, groups list, group deta
 - [x] QuickLook integration for full-size preview (macOS services integration).
 - [ ] Keyboard navigation: group selection and keeper toggle shortcuts (component contract with keyboard map).
  - [ ] Shortcuts & batch flows adhere to `docs/SHORTCUTS_AND_BATCH_UX.md`.
-- [ ] `HistoryView` (assembly): surfaces recent operations with restore affordance; product-specific logic.
+- [x] `HistoryView` (assembly): surfaces recent operations with restore affordance; product-specific logic.
 - [ ] Error handling surfaces permission/disk issues with actionable steps (token-based error states).
 - [x] Component validation: All components follow design system standards.
 - [x] Design token integration: All components use `/Sources/DesignSystem/designTokens/` references.

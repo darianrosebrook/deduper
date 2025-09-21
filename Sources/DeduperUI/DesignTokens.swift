@@ -115,6 +115,20 @@ public enum DesignToken {
     public static let shadowSM: DesignTokenShadow = .init(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
     public static let shadowMD: DesignTokenShadow = .init(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
     public static let shadowLG: DesignTokenShadow = .init(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
+
+    // MARK: - Thumbnail Sizes (Component tokens)
+
+    /// Small thumbnail size for list items
+    public static let thumbnailSizeSM: CGSize = CGSize(width: 40, height: 40)
+
+    /// Medium thumbnail size for detail views
+    public static let thumbnailSizeMD: CGSize = CGSize(width: 60, height: 60)
+
+    /// Large thumbnail size for previews
+    public static let thumbnailSizeLG: CGSize = CGSize(width: 120, height: 120)
+
+    /// Extra large thumbnail size for full previews
+    public static let thumbnailSizeXL: CGSize = CGSize(width: 200, height: 200)
 }
 
 // MARK: - Shadow Type
