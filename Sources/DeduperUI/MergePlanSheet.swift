@@ -10,6 +10,7 @@ import DeduperCore
    - metadataMerges: per-field merge decisions (source → keeper).
    - spaceSavedBytes: projected bytes saved.
    - onConfirm/onCancel callbacks.
+ - Design System: Composer component following `/Sources/DesignSystem/COMPONENT_STANDARDS.md`
  */
 public struct MergePlanItem: Identifiable, Equatable {
     public let id: UUID
@@ -56,28 +57,28 @@ public struct MergePlanSheet: View {
     }
     
     public var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Merge Plan").font(.title2)
-            LabeledContent("Keep") { Text(keeperName).font(.body) }
+        VStack(alignment: .leading, spacing: DesignToken.spacingLG) {
+            Text("Merge Plan").font(DesignToken.fontFamilyTitle)
+            LabeledContent("Keep") { Text(keeperName).font(DesignToken.fontFamilyBody) }
             if !removals.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Move to Trash").font(.headline)
+                VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                    Text("Move to Trash").font(DesignToken.fontFamilyHeading)
                     ForEach(removals) { item in
-                        Text("• \(item.displayName)").font(.caption)
+                        Text("• \(item.displayName)").font(DesignToken.fontFamilyCaption)
                     }
                 }
             }
             if !metadataMerges.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Metadata to Merge").font(.headline)
+                VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                    Text("Metadata to Merge").font(DesignToken.fontFamilyHeading)
                     ForEach(metadataMerges) { field in
-                        HStack(spacing: 8) {
-                            Text(field.label).frame(width: 140, alignment: .leading).font(.caption).foregroundStyle(.secondary)
-                            Text(field.from ?? "—").font(.caption)
+                        HStack(spacing: DesignToken.spacingSM) {
+                            Text(field.label).frame(width: 140, alignment: .leading).font(DesignToken.fontFamilyCaption).foregroundStyle(DesignToken.colorForegroundSecondary)
+                            Text(field.from ?? "—").font(DesignToken.fontFamilyCaption)
                             Image(systemName: "arrow.right")
                                 .imageScale(.small)
-                                .foregroundStyle(.secondary)
-                            Text(field.into ?? "—").font(.caption)
+                                .foregroundStyle(DesignToken.colorForegroundSecondary)
+                            Text(field.into ?? "—").font(DesignToken.fontFamilyCaption)
                         }
                     }
                 }
@@ -91,7 +92,7 @@ public struct MergePlanSheet: View {
                 Button("Confirm") { onConfirm() }.keyboardShortcut(.defaultAction)
             }
         }
-        .padding()
+        .padding(DesignToken.spacingMD)
         .frame(minWidth: 520)
     }
 }

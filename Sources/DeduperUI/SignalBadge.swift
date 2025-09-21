@@ -8,8 +8,9 @@ import SwiftUI
    - systemImage: optional SF Symbol name for the badge.
    - role: optional role to influence color (e.g., .success, .warning, .info).
  - Behavior:
-   - Adapts to light/dark mode using system semantic colors.
+   - Uses design tokens for consistent theming and accessibility.
    - Accessible: announces label and role.
+ - Design System: Primitive component following `/Sources/DesignSystem/COMPONENT_STANDARDS.md`
  */
 public struct SignalBadge: View {
     public enum Role {
@@ -17,17 +18,17 @@ public struct SignalBadge: View {
         case warning
         case info
     }
-    
+
     private let label: String
     private let systemImage: String?
     private let role: Role?
-    
+
     public init(label: String, systemImage: String? = nil, role: Role? = nil) {
         self.label = label
         self.systemImage = systemImage
         self.role = role
     }
-    
+
     public var body: some View {
         HStack(spacing: 4) {
             if let systemImage {
@@ -45,25 +46,33 @@ public struct SignalBadge: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
     }
-    
+
     private var backgroundColor: Color {
         switch role {
-        case .success: return Color.green.opacity(0.15)
-        case .warning: return Color.yellow.opacity(0.15)
-        case .info: return Color.blue.opacity(0.15)
-        case .none: return Color.secondary.opacity(0.12)
+        case .success:
+            return DesignToken.colorStatusSuccess.opacity(0.15)
+        case .warning:
+            return DesignToken.colorStatusWarning.opacity(0.15)
+        case .info:
+            return DesignToken.colorStatusInfo.opacity(0.15)
+        case .none:
+            return DesignToken.colorBackgroundTertiary
         }
     }
-    
+
     private var foregroundColor: Color {
         switch role {
-        case .success: return .green
-        case .warning: return .yellow
-        case .info: return .blue
-        case .none: return .secondary
+        case .success:
+            return DesignToken.colorForegroundSuccess
+        case .warning:
+            return DesignToken.colorForegroundWarning
+        case .info:
+            return DesignToken.colorForegroundInfo
+        case .none:
+            return DesignToken.colorForegroundSecondary
         }
     }
-    
+
     private var accessibilityText: String {
         switch role {
         case .success: return "Signal: \(label), strong"

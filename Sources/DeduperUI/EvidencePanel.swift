@@ -6,6 +6,7 @@ import DeduperCore
  EvidencePanel lists matching signals, thresholds, distances, and overall confidence.
  - Inputs are plain value types to keep this composable and testable.
  - Rendering avoids heavy work; provide precomputed values from the engine.
+ - Design System: Compound component following `/Sources/DesignSystem/COMPONENT_STANDARDS.md`
  */
 public struct EvidenceItem: Identifiable, Equatable {
     public enum Verdict: String { case pass, warn, fail }
@@ -34,28 +35,28 @@ public struct EvidencePanel: View {
     }
     
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 8) {
+        VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
+            HStack(alignment: .center, spacing: DesignToken.spacingSM) {
                 Text("Evidence")
-                    .font(.headline)
+                    .font(DesignToken.fontFamilyHeading)
                 Spacer()
                 ConfidenceMeter(value: overallConfidence, style: .continuous)
                     .frame(width: 120)
             }
             ForEach(items) { item in
-                HStack(spacing: 8) {
+                HStack(spacing: DesignToken.spacingSM) {
                     SignalBadge(label: item.label, systemImage: icon(for: item.verdict), role: role(for: item.verdict))
                     Spacer()
-                    Text(item.distanceText).font(.caption)
-                    Text("≤ \(item.thresholdText)").font(.caption).foregroundStyle(.secondary)
+                    Text(item.distanceText).font(DesignToken.fontFamilyCaption)
+                    Text("≤ \(item.thresholdText)").font(DesignToken.fontFamilyCaption).foregroundStyle(DesignToken.colorForegroundSecondary)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("\(item.label), distance \(item.distanceText), threshold \(item.thresholdText)")
             }
         }
-        .padding()
-        .background(.quaternary.opacity(0.2))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(DesignToken.spacingMD)
+        .background(DesignToken.colorBackgroundElevated)
+        .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusMD))
     }
     
     private func icon(for verdict: EvidenceItem.Verdict) -> String {

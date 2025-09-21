@@ -5,6 +5,7 @@ import DeduperCore
  Author: @darianrosebrook
  MetadataDiff shows side-by-side metadata fields, highlighting differences.
  - Provide already-parsed fields; heavy metadata parsing should not occur here.
+ - Design System: Compound component following `/Sources/DesignSystem/COMPONENT_STANDARDS.md`
  */
 public struct MetadataField: Identifiable, Equatable {
     public let id: String
@@ -32,15 +33,15 @@ public struct MetadataDiff: View {
     }
     
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
             HStack {
-                Text(leftTitle).font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
-                Text(rightTitle).font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
+                Text(leftTitle).font(DesignToken.fontFamilyHeading).frame(maxWidth: .infinity, alignment: .leading)
+                Text(rightTitle).font(DesignToken.fontFamilyHeading).frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.bottom, 4)
+            .padding(.bottom, DesignToken.spacingXS)
             ForEach(fields) { field in
-                HStack(alignment: .top, spacing: 12) {
-                    Text(field.label).font(.caption).foregroundStyle(.secondary).frame(width: 120, alignment: .leading)
+                HStack(alignment: .top, spacing: DesignToken.spacingMD) {
+                    Text(field.label).font(DesignToken.fontFamilyCaption).foregroundStyle(DesignToken.colorForegroundSecondary).frame(width: 120, alignment: .leading)
                     cellText(field.leftValue, differs: differs(field)).frame(maxWidth: .infinity, alignment: .leading)
                     cellText(field.rightValue, differs: differs(field)).frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -60,10 +61,10 @@ public struct MetadataDiff: View {
     private func cellText(_ value: String?, differs: Bool) -> some View {
         let text = (value?.isEmpty ?? true) ? "—" : (value ?? "—")
         return Text(text)
-            .font(.caption)
-            .padding(4)
-            .background(differs ? Color.yellow.opacity(0.15) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .font(DesignToken.fontFamilyCaption)
+            .padding(DesignToken.spacingXS)
+            .background(differs ? DesignToken.colorStatusWarning.opacity(0.15) : DesignToken.colorBackgroundPrimary)
+            .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
     }
 }
 
