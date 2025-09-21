@@ -453,4 +453,230 @@ extension MediaMetadata {
             lhs.gpsLon == rhs.gpsLon &&
             lhs.durationSec == rhs.durationSec
     }
+
+    /// Calculate metadata completeness score for keeper selection
+    public var completenessScore: Double {
+        var score = 0.0
+        var totalFields = 0
+
+        // Basic file metadata (always available)
+        score += 1.0
+        totalFields += 1
+
+        // Capture date
+        if captureDate != nil { score += 1.0 }
+        totalFields += 1
+
+        // GPS coordinates
+        if gpsLat != nil && gpsLon != nil { score += 1.0 }
+        totalFields += 1
+
+        // Camera model
+        if cameraModel != nil { score += 1.0 }
+        totalFields += 1
+
+        // Keywords/tags
+        if keywords != nil || tags != nil { score += 1.0 }
+        totalFields += 1
+
+        return totalFields > 0 ? score / Double(totalFields) : 0.0
+    }
+
+    /// Get format preference score (RAW/PNG > JPEG > HEIC)
+    public var formatPreferenceScore: Double {
+        guard let utType = inferredUTType else { return 0.0 }
+
+        // RAW formats get highest score
+        if utType.contains("raw") || utType.contains("cr2") || utType.contains("nef") ||
+           utType.contains("dng") || utType.contains("arw") {
+            return 1.0
+        }
+
+        // PNG gets high score
+        if utType.contains("png") {
+            return 0.9
+        }
+
+        // JPEG gets medium score
+        if utType.contains("jpeg") || utType.contains("jpg") {
+            return 0.7
+        }
+
+        // HEIC gets lower score
+        if utType.contains("heic") || utType.contains("heif") {
+            return 0.5
+        }
+
+        return 0.0
+    }
+}
+
+// MARK: - Merge Types (Module 09)
+
+/**
+ * Configuration for merge operations
+ */
+public struct MergeConfig: Sendable, Equatable {
+    public let enableDryRun: Bool
+    public let enableUndo: Bool
+    public let undoDepth: Int
+    public let retentionDays: Int
+
+    public static let `default` = MergeConfig(
+        enableDryRun: true,
+        enableUndo: true,
+        undoDepth: 1,
+        retentionDays: 7
+    )
+
+    public init(
+        enableDryRun: Bool = true,
+        enableUndo: Bool = true,
+        undoDepth: Int = 1,
+        retentionDays: Int = 7
+    ) {
+        self.enableDryRun = enableDryRun
+        self.enableUndo = enableUndo
+        self.undoDepth = max(1, min(undoDepth, 10))
+        self.retentionDays = max(1, retentionDays)
+    }
+}
+
+/**
+ * Result of a merge operation
+ */
+public struct MergeResult: Sendable, Equatable {
+    public let groupId: UUID
+    public let keeperId: UUID
+    public let removedFileIds: [UUID]
+    public let mergedFields: [String]
+    public let wasDryRun: Bool
+    public let transactionId: UUID?
+
+    public init(
+        groupId: UUID,
+        keeperId: UUID,
+        removedFileIds: [UUID],
+        mergedFields: [String],
+        wasDryRun: Bool = false,
+        transactionId: UUID? = nil
+    ) {
+        self.groupId = groupId
+        self.keeperId = keeperId
+        self.removedFileIds = removedFileIds
+        self.mergedFields = mergedFields
+        self.wasDryRun = wasDryRun
+        self.transactionId = transactionId
+    }
+}
+
+/**
+ * Result of an undo operation
+ */
+public struct UndoResult: Sendable, Equatable {
+    public let transactionId: UUID
+    public let restoredFileIds: [UUID]
+    public let revertedFields: [String]
+    public let success: Bool
+
+    public init(
+        transactionId: UUID,
+        restoredFileIds: [UUID],
+        revertedFields: [String],
+        success: Bool = true
+    ) {
+        self.transactionId = transactionId
+        self.restoredFileIds = restoredFileIds
+        self.revertedFields = revertedFields
+        self.success = success
+    }
+}
+
+/**
+ * Plan for a merge operation showing what will be changed
+ */
+public struct MergePlan: Sendable, Equatable {
+    public let groupId: UUID
+    public let keeperId: UUID
+    public let keeperMetadata: MediaMetadata
+    public let mergedMetadata: MediaMetadata
+    public let exifWrites: [String: Any]
+    public let trashList: [UUID]
+    public let fieldChanges: [FieldChange]
+
+    public init(
+        groupId: UUID,
+        keeperId: UUID,
+        keeperMetadata: MediaMetadata,
+        mergedMetadata: MediaMetadata,
+        exifWrites: [String: Any],
+        trashList: [UUID],
+        fieldChanges: [FieldChange]
+    ) {
+        self.groupId = groupId
+        self.keeperId = keeperId
+        self.keeperMetadata = keeperMetadata
+        self.mergedMetadata = mergedMetadata
+        self.exifWrites = exifWrites
+        self.trashList = trashList
+        self.fieldChanges = fieldChanges
+    }
+}
+
+/**
+ * Individual field change in a merge plan
+ */
+public struct FieldChange: Sendable, Equatable {
+    public let field: String
+    public let oldValue: String?
+    public let newValue: String?
+    public let source: ChangeSource
+
+    public enum ChangeSource: Sendable, Equatable {
+        case keep // No change needed
+        case merge(String) // Merged from file with ID
+        case fill // Filled empty field
+    }
+
+    public init(field: String, oldValue: String?, newValue: String?, source: ChangeSource) {
+        self.field = field
+        self.oldValue = oldValue
+        self.newValue = newValue
+        self.source = source
+    }
+}
+
+/**
+ * Errors that can occur during merge operations
+ */
+public enum MergeError: Error, LocalizedError, Sendable {
+    case groupNotFound(UUID)
+    case keeperNotFound(UUID)
+    case permissionDenied(URL)
+    case atomicWriteFailed(URL, String)
+    case metadataCorrupted(String)
+    case transactionFailed(String)
+    case undoNotAvailable
+    case invalidMergePlan(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .groupNotFound(let id):
+            return "Duplicate group not found: \(id)"
+        case .keeperNotFound(let id):
+            return "Keeper file not found: \(id)"
+        case .permissionDenied(let url):
+            return "Permission denied for file: \(url.path)"
+        case .atomicWriteFailed(let url, let reason):
+            return "Failed to write metadata to \(url.path): \(reason)"
+        case .metadataCorrupted(let reason):
+            return "Metadata corrupted: \(reason)"
+        case .transactionFailed(let reason):
+            return "Transaction failed: \(reason)"
+        case .undoNotAvailable:
+            return "Undo not available - no previous merge found"
+        case .invalidMergePlan(let reason):
+            return "Invalid merge plan: \(reason)"
+        }
+    }
 }

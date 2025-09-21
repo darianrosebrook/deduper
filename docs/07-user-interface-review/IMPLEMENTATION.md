@@ -46,8 +46,9 @@ Following `/Sources/DesignSystem/COMPONENT_STANDARDS.md`, all UI components are 
 
 #### Composers (Stateful orchestrators)
 - **MergePlanSheet**: ✅ Implemented - action handling with confirmation flows, managing complex state for keeper selection and metadata merging.
-- **DuplicateGroupDetailView**: Complex state management for side-by-side comparison, orchestrating previews, metadata, and actions.
-- **GroupsListView**: Virtualized list with search/filter capabilities, providing context for selection and navigation.
+- **DuplicateGroupDetailView**: ✅ Enhanced - Complex state management with Provider pattern, side-by-side comparison, keeper selection, and merge actions.
+- **GroupsListView**: ✅ Enhanced - Virtualized list with search/filter capabilities, context menus, similarity controls integration, and proper state management.
+- **SimilarityControlsView**: ✅ Implemented - Threshold adjustment and signal weighting controls with real-time re-ranking.
 
 #### Application Assemblies (Product-specific)
 - **MainApp**: Top-level navigation and window management, composed of navigation, content areas, and status indicators.

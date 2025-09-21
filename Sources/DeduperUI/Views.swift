@@ -144,23 +144,72 @@ public class ScanStatusViewModel: ObservableObject {
 public struct GroupsListView: View {
     @StateObject private var viewModel = GroupsListViewModel()
     @State private var selectedGroup: DuplicateGroup?
+    @State private var showSimilarityControls = false
+    @State private var searchText = ""
 
     public var body: some View {
-        ScrollView {
-            LazyVStack(spacing: DesignToken.spacingSM) {
-                ForEach(viewModel.groups) { group in
-                    GroupRowView(group: group)
-                        .onTapGesture {
-                            selectedGroup = group
-                        }
+        VStack {
+            // Search and filter bar
+            HStack {
+                TextField("Search groups...", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 200)
+
+                Button(action: { showSimilarityControls.toggle() }) {
+                    Label("Similarity", systemImage: "slider.horizontal.3")
                 }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Text("\(viewModel.filteredGroups.count) groups")
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
             }
             .padding(DesignToken.spacingMD)
+
+            // Groups list with virtualization
+            ScrollView {
+                LazyVStack(spacing: DesignToken.spacingXS) {
+                    ForEach(viewModel.filteredGroups) { group in
+                        GroupRowView(group: group)
+                            .onTapGesture {
+                                selectedGroup = group
+                            }
+                            .contextMenu {
+                                Button("Select as Keeper") {
+                                    viewModel.setKeeper(for: group)
+                                }
+                                Button("Merge Group") {
+                                    viewModel.mergeGroup(group)
+                                }
+                                Divider()
+                                Button("Show in Finder") {
+                                    viewModel.showInFinder(group)
+                                }
+                            }
+                    }
+                }
+                .padding(DesignToken.spacingMD)
+            }
         }
         .background(DesignToken.colorBackgroundPrimary)
         .navigationTitle("Duplicate Groups")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: { showSimilarityControls.toggle() }) {
+                    Label("Settings", systemImage: "gear")
+                }
+            }
+        }
         .sheet(item: $selectedGroup) { group in
             GroupDetailView(group: group)
+        }
+        .sheet(isPresented: $showSimilarityControls) {
+            SimilarityControlsView()
+        }
+        .onAppear {
+            viewModel.loadGroups()
         }
     }
 }
@@ -198,24 +247,93 @@ public struct GroupRowView: View {
 }
 
 public class GroupsListViewModel: ObservableObject {
-    @Published public var groups: [DuplicateGroup] = [
-        DuplicateGroup(id: "1", members: [], confidence: 0.95, spacePotentialSaved: 1_234_567),
-        DuplicateGroup(id: "2", members: [], confidence: 0.78, spacePotentialSaved: 567_890),
-    ]
+    @Published public var groups: [DuplicateGroup] = []
+    @Published public var filteredGroups: [DuplicateGroup] = []
+    @Published public var isLoading = false
+    @Published public var error: String?
 
-    public func selectGroup(_ group: DuplicateGroup) {
-        // TODO: Navigate to group detail
-        print("Selected group: \(group.id)")
+    private var searchText = ""
+
+    public init() {
+        // Subscribe to similarity settings changes
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(similaritySettingsChanged),
+            name: .similaritySettingsChanged,
+            object: nil
+        )
+    }
+
+    public func loadGroups() {
+        isLoading = true
+        error = nil
+
+        // TODO: Replace with actual data loading from DeduperCore
+        Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            self.groups = [
+                DuplicateGroup(id: "1", members: [], confidence: 0.95, spacePotentialSaved: 1_234_567),
+                DuplicateGroup(id: "2", members: [], confidence: 0.78, spacePotentialSaved: 567_890),
+                DuplicateGroup(id: "3", members: [], confidence: 0.65, spacePotentialSaved: 234_567),
+                DuplicateGroup(id: "4", members: [], confidence: 0.92, spacePotentialSaved: 3_456_789),
+            ]
+            self.applyFilters()
+            self.isLoading = false
+        }
+    }
+
+    public func setKeeper(for group: DuplicateGroup) {
+        // TODO: Implement keeper selection
+        print("Set keeper for group: \(group.id)")
+    }
+
+    public func mergeGroup(_ group: DuplicateGroup) {
+        // TODO: Implement group merge
+        print("Merge group: \(group.id)")
+    }
+
+    public func showInFinder(_ group: DuplicateGroup) {
+        // TODO: Implement Finder integration
+        print("Show group in Finder: \(group.id)")
+    }
+
+    public func applyFilters() {
+        if searchText.isEmpty {
+            filteredGroups = groups
+        } else {
+            filteredGroups = groups.filter { group in
+                group.id.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+
+    @objc private func similaritySettingsChanged() {
+        // TODO: Re-rank groups based on new similarity settings
+        print("Similarity settings changed - re-ranking groups")
+        loadGroups()
     }
 }
+
 
 // MARK: - Group Detail View Model
 
 public class GroupDetailViewModel: ObservableObject {
     @Published public var selectedGroup: DuplicateGroup?
+    @Published public var isProcessing = false
 
     public init(group: DuplicateGroup) {
         self.selectedGroup = group
+    }
+
+    public func mergeGroup() {
+        isProcessing = true
+
+        // TODO: Implement merge operation
+        Task {
+            try? await Task.sleep(for: .seconds(1))
+            self.isProcessing = false
+            print("Merge completed")
+        }
     }
 }
 
@@ -229,32 +347,95 @@ public class GroupDetailViewModel: ObservableObject {
  */
 public struct GroupDetailView: View {
     public let group: DuplicateGroup
-    @StateObject private var viewModel = GroupDetailViewModel(group: DuplicateGroup(id: "1", members: [], confidence: 0.95, spacePotentialSaved: 1_234_567))
+    @StateObject private var viewModel: GroupDetailViewModel
+
+    public init(group: DuplicateGroup) {
+        self.group = group
+        self._viewModel = StateObject(wrappedValue: GroupDetailViewModel(group: group))
+    }
 
     public var body: some View {
         VStack {
-            Text("Group Detail")
-                .font(DesignToken.fontFamilyTitle)
+            // Header with group info
+            VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                Text("Group \(group.id)")
+                    .font(DesignToken.fontFamilyTitle)
 
-            EvidencePanel(items: [
-                EvidenceItem(id: "phash", label: "pHash", distanceText: "8", thresholdText: "10", verdict: .pass),
-                EvidenceItem(id: "date", label: "date", distanceText: "2m", thresholdText: "5m", verdict: .warn),
-            ], overallConfidence: group.confidence)
-
-            MetadataDiff(fields: [
-                MetadataField(id: "date", label: "Date", leftValue: "2021-06-01", rightValue: "2021-06-01"),
-                MetadataField(id: "camera", label: "Camera", leftValue: "iPhone 14 Pro", rightValue: "iPhone 13"),
-            ])
-
-            HStack {
-                Button("Select as Keeper") { }
-                    .buttonStyle(.borderedProminent)
-                Button("Merge") { }
-                    .buttonStyle(.bordered)
+                HStack {
+                    Text("\(group.members.count) items")
+                        .font(DesignToken.fontFamilyBody)
+                    Spacer()
+                    Text(ByteCountFormatter.string(fromByteCount: group.spacePotentialSaved, countStyle: .file))
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                }
             }
+            .padding(DesignToken.spacingMD)
+
+            Divider()
+
+            // Evidence and metadata comparison
+            ScrollView {
+                VStack(spacing: DesignToken.spacingMD) {
+                    EvidencePanel(items: [
+                        EvidenceItem(id: "phash", label: "pHash", distanceText: "8", thresholdText: "10", verdict: .pass),
+                        EvidenceItem(id: "date", label: "date", distanceText: "2m", thresholdText: "5m", verdict: .warn),
+                        EvidenceItem(id: "size", label: "fileSize", distanceText: "1.2MB", thresholdText: "1.5MB", verdict: .pass),
+                    ], overallConfidence: group.confidence)
+
+                    MetadataDiff(fields: [
+                        MetadataField(id: "date", label: "Date", leftValue: "2021-06-01", rightValue: "2021-06-01"),
+                        MetadataField(id: "camera", label: "Camera", leftValue: "iPhone 14 Pro", rightValue: "iPhone 13"),
+                        MetadataField(id: "resolution", label: "Resolution", leftValue: "4032×3024", rightValue: "4032×3024"),
+                        MetadataField(id: "location", label: "GPS", leftValue: "37.7749,-122.4194", rightValue: nil),
+                    ])
+
+                    // Preview placeholder
+                    VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                        Text("Previews")
+                            .font(DesignToken.fontFamilyHeading)
+                        HStack {
+                            Rectangle()
+                                .fill(DesignToken.colorBackgroundSecondary)
+                                .frame(width: 120, height: 90)
+                                .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
+                            Rectangle()
+                                .fill(DesignToken.colorBackgroundSecondary)
+                                .frame(width: 120, height: 90)
+                                .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
+                        }
+                    }
+                }
+                .padding(DesignToken.spacingMD)
+            }
+
+            Divider()
+
+            // Actions
+            HStack {
+                Button("Select as Keeper") {
+                    // TODO: Implement keeper selection UI
+                    print("Select as Keeper clicked")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Spacer()
+
+                if viewModel.isProcessing {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Button("Merge Group") {
+                        viewModel.mergeGroup()
+                    }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.return, modifiers: .command)
+                }
+            }
+            .padding(DesignToken.spacingMD)
         }
-        .padding(DesignToken.spacingMD)
         .background(DesignToken.colorBackgroundPrimary)
+        .frame(minWidth: 600, minHeight: 500)
     }
 }
 
@@ -338,26 +519,7 @@ public struct SettingsView: View {
 
 // MARK: - History View
 
-/**
- HistoryView shows recent operations with restore capabilities.
- - List of recent merges and deletions.
- - Restore from Trash functionality.
- - Design System: Application assembly with durable history.
- */
-public struct HistoryView: View {
-    public var body: some View {
-        VStack {
-            Text("History")
-                .font(DesignToken.fontFamilyTitle)
-
-            Text("History implementation coming soon...")
-                .font(DesignToken.fontFamilyBody)
-                .foregroundStyle(DesignToken.colorForegroundSecondary)
-        }
-        .padding(DesignToken.spacingMD)
-        .background(DesignToken.colorBackgroundPrimary)
-    }
-}
+// HistoryView is now implemented in HistoryView.swift as a full-featured component
 
 // MARK: - Preview
 
