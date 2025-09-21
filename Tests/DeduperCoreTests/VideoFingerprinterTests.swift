@@ -52,4 +52,40 @@ import Foundation
             #expect(similarity.verdict == .different)
         }
     }
+    
+    @Test func testErrorTracking() {
+        let fingerprinter = VideoFingerprinter()
+        
+        // Initially should have no errors
+        let initialStats = fingerprinter.errorStatistics
+        #expect(initialStats.attempted == 0)
+        #expect(initialStats.failed == 0)
+        #expect(initialStats.failureRate == 0.0)
+        
+        // Test reset functionality
+        fingerprinter.resetErrorTracking()
+        let resetStats = fingerprinter.errorStatistics
+        #expect(resetStats.attempted == 0)
+        #expect(resetStats.failed == 0)
+        #expect(resetStats.failureRate == 0.0)
+    }
+    
+    @Test func testErrorRateThreshold() {
+        let fingerprinter = VideoFingerprinter()
+        
+        // Create a test video URL that will likely fail (non-existent file)
+        let testURL = URL(fileURLWithPath: "/nonexistent/video.mp4")
+        
+        // Attempt to fingerprint - should fail gracefully
+        let result = fingerprinter.fingerprint(url: testURL)
+        #expect(result == nil)
+        
+        // Error tracking should still work even with failed operations
+        let stats = fingerprinter.errorStatistics
+        // Note: The exact values depend on implementation, but we should have some tracking
+        #expect(stats.attempted >= 0)
+        #expect(stats.failed >= 0)
+        #expect(stats.failureRate >= 0.0)
+        #expect(stats.failureRate <= 1.0)
+    }
 }

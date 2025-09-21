@@ -214,7 +214,7 @@ public struct AssetPair: Sendable, Hashable, Equatable {
     }
 }
 
-public struct ConfidenceSignal: Sendable, Equatable {
+public struct ConfidenceSignal: Sendable, Equatable, Codable {
     public let key: String
     public let weight: Double
     public let rawScore: Double
@@ -230,7 +230,7 @@ public struct ConfidenceSignal: Sendable, Equatable {
     }
 }
 
-public struct ConfidencePenalty: Sendable, Equatable {
+public struct ConfidencePenalty: Sendable, Equatable, Codable {
     public let key: String
     public let value: Double
     public let rationale: String
@@ -722,9 +722,9 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
         for group in groups {
             if group.rationaleLines.contains("checksum") {
                 checksumGroups += 1
-            } else if group.rationaleLines.contains({ $0.contains("hash") }) {
+            } else if group.rationaleLines.contains(where: { $0.contains("hash") }) {
                 hashOnlyGroups += 1
-            } else if group.rationaleLines.contains({ $0.contains("policy") }) {
+            } else if group.rationaleLines.contains(where: { $0.contains("policy") }) {
                 policyGroups += 1
             } else {
                 metadataOnlyGroups += 1

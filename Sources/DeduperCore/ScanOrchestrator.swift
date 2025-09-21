@@ -222,19 +222,19 @@ public final class ScanOrchestrator: @unchecked Sendable {
     /// Delete a persisted record (and related signatures) for a given URL.
     private func deleteRecord(for url: URL) async {
         do {
-            try await persistenceController.performBackgroundTask { context in
-                let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "FileRecord")
-                request.predicate = NSPredicate(format: "url == %@", url as NSURL)
+            try await persistenceController.performBackground { context in
+                let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "File")
+                request.predicate = NSPredicate(format: "path == %@", url.path)
                 request.fetchLimit = 1
                 guard let record = try context.fetch(request).first else { return }
-                if let imageSig = record.value(forKey: "imageSignature") as? NSManagedObject {
-                    context.delete(imageSig)
+
+                if let signatures = record.value(forKey: "imageSignatures") as? NSSet {
+                    for case let sig as NSManagedObject in signatures { context.delete(sig) }
                 }
-                if let videoSig = record.value(forKey: "videoSignature") as? NSManagedObject {
-                    context.delete(videoSig)
+                if let signatures = record.value(forKey: "videoSignatures") as? NSSet {
+                    for case let sig as NSManagedObject in signatures { context.delete(sig) }
                 }
                 context.delete(record)
-                if context.hasChanges { try context.save() }
             }
         } catch {
             logger.error("Failed to delete index record for \(url.path, privacy: .public): \(error.localizedDescription)")
@@ -244,19 +244,16 @@ public final class ScanOrchestrator: @unchecked Sendable {
     /// Update the persisted record URL when a file is renamed or moved.
     private func renameRecord(from oldURL: URL, to newURL: URL) async {
         do {
-            try await persistenceController.performBackgroundTask { context in
-                let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "FileRecord")
-                request.predicate = NSPredicate(format: "url == %@", oldURL as NSURL)
+            let fileId = try await persistenceController.performBackground { context -> UUID? in
+                let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "File")
+                request.predicate = NSPredicate(format: "path == %@", oldURL.path)
                 request.fetchLimit = 1
-                guard let record = try context.fetch(request).first else { return }
-                record.setValue(newURL, forKey: "url")
-                // Opportunistically refresh basic timestamps from filesystem
-                if let values = try? newURL.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey]) {
-                    if let created = values.creationDate { record.setValue(created, forKey: "createdAt") }
-                    if let modified = values.contentModificationDate { record.setValue(modified, forKey: "modifiedAt") }
-                }
-                record.setValue(Date(), forKey: "lastScannedAt")
-                if context.hasChanges { try context.save() }
+                guard let record = try context.fetch(request).first else { return nil }
+                return record.value(forKey: "id") as? UUID
+            }
+
+            if let fileId {
+                try await persistenceController.refreshBookmark(for: fileId, newURL: newURL)
             }
         } catch {
             logger.error("Failed to update index for rename: \(oldURL.path, privacy: .public) → \(newURL.path, privacy: .public): \(error.localizedDescription)")

@@ -17,7 +17,7 @@ Extract filesystem and media metadata; persist in the index; build secondary ind
 - [x] Video metadata captured: duration, resolution, codec (if useful).
 - [x] Records persisted; re-reads update changed fields; unchanged skipped.
 - [x] Secondary indexes enable query-by-size/date/dimensions efficiently.
-- [ ] UTType-based inference used when extensions/EXIF are insufficient.
+- [x] UTType-based inference used when extensions/EXIF are insufficient.
 - [x] Normalized capture dates (timezone-safe) and consistent dimension fields.
 
 ### Implementation Tasks
@@ -60,11 +60,18 @@ Integration (Fixtures)
 
 ### Test IDs (to fill as implemented)
 
-- [x] **Unit Tests**: 3 tests implemented and passing
+- [x] **Unit Tests**: 7 tests implemented and passing
   - `MetadataExtractionServiceTests.testReadBasicMetadata`
   - `MetadataExtractionServiceTests.testNormalizeCaptureDateFallback`
+  - `MetadataExtractionServiceTests.testPerformanceBenchmarking`
+  - `MetadataExtractionServiceTests.testUTTypeInferenceFromExtension`
+  - `MetadataExtractionServiceTests.testUTTypeInferenceFromContent`
+  - `MetadataExtractionServiceTests.testUTTypeInferenceFallback`
   - `IndexQueryServiceTests.testFetchByFileSize`
   - `IndexQueryServiceTests.testFetchByDimensionsEmpty`
+  - `ScanServiceTests.testUTTypeBasedMediaDetection`
+  - `ScanServiceTests.testContentBasedMediaDetection`
+  - `ScanServiceTests.testFrameworkBasedMediaDetection`
 - [ ] **Integration Tests**: TBD
 - [ ] **Performance Tests**: TBD
 

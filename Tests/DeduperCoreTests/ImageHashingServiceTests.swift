@@ -105,6 +105,62 @@ import UniformTypeIdentifiers
         #expect(results.count >= 1)
         #expect(results.contains { $0.algorithm == .dHash })
     }
+    
+    @Test func testBKTreeIntegration() {
+        let hashingService = ImageHashingService()
+        let index = HashIndexService.optimizedForLargeDataset(hashingService: hashingService)
+        
+        // Add test hashes
+        let testHashes: [UInt64] = [
+            0xFF00FF00FF00FF00,
+            0xFF00FF00FF00FF01,  // Distance 1 from first
+            0xFF00FF00FF00FF03,  // Distance 2 from first
+            0x00FF00FF00FF00FF   // Very different
+        ]
+        
+        let fileIds = testHashes.map { _ in UUID() }
+        for (i, hash) in testHashes.enumerated() {
+            let hashResult = ImageHashResult(algorithm: .dHash, hash: hash, width: 100, height: 100)
+            index.add(fileId: fileIds[i], hashResult: hashResult)
+        }
+        
+        // Test exact match
+        let exactMatches = index.queryWithin(distance: 0, of: testHashes[0], algorithm: .dHash, excludeFileId: fileIds[0])
+        #expect(exactMatches.isEmpty, "Should exclude self from exact matches")
+        
+        // Test near matches
+        let nearMatches = index.queryWithin(distance: 2, of: testHashes[0], algorithm: .dHash, excludeFileId: fileIds[0])
+        #expect(nearMatches.count == 2, "Should find 2 near matches within distance 2")
+        
+        // Verify distances are correct
+        for match in nearMatches {
+            #expect(match.distance <= 2, "All matches should be within distance 2")
+        }
+    }
+    
+    @Test func testDynamicBKTreeActivation() {
+        let hashingService = ImageHashingService()
+        let index = HashIndexService(hashingService: hashingService) // BK-tree disabled initially
+        
+        // Add enough entries to trigger dynamic BK-tree activation (threshold is 1000)
+        for i in 0..<1100 {
+            let fileId = UUID()
+            let hash = UInt64(i) // Sequential hashes for predictable behavior
+            let hashResult = ImageHashResult(algorithm: .dHash, hash: hash, width: 100, height: 100)
+            index.add(fileId: fileId, hashResult: hashResult)
+        }
+        
+        // Query should trigger BK-tree creation
+        let matches = index.queryWithin(distance: 5, of: 500, algorithm: .dHash)
+        
+        // Should find matches within distance 5 of hash value 500
+        #expect(!matches.isEmpty, "Should find matches near hash value 500")
+        
+        // All matches should be within the specified distance
+        for match in matches {
+            #expect(match.distance <= 5, "All matches should be within distance 5")
+        }
+    }
 }
 
 

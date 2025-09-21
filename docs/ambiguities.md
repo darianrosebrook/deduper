@@ -80,20 +80,39 @@ Format per entry:
   - Decision: A for simplicity; revisit if query needs arise.
   - Verification: Load time and size profiles; note thresholds.
 
-### 07 · UI
-- Ambiguity: Evidence panel density and layout.
-  - Impact: Cognitive load vs trust.
-  - Options: (A) Collapsible sections; (B) summary + expand; (C) always detailed.
-  - Decision: B; concise summary with expandable details.
-  - Verification: Usability pass; a11y check on labels.
+### 07 · UI Architecture & Design System
+- **Ambiguity**: SwiftUI vs AppKit integration and component structure.
+  - Impact: Development speed vs native feel; a11y compliance; design system adoption.
+  - Options: (A) Pure SwiftUI; (B) SwiftUI with AppKit interop; (C) Hybrid approach.
+  - Decision: A - Pure SwiftUI with design token integration from `/Sources/DesignTokens/`. Component classification: Primitives → Compounds → Composers → Assemblies per `/Sources/component-complexity/COMPONENT_STANDARDS.md`.
+  - Verification: Existing components (EvidencePanel, ConfidenceMeter, SignalBadge) demonstrate effective token-based styling. ✅ Implemented components align with standards.
+
+### 08 · Thumbnail Caching Architecture
+- **Ambiguity**: Memory vs disk cache balance with design token integration.
+  - Impact: UI responsiveness vs memory usage; invalidation reliability; design system consistency.
+  - Options: (A) NSCache only; (B) Disk cache with manifest; (C) Hybrid with design tokens for sizing.
+  - Decision: C - NSCache for recent thumbnails, disk cache for persistence, with token-based sizing and invalidation on file changes.
+  - Verification: Cache hit rate metrics; invalidation tests with file changes; token integration for sizing.
 
 ### 08 · Thumbnails & Caching
+- **Ambiguity**: Design system integration for thumbnail sizing and caching policies.
+  - Impact: UI consistency vs performance; invalidation reliability.
+  - Options: (A) Hardcoded sizes; (B) Design token integration; (C) Adaptive sizing.
+  - Decision: B - Use design tokens for sizes and spacing; NSCache + disk cache hybrid.
+  - Verification: Cache hit rate metrics; token-based sizing validation.
+
 - Ambiguity: Disk cache format (PNG vs JPEG) and sizes.
   - Impact: Disk usage vs decode speed.
   - Decision: JPEG for photo thumbnails; PNG for alpha when needed; sizes 1x/2x.
   - Verification: Measure cache hit latency and disk footprint.
 
 ### 09 · Merge & Replace
+- **Ambiguity**: UI design system integration for merge planner and confirmation flows.
+  - Impact: User experience consistency; accessibility compliance.
+  - Options: (A) Custom styling; (B) Design token integration; (C) System components only.
+  - Decision: B - Design token integration for colors, spacing, typography in merge planner.
+  - Verification: Component classification as composer; token reference validation.
+
 - Ambiguity: Which metadata fields are safe to write across formats.
   - Impact: Broken files; lost metadata.
   - Decision: Allow-listed tags per format; prefer sidecar for RAW.

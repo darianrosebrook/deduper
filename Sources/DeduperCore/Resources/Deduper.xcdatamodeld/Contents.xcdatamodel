@@ -8,14 +8,29 @@
         <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="inodeOrFileId" optional="YES" attributeType="String"/>
         <attribute name="isTrashed" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="lastScannedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="mediaType" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="modifiedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="needsMetadataRefresh" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="needsSignatureRefresh" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="path" attributeType="String"/>
+        <relationship name="groupMembers" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="GroupMember" inverseName="file" inverseEntity="GroupMember"/>
         <relationship name="imageSignatures" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ImageSignature" inverseName="file" inverseEntity="ImageSignature"/>
         <relationship name="metadata" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="Metadata" inverseName="file" inverseEntity="Metadata"/>
+        <relationship name="userDecisions" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="UserDecision" inverseName="keeperFile" inverseEntity="UserDecision"/>
         <relationship name="videoSignatures" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="VideoSignature" inverseName="file" inverseEntity="VideoSignature"/>
+        <fetchIndex name="FileBySize">
+            <fetchIndexElement property="fileSize" type="Binary"/>
+        </fetchIndex>
+        <fetchIndex name="FileByModified">
+            <fetchIndexElement property="modifiedAt" type="Binary"/>
+        </fetchIndex>
+        <fetchIndex name="FileByMediaType">
+            <fetchIndexElement property="mediaType" type="Binary"/>
+        </fetchIndex>
     </entity>
     <entity name="ImageSignature" representedClassName="ImageSignature" syncable="YES">
+        <attribute name="captureDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="computedAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="hash64" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="hashType" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
@@ -23,6 +38,13 @@
         <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="width" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
         <relationship name="file" maxCount="1" deletionRule="Nullify" destinationEntity="File" inverseName="imageSignatures" inverseEntity="File"/>
+        <fetchIndex name="ImageSigByHash">
+            <fetchIndexElement property="hash64" type="Binary"/>
+        </fetchIndex>
+        <fetchIndex name="ImageSigByDimensions">
+            <fetchIndexElement property="width" type="Binary"/>
+            <fetchIndexElement property="height" type="Binary"/>
+        </fetchIndex>
     </entity>
     <entity name="VideoSignature" representedClassName="VideoSignature" syncable="YES">
         <attribute name="computedAt" attributeType="Date" usesScalarValueType="NO"/>
@@ -32,6 +54,9 @@
         <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="width" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
         <relationship name="file" maxCount="1" deletionRule="Nullify" destinationEntity="File" inverseName="videoSignatures" inverseEntity="File"/>
+        <fetchIndex name="VideoSigByDuration">
+            <fetchIndexElement property="durationSec" type="Binary"/>
+        </fetchIndex>
     </entity>
     <entity name="Metadata" representedClassName="Metadata" syncable="YES">
         <attribute name="cameraModel" optional="YES" attributeType="String"/>
@@ -44,19 +69,34 @@
         <relationship name="file" maxCount="1" deletionRule="Nullify" destinationEntity="File" inverseName="metadata" inverseEntity="File"/>
     </entity>
     <entity name="DuplicateGroup" representedClassName="DuplicateGroup" syncable="YES">
+        <attribute name="confidenceScore" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="incomplete" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="policyDecisions" optional="YES" attributeType="Binary"/>
         <attribute name="rationale" attributeType="String"/>
         <attribute name="status" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
         <relationship name="members" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="GroupMember" inverseName="group" inverseEntity="GroupMember"/>
+        <relationship name="transactions" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="MergeTransaction" inverseName="group" inverseEntity="MergeTransaction"/>
+        <relationship name="userDecisions" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="UserDecision" inverseName="group" inverseEntity="UserDecision"/>
+        <fetchIndex name="GroupByStatus">
+            <fetchIndexElement property="status" type="Binary"/>
+            <fetchIndexElement property="createdAt" type="Binary"/>
+        </fetchIndex>
     </entity>
     <entity name="GroupMember" representedClassName="GroupMember" syncable="YES">
+        <attribute name="confidenceScore" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="hammingDistance" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="isKeeperSuggestion" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="nameSimilarity" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="penaltiesBlob" optional="YES" attributeType="Binary"/>
+        <attribute name="signalsBlob" optional="YES" attributeType="Binary"/>
         <relationship name="file" maxCount="1" deletionRule="Nullify" destinationEntity="File" inverseName="groupMembers" inverseEntity="File"/>
         <relationship name="group" maxCount="1" deletionRule="Nullify" destinationEntity="DuplicateGroup" inverseName="members" inverseEntity="DuplicateGroup"/>
+        <fetchIndex name="MemberByFile">
+            <fetchIndexElement property="file" type="Binary"/>
+        </fetchIndex>
     </entity>
     <entity name="UserDecision" representedClassName="UserDecision" syncable="YES">
         <attribute name="action" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
@@ -69,5 +109,16 @@
     <entity name="Preference" representedClassName="Preference" syncable="YES">
         <attribute name="key" attributeType="String"/>
         <attribute name="value" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="Any"/>
+    </entity>
+    <entity name="MergeTransaction" representedClassName="MergeTransaction" syncable="YES">
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="payload" attributeType="Binary"/>
+        <attribute name="undoDeadline" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="undoneAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="group" maxCount="1" deletionRule="Nullify" destinationEntity="DuplicateGroup" inverseName="transactions" inverseEntity="DuplicateGroup"/>
+        <fetchIndex name="TransactionTimeline">
+            <fetchIndexElement property="createdAt" type="Binary"/>
+        </fetchIndex>
     </entity>
 </model>

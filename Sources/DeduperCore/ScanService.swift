@@ -2,6 +2,8 @@ import Foundation
 import UniformTypeIdentifiers
 import CoreData
 import os.log
+import ImageIO
+import AVFoundation
 
 /**
  * Service for scanning directories and detecting media files
@@ -141,26 +143,109 @@ public final class ScanService: @unchecked Sendable {
     }
     
     /**
-     * Check if a URL represents a supported media file
+     * Check if a URL represents a supported media file using comprehensive detection
      * 
      * - Parameter url: The URL to check
      * - Returns: true if the file is a supported media type
      */
     public func isMediaFile(url: URL) -> Bool {
-        // First check by file extension (fastest)
+        // Strategy 1: Check by file extension (fastest)
         let fileExtension = url.pathExtension.lowercased()
         if supportedExtensions.contains(fileExtension) {
             return true
         }
         
-        // Fallback to UTType detection
-        guard let resourceValues = try? url.resourceValues(forKeys: [.contentTypeKey]),
-              let contentType = resourceValues.contentType else {
+        // Strategy 2: UTType detection from resource values
+        if let resourceValues = try? url.resourceValues(forKeys: [.contentTypeKey, .typeIdentifierKey]),
+           let contentType = resourceValues.contentType {
+            // Check if it conforms to image or movie types
+            if contentType.conforms(to: .image) || contentType.conforms(to: .movie) {
+                return true
+            }
+        }
+        
+        // Strategy 3: Content-based detection for files without extensions or unknown types
+        return isMediaFileByContent(url: url)
+    }
+    
+    /**
+     * Content-based media file detection using file headers and magic numbers
+     */
+    private func isMediaFileByContent(url: URL) -> Bool {
+        guard let fileHandle = try? FileHandle(forReadingFrom: url) else {
+            return false
+        }
+        defer { try? fileHandle.close() }
+        
+        // Read first 16 bytes for magic number detection
+        guard let headerData = try? fileHandle.read(upToCount: 16) else {
             return false
         }
         
-        // Check if it conforms to image or movie types
-        return contentType.conforms(to: .image) || contentType.conforms(to: .movie)
+        let header = headerData.map { String(format: "%02X", $0) }.joined()
+        let headerHex = header.prefix(32) // First 16 bytes as hex
+        
+        // Image format magic numbers
+        if headerHex.hasPrefix("FFD8FF") || // JPEG
+           headerHex.hasPrefix("89504E47") || // PNG
+           headerHex.hasPrefix("47494638") || // GIF
+           headerHex.hasPrefix("424D") || // BMP
+           headerHex.hasPrefix("49492A00") || headerHex.hasPrefix("4D4D002A") || // TIFF
+           headerHex.hasPrefix("52494646") && headerHex.contains("57454250") { // WebP
+            return true
+        }
+        
+        // Video format magic numbers
+        if headerHex.hasPrefix("000001BA") || headerHex.hasPrefix("000001B3") || // MPEG
+           headerHex.hasPrefix("00000018") || headerHex.hasPrefix("00000020") || // QuickTime/MOV
+           headerHex.hasPrefix("1A45DFA3") || // Matroska/MKV
+           headerHex.hasPrefix("464C5601") { // FLV
+            return true
+        }
+        
+        // Strategy 4: Use ImageIO and AVFoundation for final detection
+        return isMediaFileByFramework(url: url)
+    }
+    
+    /**
+     * Framework-based media file detection using ImageIO and AVFoundation
+     */
+    private func isMediaFileByFramework(url: URL) -> Bool {
+        // Try ImageIO for image detection
+        if let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil) {
+            if let typeIdentifier = CGImageSourceGetType(imageSource) {
+                let type = typeIdentifier as String
+                if type.contains("image") || type.contains("jpeg") || type.contains("png") || 
+                   type.contains("tiff") || type.contains("gif") || type.contains("bmp") ||
+                   type.contains("heic") || type.contains("webp") {
+                    return true
+                }
+            }
+        }
+        
+        // Try AVFoundation for video/audio detection
+        let asset = AVAsset(url: url)
+        if !asset.tracks.isEmpty {
+            let videoTracks = asset.tracks(withMediaType: .video)
+            let audioTracks = asset.tracks(withMediaType: .audio)
+            
+            // Consider it media if it has video tracks or is a substantial audio file
+            if !videoTracks.isEmpty {
+                return true
+            }
+            
+            // For audio files, only consider substantial ones (likely not just metadata)
+            if !audioTracks.isEmpty {
+                // Get file size to determine if it's substantial
+                if let fileAttributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                   let fileSize = fileAttributes[.size] as? Int64,
+                   fileSize > 1024 * 1024 { // 1MB threshold for audio files
+                    return true
+                }
+            }
+        }
+        
+        return false
     }
     
     /**

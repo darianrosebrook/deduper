@@ -22,6 +22,7 @@ public final class HashIndexService: @unchecked Sendable {
     /// Optional BK-tree for faster similarity searches on large datasets
     private var _bkTree: BKTree?
     private let useBKTree: Bool
+    private let bkTreeThreshold: Int = 1000  // Enable BK-tree when dataset exceeds this size
     
     public init(config: HashingConfig = .default, hashingService: ImageHashingService? = nil, useBKTree: Bool = false) {
         self.config = config
@@ -31,6 +32,11 @@ public final class HashIndexService: @unchecked Sendable {
         if useBKTree {
             self._bkTree = BKTree(hashingService: self.hashingService)
         }
+    }
+    
+    /// Creates a HashIndexService with automatic BK-tree optimization for large datasets
+    public static func optimizedForLargeDataset(config: HashingConfig = .default, hashingService: ImageHashingService? = nil) -> HashIndexService {
+        return HashIndexService(config: config, hashingService: hashingService, useBKTree: true)
     }
     
     // MARK: - Public API
@@ -140,9 +146,26 @@ public final class HashIndexService: @unchecked Sendable {
      */
     public func queryWithin(distance: Int, of hash: UInt64, algorithm: HashAlgorithm, excludeFileId: UUID? = nil) -> [HashMatch] {
         return queue.sync {
-            // Use BK-tree if available and enabled
-            if useBKTree, let bkTree = _bkTree {
+            // Use BK-tree if available and enabled, or if dataset is large enough
+            let shouldUseBKTree = useBKTree || _entries.count >= bkTreeThreshold
+            if shouldUseBKTree, let bkTree = _bkTree {
                 return bkTree.search(hash: hash, maxDistance: distance, algorithm: algorithm, excludeFileId: excludeFileId)
+            } else if shouldUseBKTree && _bkTree == nil {
+                // Dynamically create BK-tree for large dataset
+                _bkTree = BKTree(hashingService: hashingService)
+                // Populate with existing entries
+                for entry in _entries {
+                    _bkTree?.insert(
+                        fileId: entry.fileId,
+                        hash: entry.hash,
+                        algorithm: entry.algorithm,
+                        width: entry.width,
+                        height: entry.height,
+                        computedAt: entry.computedAt
+                    )
+                }
+                logger.info("Dynamically enabled BK-tree for large dataset (\(self._entries.count) entries)")
+                return self._bkTree?.search(hash: hash, maxDistance: distance, algorithm: algorithm, excludeFileId: excludeFileId) ?? []
             }
             
             // Fallback to linear search

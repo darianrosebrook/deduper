@@ -3,67 +3,80 @@ Author: @darianrosebrook
 
 ### Objectives
 
-- Persist index data, signatures, groups, and decisions with durability and speed.
-- Support migrations and efficient queries used by detection and UI.
+- Persist file index data, media signatures, duplicate groups, and user actions with durability and low-latency lookups.
+- Provide query paths that keep the detection engine and UI responsive while enabling migrations and schema evolution.
 
-### Data Model (Core Data suggested)
+### Architecture Snapshot (Current State)
 
-- File(id, path, bookmark, fileSize, createdAt, modifiedAt, mediaType, inode, checksum)
-- ImageSignature(fileId, width, height, hashType, hash64, computedAt)
-- VideoSignature(fileId, durationSec, width, height, frameHashes, computedAt)
-- Metadata(fileId, captureDate, cameraModel, gpsLat, gpsLon, keywords, exifBlob)
-- DuplicateGroup(id, createdAt, status, rationale)
-- GroupMember(groupId, fileId, isKeeperSuggestion, hammingDistance, nameSimilarity)
-- UserDecision(groupId, keeperFileId, action, mergedFields, performedAt)
-- Preference(key, valueJson)
+- `PersistenceController`
+  - Owns the Core Data stack (`NSPersistentContainer`) configured with WAL journaling and automatic lightweight migrations.
+  - Provides async-safe background write helpers, bookmark refresh, invalidation flags, duplicate-group persistence, transaction logging, and cached preference CRUD helpers.
+- `IndexQueryService`
+  - Read-optimized facade that runs in background contexts to answer size, dimension, capture date, and duration queries used by detection heuristics and UI filters.
+- `BookmarkManager`
+  - Persists security-scoped bookmarks in `UserDefaults` and syncs with Core Data `File` records via `resolveFileURL` and `refreshBookmark`.
+- `Deduper.xcdatamodeld`
+  - Authoritative schema bundled with the target. Runtime fallback builds the same entities for in-memory tests.
 
-### Responsibilities
+### Data Model (authoritative fields)
 
-- Bookmark identity survival across moves/renames; path refresh on resolve.
-- Write batching via background contexts; WAL mode; faulting.
-- Invalidation flags for signatures when size/mtime changes.
-- Query helpers for buckets and UI lists.
+| Entity | Purpose | Key Attributes | Fetch Indexes |
+| --- | --- | --- | --- |
+| `File` | Canonical record for every scanned item. | `id (UUID)`, `path`, `bookmarkData`, `mediaType`, `fileSize`, `createdAt`, `modifiedAt`, `inodeOrFileId`, `isTrashed`, `lastScannedAt`, `needsMetadataRefresh`, `needsSignatureRefresh`, `checksumSHA256`. | `FileBySize`, `FileByModified`, `FileByMediaType` |
+| `ImageSignature` | Hash + dimension metadata for quick bucketing. | `id`, `hashType`, `hash64`, `width`, `height`, `computedAt`, `captureDate`. | `ImageSigByHash`, `ImageSigByDimensions` |
+| `VideoSignature` | Temporal signature snapshot. | `id`, `durationSec`, `width`, `height`, `frameHashes`, `computedAt`. | `VideoSigByDuration` |
+| `Metadata` | Rich EXIF/IPTC payload. | `id`, `captureDate`, `cameraModel`, `gpsLat`, `gpsLon`, `keywords`, `exifBlob`. | — |
+| `DuplicateGroup` | Heads-up review units. | `id`, `createdAt`, `status`, `rationale`, `confidenceScore`, `incomplete`, `policyDecisions` (binary blob). | `GroupByStatus` |
+| `GroupMember` | Member details + evidence. | `id`, `confidenceScore`, `isKeeperSuggestion`, `hammingDistance`, `nameSimilarity`, `signalsBlob`, `penaltiesBlob`. | `MemberByFile` |
+| `UserDecision` | Audit of user actions. | `id`, `action`, `performedAt`, `mergedFields` (transformable), FK to `DuplicateGroup` and keeper `File`. | — |
+| `MergeTransaction` | Durable undo log payload. | `id`, `createdAt`, `undoDeadline`, `undoneAt`, `payload` (binary JSON). | `TransactionTimeline` |
+| `Preference` | Persistent feature toggles + weights. | `key` (string), `value` (transformable, secure unarchive). | — |
 
-### Public API (proposed)
+### Persistence Flow
 
-- Store
-  - upsert(file, metadata)
-  - saveImageSignature(fileId, sig)
-  - saveVideoSignature(fileId, sig)
-  - createGroup(members, rationale)
-  - recordDecision(groupId, decision)
-  - query helpers: bySize, byDimensions, byDuration, openGroups()
+- **File ingest**: `upsertFile` resolves bookmarks (scope aware), deduplicates by bookmark or path, updates inode and checksum, and flips `needsMetadataRefresh`/`needsSignatureRefresh` when `fileSize` or `modifiedAt` drift.
+- **Metadata + signatures**: `saveMetadata`, `saveImageSignature`, and `saveVideoSignature` are idempotent. They ensure 1-1 relations where appropriate and clear refresh flags upon success.
+- **Grouping**: `createOrUpdateGroup(from:)` writes/updates `DuplicateGroup`, cascades members, serialises per-member signals/penalties, and records `keeperSuggestion` by flag.
+- **Decisions & undo**: `recordDecision` adds immutable rows. `recordTransaction` captures serialized `MergeTransactionRecord`, and `undoLastTransaction` marks the latest open transaction as undone while returning the decoded payload to the caller.
+- **Preferences**: `setPreference` / `preferenceValue` encode `Codable` payloads into the `Preference` entity, cache results in-memory, and support explicit `removePreference` cleans.
+- **Background safety**: every mutating API runs inside `performBackground`, which serializes completion onto the calling actor and saves automatically when changes exist.
 
-### Safeguards
+### Query Surface
 
-- Transactions for multi-entity writes.
-- Crash-safe: rely on SQLite journaling; verify on next launch and recover.
-- PII minimization: store only required fields; redact paths in logs.
+- Use `IndexQueryService` for read-mostly paths:
+  - `fetchByFileSize(min:max:mediaType:)` for coarse duplicate candidates.
+  - `fetchByDimensions(width:height:mediaType:)` and `fetchByCaptureDateRange(start:end:)` for UI filters.
+  - `fetchVideosByDuration(minSeconds:maxSeconds:)` for video group heuristics.
+- `PersistenceController` keeps synchronous helpers for bookmark resolution and incremental scanning (`shouldSkipFile`, `shouldSkipFileThreadSafe`).
+- Fetch indexes in the Core Data model back these queries without custom SQL.
 
-### Verification
+### Safeguards & Operational Guarantees
 
-- Unit: save/load of entities; migrations from v1→v2.
-- Integration: move file on disk → identity preserved; path updated on next resolve.
+- SQLite WAL journaling + synchronous background contexts support crash resilience.
+- Automatic lightweight migrations are enabled on the persistent store description; tests rely on the bundled model to upgrade fixtures.
+- Sensitive paths are logged via `OSLog` with privacy redaction; binary columns encapsulate rationale data so schema changes avoid migrations.
+- Confidence signal and penalty arrays round-trip through `JSONEncoder`/`Decoder` to keep the format evolvable.
 
-### Metrics
+### Metrics & Observability
 
-- OSLog categories: persist, query.
-- Counters: batch sizes, query times, migration durations.
+- Categories: `persist` (writes), `indexQuery` (reads). Counters captured today: scan batching via `PerformanceMetrics`; TODO add dedicated persistence gauges for batch sizes and transaction timings.
 
-### Pseudocode
+### Verification Snapshot
 
-```swift
-protocol Store {
-    func upsert(file: FileRecord, metadata: MediaMetadata?)
-    func saveImageSignature(fileId: UUID, sig: ImageSig)
-    func saveVideoSignature(fileId: UUID, sig: VideoSig)
-    func createGroup(members: [UUID], rationale: String)
-    func recordDecision(groupId: UUID, decision: UserDecision)
-    func queryBySize(_ size: Int64) -> [UUID]
-    func queryByDimensions(_ w: Int, _ h: Int) -> [UUID]
-    func queryByDuration(_ sec: Double, tolerance: Double) -> [UUID]
-    func url(for fileId: UUID) -> URL?
-}
-```
+- `Tests/DeduperCoreTests/PersistenceControllerTests.swift`
+  - `testUpsertFileUpdatesMetadataFlags`
+  - `testSaveImageAndVideoSignatures`
+  - `testCreateGroupPersistsMembers`
+  - `testTransactionLoggingAndUndo`
+- `Tests/DeduperCoreTests/IndexQueryServiceTests.swift`
+  - Validates size/dimension/duration queries return `ScannedFile` projections.
+- Outstanding:
+  - Automated move/rename test to prove bookmark-based identity survives path drift.
+  - Migration fixture covering v1 → v2 schema bump.
+  - Preference round-trip coverage once persistence APIs land.
 
+### Open Items / Next Iterations
 
+- Add `fetchOpenGroups(status:limit:)` helper once the review UI is ready; today only tests call `createOrUpdateGroup` directly.
+- Capture persistence metrics (batch write duration, query latency percentiles) via `PerformanceMetrics` or `OSLog` signposts.
+- Wire a background verification task that scans for stale bookmarks and refreshes `path` values eagerly.

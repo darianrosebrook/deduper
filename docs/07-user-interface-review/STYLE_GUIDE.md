@@ -3,70 +3,114 @@ Author: @darianrosebrook
 
 ### Purpose
 
-Establish UI component conventions, typography, spacing, and color usage to ensure clarity, accessibility, and consistency with macOS while supporting duplicate review semantics.
+Establish UI component conventions following `/Sources/DesignSystem/COMPONENT_STANDARDS.md` and `/Sources/DesignSystem/designTokens/`. All styling uses design tokens for consistency, accessibility, and theming support.
 
 ### Typography
 
-- Use SF Pro Text for body and lists; SF Pro Display for large titles.
-- Sizes: Title 24, Heading 17, Body 13–15, Caption 11–12.
-- Line height: default macOS metrics; avoid manual tightening.
+- **Token-based**: All typography uses design tokens from `/Sources/DesignSystem/designTokens/`.
+- **System fonts**: SF Pro Text and SF Pro Display are defined in core tokens as `typography.fontFamily.body` and `typography.fontFamily.display`.
+- **Semantic sizing**: Typography sizes use semantic tokens: `typography.size.title`, `typography.size.heading`, `typography.size.body`, `typography.size.caption`.
+- **Line height**: Controlled by `typography.lineHeight.*` tokens; avoid manual adjustments.
 
 ### Layout & Spacing
 
-- Base spacing unit: 8pt; fine adjustments 4pt.
-- Split view: Sidebar min 240pt; content flexible; detail pane min 480pt.
-- Grids: thumbnails default 96–128pt; adjustable zoom; maintain consistent gutters.
+- **Token-based spacing**: Use `spacing.size.*` tokens from `/Sources/DesignSystem/designTokens/core.tokens.json`.
+- **Semantic spacing**: Reference `spacing.semantic.*` tokens for component padding, margins, and gaps.
+- **Split view**: Sidebar min width uses `dimension.splitView.sidebar`, content flexible, detail pane uses `dimension.splitView.detail`.
+- **Grids**: Thumbnail sizes use `dimension.thumbnail.*` tokens; gutters use `spacing.size.*` tokens.
 
 ### Color & Contrast
 
-- Respect system dynamic colors; support light/dark mode.
-- Avoid color-only signals. Pair with shape/text. Ensure WCAG AA contrast for text and indicators.
+- **Token-based colors**: Use `color.palette.*` and `color.semantic.*` tokens from `/Sources/DesignSystem/designTokens/`.
+- **Mode-aware**: Semantic tokens use `$extensions.design.paths` for light/dark variants.
+- **WCAG AA compliance**: All color combinations meet accessibility standards through token design.
+- **Avoid color-only signals**: Pair colors with shape/text; use semantic tokens for roles like `color.signal.success`.
 
 ### Iconography
 
-- Use SF Symbols where possible. Prefer filled variants for selected/active states.
-- Common: checkmark.circle for keeper, exclamationmark.triangle for low confidence, gauge for confidence meter.
+- **SF Symbols**: Use system symbols defined in design tokens as `icon.*` references.
+- **Semantic variants**: Use filled variants for selected/active states via `icon.variant.filled` tokens.
+- **Common mappings**: Keeper uses `icon.keeper`, warnings use `icon.warning`, confidence uses `icon.confidence`.
+- **Token-based sizing**: Icon sizes use `dimension.icon.*` tokens for consistency.
 
-### Components
+### Component Standards (Layered Architecture)
 
-- SignalBadge: capsule with icon + short label (e.g., "checksum", "pHash 92").
-- ConfidenceMeter: horizontal bar with 3–5 segments; accessible text announces level and value.
-- EvidencePanel: list of signals with thresholds and distances; shows overall confidence.
-- MetadataDiff: two-column field list; equal fields grey; diffs highlighted.
-- PreviewStrip: lazy thumbnails or key frames; progressive decoding; QuickLook on demand.
-- SimilarityControls: slider for threshold; toggles for signal inclusion; reset to defaults.
-- MergePlanSheet: summary of keeper, removals, per-field merges; dry-run preview and confirm.
-- HistoryList: list of recent operations with restore actions.
+Following `/Sources/DesignSystem/COMPONENT_STANDARDS.md`, components are classified into layers:
+
+#### Primitives (Single-responsibility)
+- **SignalBadge**: Capsule with icon + short label; uses `color.signal.*` tokens for pass/warn/fail states.
+- **ConfidenceMeter**: Horizontal bar with segments; uses semantic color tokens and announces values accessibly.
+- **ActionButton**: Primary/secondary/destructive variants; consistent sizing via `dimension.button.*` tokens.
+
+#### Compounds (Predictable bundles)
+- **EvidencePanel**: List of signals with thresholds and distances; composed of SignalBadge + ConfidenceMeter primitives.
+- **MetadataDiff**: Two-column field comparison; highlights differences using `color.diff.*` semantic tokens.
+- **PreviewCard**: Thumbnail + metadata preview; combines image and text primitives with lazy loading.
+
+#### Composers (Stateful orchestrators)
+- **MergePlanSheet**: Complex state management for keeper selection and metadata merging; uses Provider pattern.
+- **DuplicateGroupDetailView**: Side-by-side comparison with state orchestration; manages focus and navigation.
+- **GroupsListView**: Virtualized list with search/filter; provides selection context and keyboard navigation.
 
 ### States & Feedback
 
-- Loading: skeleton placeholders; spinners only when necessary.
-- Empty: encourage selecting folders and starting a scan.
-- Error: concise message + action to resolve (grant permission, retry, exclude).
+- **Loading states**: Use skeleton placeholders with `color.skeleton.*` tokens; spinners only when necessary.
+- **Empty states**: Encourage action with clear messaging and `icon.emptyState` visual cues.
+- **Error states**: Concise messages with actionable steps using `color.signal.error` tokens.
+- **Interactive states**: Hover, focus, active, disabled all use semantic color tokens for consistency.
 
 ### Accessibility
 
-- Labels and hints for badges, meters, diff highlights, and actions.
-- Full keyboard navigation and shortcuts consistent with `docs/SHORTCUTS_AND_BATCH_UX.md`.
-- Focus ring clearly visible; avoid relying solely on color to denote focus.
+- **Contract requirements**: Each interactive component must include `ComponentName.contract.json` with ARIA roles, keyboard maps, and APG patterns.
+- **Semantic tokens**: Use `color.focus.*` tokens for focus indicators; avoid color-only semantics.
+- **Keyboard navigation**: Full support with documented keyboard maps in component contracts.
+- **Screen reader support**: Proper labeling and announcements using `aria-label` and `aria-labelledby`.
 
 ### Motion
 
-- Reduce motion respected; avoid large parallax or heavy transitions.
-- Subtle fades for content appearing (e.g., upgraded previews).
+- **Token-based motion**: Use `motion.duration.*` and `motion.easing.*` tokens from `/Sources/DesignSystem/designTokens/`.
+- **Reduce motion**: Respect system preferences using `motion.prefersReducedMotion` tokens.
+- **Subtle transitions**: Content appearing uses short duration tokens; avoid heavy animations.
 
 ### Logging & Copy
 
-- Use clear, specific copy. Avoid vague staging terms; describe the action or benefit directly.
-- Logging categories: `ui` for interactions, `ui.evidence` for confidence, `ui.actions` for operations.
+- **Clear messaging**: Use specific, actionable copy; avoid vague terms per `/docs/ERRORS_AND_UX_COPY.md`.
+- **Token-based copy**: Consider localized strings with token-based fallbacks.
+- **Logging categories**: `ui` for interactions, `ui.evidence` for confidence, `ui.actions` for operations.
 
-### Examples
+### Implementation Examples
+
+#### Using Design Tokens
 
 ```swift
-// Confidence meter colors map to system semantic colors
+// Confidence meter using semantic color tokens
 ConfidenceMeter(value: group.confidence)
-  .tint(group.confidence > 0.9 ? .green : group.confidence > 0.7 ? .yellow : .orange)
+  .tint(Color.token(\.color.signal.success)) // High confidence
   .accessibilityLabel("Confidence \(Int(group.confidence * 100)) percent")
+```
+
+#### Component Structure (Following Standards)
+
+```swift
+// SignalBadge primitive - single file with tokens
+struct SignalBadge: View {
+    let signal: Signal
+    var body: some View {
+        Text(signal.name)
+            .foregroundColor(Color.token(\.color.signal.success))
+            .padding(.horizontal, .token(\.spacing.size.02))
+    }
+}
+```
+
+#### Component Validation
+
+```bash
+# Scaffold new components with proper structure
+npm run scaffold:component -- --name EvidencePanel --layer compound
+
+# Validate all components
+npm run validate:components
 ```
 
 

@@ -15,12 +15,33 @@ public final class VideoFingerprinter: @unchecked Sendable {
     private let config: VideoFingerprintConfig
     private let imageHasher: ImageHashingService
     
+    /// Error tracking for frame extraction failures
+    private let errorTrackingQueue = DispatchQueue(label: "video-fingerprint-errors", attributes: .concurrent)
+    private var _totalFramesAttempted: Int = 0
+    private var _totalFramesFailed: Int = 0
+    
     public init(
         config: VideoFingerprintConfig = .default,
         imageHasher: ImageHashingService? = nil
     ) {
         self.config = config
         self.imageHasher = imageHasher ?? ImageHashingService()
+    }
+    
+    /// Get current error tracking statistics
+    public var errorStatistics: (attempted: Int, failed: Int, failureRate: Double) {
+        return errorTrackingQueue.sync {
+            let failureRate = _totalFramesAttempted > 0 ? Double(_totalFramesFailed) / Double(_totalFramesAttempted) : 0.0
+            return (attempted: _totalFramesAttempted, failed: _totalFramesFailed, failureRate: failureRate)
+        }
+    }
+    
+    /// Reset error tracking statistics
+    public func resetErrorTracking() {
+        errorTrackingQueue.sync(flags: .barrier) {
+            _totalFramesAttempted = 0
+            _totalFramesFailed = 0
+        }
     }
 
     /// Computes a video signature for the provided URL.
@@ -64,6 +85,12 @@ public final class VideoFingerprinter: @unchecked Sendable {
         var hashes: [UInt64] = []
         var actualTimes: [Double] = []
         var failures = 0
+        
+        // Track total frames attempted
+        errorTrackingQueue.sync(flags: .barrier) {
+            _totalFramesAttempted += cmTimes.count
+        }
+        
         for (index, cmTime) in cmTimes.enumerated() {
             var actualTime = CMTime.invalid
             do {
@@ -75,10 +102,18 @@ public final class VideoFingerprinter: @unchecked Sendable {
                 } else {
                     failures += 1
                     logger.debug("No dHash produced for frame #\(index) at \(targetTimes[index])s")
+                    // Track hash computation failure
+                    errorTrackingQueue.sync(flags: .barrier) {
+                        _totalFramesFailed += 1
+                    }
                 }
             } catch {
                 failures += 1
                 logger.error("Failed to extract frame #\(index) at \(targetTimes[index])s: \(error.localizedDescription, privacy: .public)")
+                // Track frame extraction failure
+                errorTrackingQueue.sync(flags: .barrier) {
+                    _totalFramesFailed += 1
+                }
             }
         }
         
@@ -98,6 +133,13 @@ public final class VideoFingerprinter: @unchecked Sendable {
         
         let elapsed = Date().timeIntervalSince(fingerprintStart)
         logger.debug("Video fingerprinted (\(hashes.count) frames, failures: \(failures)) in \(String(format: "%.3f", elapsed))s for \(url.lastPathComponent, privacy: .public)")
+        
+        // Log error rate if it exceeds target threshold
+        let stats = errorStatistics
+        if stats.failureRate > 0.01 { // 1% threshold
+            logger.warning("Frame extraction failure rate: \(String(format: "%.2f", stats.failureRate * 100))% (\(stats.failed)/\(stats.attempted)) - exceeds 1% target")
+        }
+        
         return signature
     }
 

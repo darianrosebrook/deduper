@@ -322,6 +322,9 @@ public struct MediaMetadata: Sendable, Equatable {
     public var gpsLat: Double?
     public var gpsLon: Double?
     public var durationSec: Double?
+    public var keywords: [String]?
+    public var tags: [String]?
+    public var inferredUTType: String?
 }
 
 // MARK: - Video Signatures (Module 04)
