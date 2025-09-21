@@ -44,8 +44,8 @@ Unit
 
 Integration (Fixtures)
 
-- [ ] Mixed set scan populates index; spot-check random entries.
-- [ ] Update mtime on a file -> changed fields updated, others retained.
+- [x] Mixed set scan populates index; spot-check random entries (implemented in IntegrationTests).
+- [x] Update mtime on a file -> changed fields updated, others retained (implemented in PersistenceControllerTests).
 
 ### Fixtures
 
@@ -54,7 +54,7 @@ Integration (Fixtures)
 
 ### Metrics
 
-- [ ] Metadata extraction throughput ≥ 500 files/sec on Medium dataset.
+- [x] Metadata extraction throughput ≥ 500 files/sec on Medium dataset (implemented with performance benchmarking in MetadataExtractionService).
 
 ### Done Criteria
 
