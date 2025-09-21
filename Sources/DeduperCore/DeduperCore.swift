@@ -40,7 +40,7 @@ public struct DeduperCore {
 // Core types are exported from CoreTypes.swift
 // Services are exported from their respective files:
 // - BookmarkManager.swift
-// - ScanService.swift  
+// - ScanService.swift
 // - MonitoringService.swift
 // - PersistenceController.swift
 // - FolderSelectionService.swift
@@ -48,6 +48,96 @@ public struct DeduperCore {
 // - ScanOrchestrator.swift
 // - MetadataExtractionService.swift
 // - IndexQueryService.swift
+
+// MARK: - Service Manager
+
+/**
+ * ServiceManager coordinates all the core services for the Deduper application.
+ *
+ * This provides a centralized way to access all services with proper initialization
+ * and dependency injection.
+ */
+@MainActor
+public final class ServiceManager: ObservableObject {
+
+    // MARK: - Properties
+
+    /// Shared instance
+    public static let shared = ServiceManager()
+
+    /// Folder selection service
+    public let folderSelection: FolderSelectionService
+
+    /// Scan orchestrator for coordinating scans
+    public let scanOrchestrator: ScanOrchestrator
+
+    /// Duplicate detection engine
+    public let duplicateEngine: DuplicateDetectionEngine
+
+    /// Metadata extraction service
+    public let metadataService: MetadataExtractionService
+
+    /// Index query service
+    public let indexQuery: IndexQueryService
+
+    /// Merge service for handling file merges
+    public let mergeService: MergeService
+
+    /// Thumbnail service for generating and caching thumbnails
+    public let thumbnailService: ThumbnailService
+
+    /// Persistence controller for data storage
+    public let persistence: PersistenceController
+
+    // MARK: - Initialization
+
+    private init() {
+        // Initialize persistence first
+        self.persistence = PersistenceController.shared
+
+        // Initialize core services
+        self.folderSelection = FolderSelectionService(persistence: persistence)
+        self.metadataService = MetadataExtractionService(persistence: persistence)
+        self.indexQuery = IndexQueryService(persistence: persistence)
+
+        // Initialize thumbnail service
+        self.thumbnailService = ThumbnailService.shared
+
+        // Initialize merge service with dependencies
+        self.mergeService = MergeService(
+            persistenceController: persistence,
+            metadataService: metadataService
+        )
+
+        // Initialize scan orchestrator
+        self.scanOrchestrator = ScanOrchestrator(
+            persistence: persistence,
+            metadataService: metadataService,
+            thumbnailService: thumbnailService
+        )
+
+        // Initialize duplicate detection engine
+        self.duplicateEngine = DuplicateDetectionEngine(
+            persistence: persistence,
+            metadataService: metadataService,
+            indexQuery: indexQuery
+        )
+    }
+
+    // MARK: - Public Methods
+
+    /// Starts monitoring for file system changes
+    public func startMonitoring() {
+        // This would typically be called when the app becomes active
+        // For now, we don't have a dedicated monitoring service
+    }
+
+    /// Stops monitoring for file system changes
+    public func stopMonitoring() {
+        // This would typically be called when the app becomes inactive
+        // For now, we don't have a dedicated monitoring service
+    }
+}
 
 // MARK: - Library Information
 

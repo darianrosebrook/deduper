@@ -20,6 +20,30 @@ public struct DeduperApp: App {
             CommandGroup(replacing: .newItem) {
                 // Add custom menu items here if needed
             }
+
+            CommandMenu("Merge") {
+                Button("Merge Current Group") {
+                    // This would trigger merge on the currently selected group
+                    print("Merge current group")
+                }
+                .keyboardShortcut("m", modifiers: .command)
+
+                Divider()
+
+                Button("Undo Last Merge") {
+                    // This would undo the last merge operation
+                    print("Undo last merge")
+                }
+                .keyboardShortcut("z", modifiers: .command)
+
+                Divider()
+
+                Button("Skip Group") {
+                    // This would skip the currently selected group
+                    print("Skip current group")
+                }
+                .keyboardShortcut("s", modifiers: .command)
+            }
         }
     }
 }

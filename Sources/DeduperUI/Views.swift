@@ -9,28 +9,12 @@ import OSLog
  - Design System: Application assemblies following `/Sources/DesignSystem/COMPONENT_STANDARDS.md`
  */
 
-// MARK: - Placeholder Types for UI (will be replaced with actual core types)
+// MARK: - Core Types Re-export
 
-public struct DuplicateGroup: Identifiable, Equatable, Hashable {
-    public let id: String
-    public let members: [ScannedFile]
-    public let confidence: Double
-    public let spacePotentialSaved: Int64
-
-    public init(id: String, members: [ScannedFile], confidence: Double, spacePotentialSaved: Int64) {
-        self.id = id
-        self.members = members
-        self.confidence = confidence
-        self.spacePotentialSaved = spacePotentialSaved
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-        hasher.combine(members.count) // Just hash the count, not the full array
-        hasher.combine(confidence)
-        hasher.combine(spacePotentialSaved)
-    }
-}
+// Re-export core types for UI use
+public typealias DuplicateGroup = DeduperCore.DuplicateGroupResult
+public typealias ScannedFile = DeduperCore.ScannedFile
+public typealias DuplicateGroupMember = DeduperCore.DuplicateGroupMember
 
 // MARK: - Onboarding View
 
@@ -57,8 +41,56 @@ public struct OnboardingView: View {
                 Text("Get Started:")
                     .font(DesignToken.fontFamilyHeading)
 
-                Button("Select Folders", action: viewModel.selectFolders)
-                    .buttonStyle(.borderedProminent)
+                Button(action: viewModel.selectFolders) {
+                    if viewModel.isValidating {
+                        HStack {
+                            Text("Validating...")
+                            ProgressView()
+                        }
+                    } else {
+                        Text("Select Folders")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.isValidating)
+
+                if !viewModel.selectedFolders.isEmpty {
+                    VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                        Text("Selected folders:")
+                            .font(DesignToken.fontFamilyCaption)
+                            .foregroundStyle(DesignToken.colorForegroundSecondary)
+
+                        ForEach(viewModel.selectedFolders, id: \.self) { folder in
+                            Text(folder.lastPathComponent)
+                                .font(DesignToken.fontFamilyCaption)
+                                .foregroundStyle(DesignToken.colorForegroundPrimary)
+                        }
+                    }
+                }
+
+                if let validationResult = viewModel.validationResult {
+                    if validationResult.issues.isEmpty {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(DesignToken.colorSuccess)
+                            Text("All folders are valid and ready to scan!")
+                                .foregroundStyle(DesignToken.colorSuccess)
+                        }
+                        .font(DesignToken.fontFamilyCaption)
+                    } else {
+                        VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                            ForEach(validationResult.issues) { issue in
+                                HStack {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundStyle(DesignToken.colorWarning)
+                                    Text(issue.description)
+                                        .foregroundStyle(DesignToken.colorWarning)
+                                }
+                                .font(DesignToken.fontFamilyCaption)
+                            }
+                        }
+                    }
+                }
 
                 Text("Choose which folders to scan for duplicates. You can always change this later in Settings.")
                     .font(DesignToken.fontFamilyCaption)
@@ -73,10 +105,36 @@ public struct OnboardingView: View {
     }
 }
 
+@MainActor
 public class OnboardingViewModel: ObservableObject {
+    private let folderSelectionService = DeduperCore.ServiceManager.shared.folderSelection
+
+    @Published public var selectedFolders: [URL] = []
+    @Published public var isValidating = false
+    @Published public var validationResult: DeduperCore.FolderValidationResult?
+
     public func selectFolders() {
-        // TODO: Implement folder selection
-        print("Folder selection not yet implemented")
+        // Use the folder selection service to pick folders
+        let folders = folderSelectionService.pickFolders()
+        selectedFolders = folders
+
+        // Validate the selected folders
+        if !folders.isEmpty {
+            validateSelectedFolders(folders)
+        }
+    }
+
+    private func validateSelectedFolders(_ folders: [URL]) {
+        isValidating = true
+
+        Task {
+            let result = folderSelectionService.validateFolders(folders)
+
+            await MainActor.run {
+                self.validationResult = result
+                self.isValidating = false
+            }
+        }
     }
 }
 
@@ -147,6 +205,8 @@ public struct GroupsListView: View {
     @State private var selectedGroup: DuplicateGroup?
     @State private var showSimilarityControls = false
     @State private var searchText = ""
+    @State private var selectedGroupIndex = 0
+    @FocusState private var isFocused: Bool
 
     public var body: some View {
         VStack {
@@ -169,14 +229,18 @@ public struct GroupsListView: View {
             }
             .padding(DesignToken.spacingMD)
 
-            // Groups list with virtualization
+            // Groups list with virtualization and keyboard navigation
             ScrollView {
                 LazyVStack(spacing: DesignToken.spacingXS) {
-                    ForEach(viewModel.filteredGroups) { group in
+                    ForEach(Array(viewModel.filteredGroups.enumerated()), id: \.1.id) { (index, group) in
                         GroupRowView(group: group)
+                            .focused($isFocused, equals: selectedGroupIndex == index)
                             .onTapGesture {
                                 selectedGroup = group
+                                selectedGroupIndex = index
                             }
+                    }
+                }
                             .contextMenu {
                                 Button("Select as Keeper") {
                                     viewModel.setKeeper(for: group)
@@ -213,7 +277,33 @@ public struct GroupsListView: View {
         .onAppear {
             viewModel.loadGroups()
         }
-        // TODO: Add keyboard shortcuts when macOS 14.0+ support is available
+        // Keyboard navigation for group selection
+        .onKeyPress(.downArrow) {
+            if selectedGroupIndex < viewModel.filteredGroups.count - 1 {
+                selectedGroupIndex += 1
+                selectedGroup = viewModel.filteredGroups[selectedGroupIndex]
+            }
+            return .handled
+        }
+        .onKeyPress(.upArrow) {
+            if selectedGroupIndex > 0 {
+                selectedGroupIndex -= 1
+                selectedGroup = viewModel.filteredGroups[selectedGroupIndex]
+            }
+            return .handled
+        }
+        .onKeyPress(.return) {
+            if let selectedGroup = selectedGroup {
+                print("Navigate to group: \(selectedGroup.id)")
+            }
+            return .handled
+        }
+        .onKeyPress(" ") {
+            if let selectedGroup = selectedGroup {
+                viewModel.setKeeper(for: selectedGroup)
+            }
+            return .handled
+        }
     }
 }
 
@@ -249,10 +339,13 @@ public struct GroupRowView: View {
 
 @MainActor
 public final class GroupsListViewModel: ObservableObject {
+    private let duplicateEngine = DeduperCore.ServiceManager.shared.duplicateEngine
+
     @Published public var groups: [DuplicateGroup] = []
     @Published public var filteredGroups: [DuplicateGroup] = []
     @Published public var isLoading = false
     @Published public var error: String?
+    @Published public var searchText = ""
 
     private var searchText = ""
 
@@ -270,16 +363,21 @@ public final class GroupsListViewModel: ObservableObject {
         isLoading = true
         error = nil
 
-        // TODO: Replace with actual data loading from DeduperCore
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.groups = [
-                DuplicateGroup(id: "1", members: [], confidence: 0.95, spacePotentialSaved: 1_234_567),
-                DuplicateGroup(id: "2", members: [], confidence: 0.78, spacePotentialSaved: 567_890),
-                DuplicateGroup(id: "3", members: [], confidence: 0.65, spacePotentialSaved: 234_567),
-                DuplicateGroup(id: "4", members: [], confidence: 0.92, spacePotentialSaved: 3_456_789),
-            ]
-            self.applyFilters()
-            self.isLoading = false
+        Task {
+            do {
+                // Load duplicate groups from the detection engine
+                let loadedGroups = try await duplicateEngine.findDuplicates()
+                await MainActor.run {
+                    self.groups = loadedGroups
+                    self.applyFilters()
+                    self.isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.error = error.localizedDescription
+                    self.isLoading = false
+                }
+            }
         }
     }
 
@@ -320,20 +418,60 @@ public final class GroupsListViewModel: ObservableObject {
 
 @MainActor
 public final class GroupDetailViewModel: ObservableObject {
+    private let mergeService = DeduperCore.ServiceManager.shared.mergeService
+    private let thumbnailService = DeduperCore.ServiceManager.shared.thumbnailService
+
     @Published public var selectedGroup: DuplicateGroup?
     @Published public var isProcessing = false
+    @Published public var mergePlan: DeduperCore.MergePlan?
+    @Published public var mergeResult: DeduperCore.MergeResult?
+    @Published public var error: String?
 
     public init(group: DuplicateGroup) {
         self.selectedGroup = group
+        Task {
+            await loadMergePlan()
+        }
     }
 
-    public func mergeGroup() {
-        isProcessing = true
+    public func loadMergePlan() async {
+        guard let group = selectedGroup else { return }
 
-        // TODO: Implement merge operation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            self.isProcessing = false
-            print("Merge completed")
+        do {
+            // Use the suggested keeper from the group
+            let keeperId = group.keeperSuggestion ?? group.members.first?.fileId ?? UUID()
+
+            let plan = try await mergeService.planMerge(groupId: group.groupId, keeperId: keeperId)
+            await MainActor.run {
+                self.mergePlan = plan
+            }
+        } catch {
+            await MainActor.run {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    public func mergeGroup() async {
+        isProcessing = true
+        error = nil
+
+        do {
+            guard let group = selectedGroup,
+                  let keeperId = group.keeperSuggestion ?? group.members.first?.fileId else {
+                throw DeduperCore.MergeError.groupNotFound(group.groupId)
+            }
+
+            let result = try await mergeService.merge(groupId: group.groupId, keeperId: keeperId)
+            await MainActor.run {
+                self.mergeResult = result
+                self.isProcessing = false
+            }
+        } catch {
+            await MainActor.run {
+                self.error = error.localizedDescription
+                self.isProcessing = false
+            }
         }
     }
 }
@@ -523,6 +661,120 @@ public struct SettingsView: View {
 
 // HistoryView is now implemented in HistoryView.swift as a full-featured component
 
+// MARK: - Error Handling Components
+
+/**
+ * ErrorAlertView displays error information with actionable recovery steps.
+ * - Shows error title, description, and recovery actions.
+ * - Design System: Compound component for error states.
+ */
+public struct ErrorAlertView: View {
+    public let error: Error
+    public let recoveryAction: (() -> Void)?
+    public let dismissAction: (() -> Void)?
+
+    public init(error: Error, recoveryAction: (() -> Void)? = nil, dismissAction: (() -> Void)? = nil) {
+        self.error = error
+        self.recoveryAction = recoveryAction
+        self.dismissAction = dismissAction
+    }
+
+    public var body: some View {
+        VStack(spacing: DesignToken.spacingMD) {
+            // Error icon
+            Image(systemName: "exclamationmark.triangle.fill")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 48, height: 48)
+                .foregroundStyle(DesignToken.colorError)
+
+            // Error title and description
+            VStack(spacing: DesignToken.spacingXS) {
+                Text("Error")
+                    .font(DesignToken.fontFamilyHeading)
+                    .foregroundStyle(DesignToken.colorError)
+
+                Text(error.localizedDescription)
+                    .font(DesignToken.fontFamilyBody)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            // Action buttons
+            HStack(spacing: DesignToken.spacingSM) {
+                if let recoveryAction = recoveryAction {
+                    Button("Try Again", action: recoveryAction)
+                        .buttonStyle(.borderedProminent)
+                }
+
+                if let dismissAction = dismissAction {
+                    Button("Dismiss", action: dismissAction)
+                        .buttonStyle(.bordered)
+                }
+            }
+        }
+        .padding(DesignToken.spacingLG)
+        .background(DesignToken.colorBackgroundSecondary)
+        .cornerRadius(DesignToken.cornerRadiusMD)
+        .shadow(radius: DesignToken.shadowSM)
+    }
+}
+
+/**
+ * PermissionErrorView shows permission-related errors with specific guidance.
+ * - Explains what permission is needed and how to grant it.
+ * - Links to System Preferences or Settings.
+ * - Design System: Compound component for permission errors.
+ */
+public struct PermissionErrorView: View {
+    public let permissionType: String
+    public let recoveryAction: () -> Void
+
+    public var body: some View {
+        VStack(spacing: DesignToken.spacingMD) {
+            // Permission icon
+            Image(systemName: "lock.fill")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 48, height: 48)
+                .foregroundStyle(DesignToken.colorWarning)
+
+            // Permission error message
+            VStack(spacing: DesignToken.spacingXS) {
+                Text("Permission Required")
+                    .font(DesignToken.fontFamilyHeading)
+                    .foregroundStyle(DesignToken.colorWarning)
+
+                Text("Deduper needs access to \(permissionType) to continue.")
+                    .font(DesignToken.fontFamilyBody)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            // Recovery instructions
+            VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                Text("To fix this:")
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+
+                Text("1. Go to System Settings → Privacy & Security")
+                Text("2. Find \"Deduper\" in the list")
+                Text("3. Enable access for \(permissionType)")
+            }
+            .font(DesignToken.fontFamilyCaption)
+            .foregroundStyle(DesignToken.colorForegroundSecondary)
+
+            // Action button
+            Button("Open System Settings", action: recoveryAction)
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(DesignToken.spacingLG)
+        .background(DesignToken.colorBackgroundSecondary)
+        .cornerRadius(DesignToken.cornerRadiusMD)
+        .shadow(radius: DesignToken.shadowSM)
+    }
+}
+
 // MARK: - Thumbnail View
 
 /**
@@ -539,6 +791,7 @@ public struct ThumbnailView: View {
     @State private var thumbnail: NSImage?
     @State private var isLoading = true
     @State private var error: Error?
+    @FocusState private var isFocused: Bool
 
     private let logger = Logger(subsystem: "com.deduper", category: "thumbnail-ui")
 
@@ -564,8 +817,27 @@ public struct ThumbnailView: View {
                         ProgressView()
                             .progressViewStyle(.circular)
                     )
+            } else if let error = error {
+                // Error state with details
+                VStack(spacing: DesignToken.spacingXS) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: size.width * 0.3, height: size.height * 0.3)
+                        .foregroundStyle(DesignToken.colorError)
+                    Text("Error")
+                        .font(DesignToken.fontFamilyBody)
+                        .foregroundStyle(DesignToken.colorError)
+                    Text(error.localizedDescription)
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                }
+                .frame(width: size.width, height: size.height)
+                .background(DesignToken.colorBackgroundSecondary)
             } else {
-                // Error fallback
+                // Generic placeholder
                 Rectangle()
                     .fill(DesignToken.colorBackgroundSecondary)
                     .frame(width: size.width, height: size.height)
