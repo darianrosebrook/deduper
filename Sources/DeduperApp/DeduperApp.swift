@@ -1,5 +1,6 @@
 import SwiftUI
 import DeduperUI
+import DeduperCore
 
 /**
  Author: @darianrosebrook
@@ -13,7 +14,7 @@ public struct DeduperApp: App {
 
     public var body: some Scene {
         WindowGroup {
-            DeduperUI.MainView()
+            MainView()
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -76,7 +77,7 @@ public struct MainView: View {
             case .groupDetail(let group):
                 GroupDetailView(group: group)
             case .mergePlan:
-                MergePlanView()
+                MergePlanView(plan: nil)
             case .cleanupSummary:
                 CleanupSummaryView()
             case .settings:
@@ -161,7 +162,7 @@ public class MainViewModel: ObservableObject {
         case onboarding
         case scanStatus
         case groupsList
-        case groupDetail(group: DuplicateGroup)
+        case groupDetail(group: DuplicateGroupResult)
         case mergePlan
         case cleanupSummary
         case settings
@@ -204,7 +205,7 @@ public class MainViewModel: ObservableObject {
                 hasher.combine(2)
             case .groupDetail(let group):
                 hasher.combine(3)
-                hasher.combine(group)
+                hasher.combine(group.groupId)
             case .mergePlan:
                 hasher.combine(4)
             case .cleanupSummary:

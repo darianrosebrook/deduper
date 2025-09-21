@@ -22,6 +22,7 @@ public struct Input: View {
     private let disabled: Bool
     private let error: String?
     private let value: String
+    private let accessibilityHintText: String?
     private let onValueChange: (String) -> Void
 
     public init(
@@ -32,6 +33,7 @@ public struct Input: View {
         disabled: Bool = false,
         error: String? = nil,
         value: String = "",
+        accessibilityHint: String? = nil,
         onValueChange: @escaping (String) -> Void = { _ in }
     ) {
         self.placeholder = placeholder
@@ -41,6 +43,7 @@ public struct Input: View {
         self.disabled = disabled
         self.error = error
         self.value = value
+        self.accessibilityHintText = accessibilityHint
         self.onValueChange = onValueChange
     }
 
@@ -66,7 +69,7 @@ public struct Input: View {
 
     @ViewBuilder
     private var inputField: some View {
-        let textField = TextField(placeholder, text: Binding(
+        TextField(placeholder, text: Binding(
             get: { value },
             set: { onValueChange($0) }
         ))
@@ -82,18 +85,9 @@ public struct Input: View {
         .padding(.horizontal, DesignToken.inputPaddingX)
         .padding(.vertical, DesignToken.inputPaddingY)
         .disabled(disabled)
-
-        #if os(iOS)
-        textField
-            .textInputAutocapitalization(type.autocapitalization)
-            .keyboardType(type.keyboardType)
-            .textContentType(type.textContentType)
-        #else
-        textField
-        #endif
-        .accessibilityLabel(label ?? placeholder)
-        .accessibilityHint(accessibilityHint)
-        .accessibilityAddTraits(error != nil ? [.isButton, .isSelected] : .isButton)
+        .accessibilityLabel(Text(label ?? placeholder))
+        .accessibilityHint(Text(accessibilityHintText ?? ""))
+        .accessibilityAddTraits(AccessibilityTraits.isButton)
     }
 
     private var font: Font {
@@ -113,7 +107,7 @@ public struct Input: View {
     }
 
     private var borderColor: Color {
-        if let error = error {
+        if error != nil {
             return DesignToken.colorStatusError
         }
         return DesignToken.colorInputBorder

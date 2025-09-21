@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import DeduperCore
 
 /**
  Author: @darianrosebrook
@@ -80,6 +82,26 @@ public struct HistoryView: View {
                 }
             }
             .padding(DesignToken.spacingMD)
+
+            if let error = viewModel.errorMessage {
+                Text(error)
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorStatusError)
+                    .padding(.horizontal, DesignToken.spacingMD)
+            }
+
+            if let selected = viewModel.selectedItem {
+                VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                    Text("Selected Operation")
+                        .font(DesignToken.fontFamilyHeading)
+                    Text(selected.title)
+                        .font(DesignToken.fontFamilyBody)
+                    Text(selected.subtitle)
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                }
+                .padding(DesignToken.spacingMD)
+            }
         }
         .background(DesignToken.colorBackgroundPrimary)
         .frame(minWidth: 500, minHeight: 400)
@@ -142,6 +164,7 @@ public struct HistoryItem: Identifiable, Equatable {
     public let canRestore: Bool
     public let groupId: String?
     public let affectedFiles: [String]
+    public let removedFileIds: [UUID]
 
     public enum OperationType: String {
         case merge
@@ -177,7 +200,8 @@ public struct HistoryItem: Identifiable, Equatable {
         spaceSaved: Int64 = 0,
         canRestore: Bool = false,
         groupId: String? = nil,
-        affectedFiles: [String] = []
+        affectedFiles: [String] = [],
+        removedFileIds: [UUID] = []
     ) {
         self.id = id
         self.title = title
@@ -188,6 +212,7 @@ public struct HistoryItem: Identifiable, Equatable {
         self.canRestore = canRestore
         self.groupId = groupId
         self.affectedFiles = affectedFiles
+        self.removedFileIds = removedFileIds
     }
 }
 
@@ -195,80 +220,121 @@ public struct HistoryItem: Identifiable, Equatable {
 
 @MainActor
 public final class HistoryViewModel: ObservableObject {
+    private let persistence = ServiceManager.shared.persistence
+    private let mergeService = ServiceManager.shared.mergeService
+
     @Published public var historyItems: [HistoryItem] = []
     @Published public var totalSpaceFreed: Int64 = 0
     @Published public var isLoading = false
+    @Published public var selectedItem: HistoryItem?
+    @Published public var errorMessage: String?
 
     public func loadHistory() {
         isLoading = true
+        errorMessage = nil
 
-        // TODO: Replace with actual data loading from persistence layer
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            self.historyItems = [
-                HistoryItem(
-                    title: "Merged 3 duplicate photos",
-                    subtitle: "Group IMG_1234 (95% confidence)",
-                    date: Date().addingTimeInterval(-3600), // 1 hour ago
-                    operationType: .merge,
-                    spaceSaved: 2_345_678,
-                    canRestore: true,
-                    groupId: "group_1",
-                    affectedFiles: ["IMG_1234 (1).JPG", "IMG_1234 copy.JPG"]
-                ),
-                HistoryItem(
-                    title: "Scanned Photos folder",
-                    subtitle: "Found 1,247 files (234 duplicates)",
-                    date: Date().addingTimeInterval(-7200), // 2 hours ago
-                    operationType: .scan,
-                    spaceSaved: 0,
-                    canRestore: false
-                ),
-                HistoryItem(
-                    title: "Deleted 1 duplicate video",
-                    subtitle: "MOV_5678.MOV",
-                    date: Date().addingTimeInterval(-10800), // 3 hours ago
-                    operationType: .delete,
-                    spaceSaved: 45_678_901,
-                    canRestore: true,
-                    affectedFiles: ["MOV_5678.MOV"]
-                ),
-                HistoryItem(
-                    title: "Restored group from trash",
-                    subtitle: "Group IMG_9999 (restored 2 files)",
-                    date: Date().addingTimeInterval(-86400), // 1 day ago
-                    operationType: .restore,
-                    spaceSaved: 0,
-                    canRestore: false,
-                    groupId: "group_2"
-                )
-            ]
+        Task {
+            do {
+                let entries = try await persistence.fetchMergeHistoryEntries(limit: 100)
+                let items = entries.map { entry -> HistoryItem in
+                    let count = entry.removedFiles.count
+                    let title: String
+                    if count == 0 {
+                        title = "Merge recorded"
+                    } else if count == 1 {
+                        title = "Merged 1 duplicate file"
+                    } else {
+                        title = "Merged \(count) duplicate files"
+                    }
 
-            self.totalSpaceFreed = self.historyItems
-                .filter { $0.operationType == .merge || $0.operationType == .delete }
-                .reduce(0) { $0 + $1.spaceSaved }
+                    let subtitle: String
+                    if let keeper = entry.keeperName {
+                        subtitle = "Keeper: \(keeper)"
+                    } else {
+                        subtitle = "Group \(entry.transaction.groupId.uuidString)"
+                    }
 
-            self.isLoading = false
+                    return HistoryItem(
+                        id: entry.transaction.id,
+                        title: title,
+                        subtitle: subtitle,
+                        date: entry.transaction.createdAt,
+                        operationType: .merge,
+                        spaceSaved: entry.totalBytesFreed,
+                        canRestore: true,
+                        groupId: entry.transaction.groupId.uuidString,
+                        affectedFiles: entry.removedFiles.map { $0.name },
+                        removedFileIds: entry.removedFiles.map { $0.id }
+                    )
+                }
+
+                let totalFreed = items.reduce(0) { $0 + $1.spaceSaved }
+
+                await MainActor.run {
+                    self.historyItems = items
+                    self.totalSpaceFreed = totalFreed
+                    self.isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                    self.isLoading = false
+                }
+            }
         }
     }
 
     public func selectItem(_ item: HistoryItem) {
-        // TODO: Show details for the selected item
-        print("Selected history item: \(item.title)")
+        selectedItem = item
     }
 
     public func restoreItem(_ item: HistoryItem) {
-        // TODO: Implement restore functionality
-        print("Restore item: \(item.title)")
+        Task {
+            do {
+                let result = try await mergeService.undoLast()
+                await MainActor.run {
+                    if result.transactionId == item.id {
+                        self.historyItems.removeAll { $0.id == item.id }
+                        self.totalSpaceFreed = self.historyItems
+                            .filter { $0.operationType == .merge || $0.operationType == .delete }
+                            .reduce(0) { $0 + $1.spaceSaved }
+                    } else {
+                        self.errorMessage = "Only the most recent merge can be restored."
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
     }
 
     public func showInFinder(_ item: HistoryItem) {
-        // TODO: Implement Finder integration
-        print("Show in Finder: \(item.title)")
+        let urls = item.removedFileIds.compactMap { persistence.resolveFileURL(id: $0) }
+        guard !urls.isEmpty else {
+            errorMessage = "Unable to locate files for this history entry."
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 
     public func removeItem(_ item: HistoryItem) {
-        // TODO: Remove item from history
-        print("Remove from history: \(item.title)")
+        Task {
+            do {
+                try await persistence.deleteMergeTransaction(id: item.id)
+                await MainActor.run {
+                    self.historyItems.removeAll { $0.id == item.id }
+                    self.totalSpaceFreed = self.historyItems
+                        .filter { $0.operationType == .merge || $0.operationType == .delete }
+                        .reduce(0) { $0 + $1.spaceSaved }
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
     }
 }
 

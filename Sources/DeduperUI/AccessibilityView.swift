@@ -49,6 +49,9 @@ public final class AccessibilityViewModel: ObservableObject {
     @Published public var enableHapticFeedback: Bool = true
     @Published public var enableVoiceFeedback: Bool = false
 
+    @Published public var lastTestMessages: [String] = []
+    @Published public var lastTestWarnings: [String] = []
+
     private var cancellables: Set<AnyCancellable> = []
 
     public init() {
@@ -235,6 +238,49 @@ public final class AccessibilityViewModel: ObservableObject {
         logger.info("Reset accessibility settings to defaults")
     }
 
+    public func testAccessibilityFeatures() {
+        var messages: [String] = []
+        var warnings: [String] = []
+
+        if enableSoundEffects {
+            NSSound.beep()
+            messages.append("Sound effects playback successful")
+        } else {
+            warnings.append("Sound effects are disabled")
+        }
+
+        if enableHapticFeedback {
+            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+            messages.append("Haptic feedback triggered")
+        } else {
+            warnings.append("Haptic feedback is disabled")
+        }
+
+        if enableVoiceFeedback {
+            let synthesizer = NSSpeechSynthesizer()
+            synthesizer.startSpeaking("Accessibility features are active")
+            messages.append("Voice feedback sample played")
+        } else {
+            warnings.append("Voice feedback is disabled")
+        }
+
+        if enableLargeText {
+            messages.append("Large text preference is enabled")
+        }
+
+        if enableHighContrast {
+            messages.append("High contrast mode enabled")
+        }
+
+        if enableReducedMotion {
+            messages.append("Reduced motion enabled")
+        }
+
+        logger.info("Accessibility test completed with \(messages.count) messages and \(warnings.count) warnings")
+        lastTestMessages = messages
+        lastTestWarnings = warnings
+    }
+
     public func getKeyboardShortcutsHelp() -> [KeyboardShortcut] {
         return [
             KeyboardShortcut(key: "⌘R", description: "Refresh current view"),
@@ -291,6 +337,8 @@ public enum ColorScheme: String, CaseIterable, Sendable {
  */
 public struct AccessibilityView: View {
     @StateObject private var viewModel = AccessibilityViewModel()
+
+    public init() {}
 
     public var body: some View {
         ScrollView {
@@ -396,10 +444,29 @@ public struct AccessibilityView: View {
                         .foregroundStyle(DesignToken.colorDestructive)
 
                     Button("Test Accessibility Features") {
-                        // TODO: Implement accessibility testing
-                        print("Testing accessibility features...")
+                        viewModel.testAccessibilityFeatures()
                     }
                     .buttonStyle(.borderedProminent)
+
+                    if !viewModel.lastTestMessages.isEmpty {
+                        VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                            ForEach(viewModel.lastTestMessages, id: \.self) { message in
+                                Text(message)
+                                    .font(DesignToken.fontFamilyCaption)
+                                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                            }
+                        }
+                    }
+
+                    if !viewModel.lastTestWarnings.isEmpty {
+                        VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                            ForEach(viewModel.lastTestWarnings, id: \.self) { warning in
+                                Text(warning)
+                                    .font(DesignToken.fontFamilyCaption)
+                                    .foregroundStyle(DesignToken.colorStatusWarning)
+                            }
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
             }

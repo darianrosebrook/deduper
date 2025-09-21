@@ -88,8 +88,12 @@ public struct MergePlanSheet: View {
             }
             HStack {
                 Spacer()
-                Button("Cancel", role: .cancel) { onCancel() }
-                Button("Confirm") { onConfirm() }.keyboardShortcut(.defaultAction)
+                Button("Cancel") { onCancel() }
+                    .buttonStyle(.bordered)
+                    .tint(.secondary)
+                Button("Confirm") { onConfirm() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
             }
         }
         .padding(DesignToken.spacingMD)

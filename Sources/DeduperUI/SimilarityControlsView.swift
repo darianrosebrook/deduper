@@ -10,6 +10,8 @@ import SwiftUI
 public struct SimilarityControlsView: View {
     @StateObject private var viewModel = SimilarityControlsViewModel()
 
+    public init() {}
+
     public var body: some View {
         VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
             Text("Similarity Settings")
@@ -86,7 +88,8 @@ public struct SimilarityControlsView: View {
 
 // MARK: - View Model
 
-public class SimilarityControlsViewModel: ObservableObject {
+@MainActor
+public final class SimilarityControlsViewModel: ObservableObject {
     public struct SignalType: Identifiable {
         public let id: String
         public let name: String
@@ -101,9 +104,13 @@ public class SimilarityControlsViewModel: ObservableObject {
         }
     }
 
-    @Published public var overallThreshold: Double = 0.8
-    @Published public var enabledSignals: Set<String> = ["checksum", "phash", "fileSize", "dimensions"]
-    @Published public var hasChanges: Bool = false
+    @Published public var overallThreshold: Double {
+        didSet { guard !isSynchronizing else { return }; updateHasChanges() }
+    }
+    @Published public var enabledSignals: Set<String> {
+        didSet { guard !isSynchronizing else { return }; updateHasChanges() }
+    }
+    @Published public private(set) var hasChanges: Bool = false
 
     public let availableSignals: [SignalType] = [
         SignalType(id: "checksum", name: "File Hash", weight: 1.0, description: "Exact byte-for-byte comparison"),
@@ -114,23 +121,66 @@ public class SimilarityControlsViewModel: ObservableObject {
         SignalType(id: "metadata", name: "Metadata", weight: 0.2, description: "EXIF and file metadata")
     ]
 
-    private var originalThreshold: Double = 0.8
-    private var originalSignals: Set<String> = ["checksum", "phash", "fileSize", "dimensions"]
+    private let settingsStore: SimilaritySettingsStore
+    private var originalThreshold: Double
+    private var originalSignals: Set<String>
+    private var isSynchronizing = false
+
+    public init(settingsStore: SimilaritySettingsStore = .shared) {
+        self.settingsStore = settingsStore
+        let defaults = SimilaritySettings()
+        self.overallThreshold = defaults.overallThreshold
+        self.enabledSignals = defaults.enabledSignals
+        self.originalThreshold = defaults.overallThreshold
+        self.originalSignals = defaults.enabledSignals
+
+        Task { [weak self] in
+            guard let self else { return }
+            let stored = await settingsStore.current()
+            await MainActor.run {
+                self.isSynchronizing = true
+                self.overallThreshold = stored.overallThreshold
+                self.enabledSignals = stored.enabledSignals
+                self.originalThreshold = stored.overallThreshold
+                self.originalSignals = stored.enabledSignals
+                self.hasChanges = false
+                self.isSynchronizing = false
+            }
+        }
+    }
 
     public func resetToDefaults() {
-        overallThreshold = 0.8
-        enabledSignals = ["checksum", "phash", "fileSize", "dimensions"]
-        updateHasChanges()
+        Task {
+            await applySettings(SimilaritySettings(), persists: true)
+        }
     }
 
     public func applyChanges() {
-        // TODO: Apply changes to the duplicate detection engine
-        originalThreshold = overallThreshold
-        originalSignals = enabledSignals
-        hasChanges = false
+        Task {
+            await applySettings(
+                SimilaritySettings(
+                    overallThreshold: overallThreshold,
+                    enabledSignals: enabledSignals
+                ),
+                persists: true
+            )
 
-        // Notify other components that settings have changed
-        NotificationCenter.default.post(name: .similaritySettingsChanged, object: nil)
+            NotificationCenter.default.post(name: .similaritySettingsChanged, object: nil)
+        }
+    }
+
+    private func applySettings(_ settings: SimilaritySettings, persists: Bool) async {
+        isSynchronizing = true
+        overallThreshold = settings.overallThreshold
+        enabledSignals = settings.enabledSignals
+        originalThreshold = settings.overallThreshold
+        originalSignals = settings.enabledSignals
+        hasChanges = false
+        isSynchronizing = false
+
+        if persists {
+            await settingsStore.update(settings)
+        }
     }
 
     private func updateHasChanges() {
@@ -142,6 +192,51 @@ public class SimilarityControlsViewModel: ObservableObject {
 
 extension Notification.Name {
     static let similaritySettingsChanged = Notification.Name("similaritySettingsChanged")
+    static let keeperSelectionChanged = Notification.Name("com.deduper.keeperSelectionChanged")
+}
+
+// MARK: - Settings Store
+
+public struct SimilaritySettings: Codable, Equatable, Sendable {
+    public var overallThreshold: Double
+    public var enabledSignals: Set<String>
+
+    public init(overallThreshold: Double = 0.8, enabledSignals: Set<String> = ["checksum", "phash", "fileSize", "dimensions"]) {
+        self.overallThreshold = overallThreshold
+        self.enabledSignals = enabledSignals
+    }
+}
+
+public actor SimilaritySettingsStore {
+    public static let shared = SimilaritySettingsStore()
+
+    private let defaultsKey = "Deduper.SimilaritySettings"
+    private let userDefaults = UserDefaults.standard
+    private var cachedSettings: SimilaritySettings
+
+    public var defaults: SimilaritySettings { cachedSettings }
+
+    private init() {
+        if
+            let data = userDefaults.data(forKey: defaultsKey),
+            let decoded = try? JSONDecoder().decode(SimilaritySettings.self, from: data)
+        {
+            cachedSettings = decoded
+        } else {
+            cachedSettings = SimilaritySettings()
+        }
+    }
+
+    public func current() -> SimilaritySettings {
+        cachedSettings
+    }
+
+    public func update(_ settings: SimilaritySettings) {
+        cachedSettings = settings
+        if let data = try? JSONEncoder().encode(settings) {
+            userDefaults.set(data, forKey: defaultsKey)
+        }
+    }
 }
 
 // MARK: - Preview

@@ -2,6 +2,8 @@ import SwiftUI
 import DeduperCore
 import OSLog
 import Combine
+import AppKit
+import UniformTypeIdentifiers
 
 /**
  * SettingsView provides comprehensive application configuration.
@@ -45,6 +47,11 @@ public final class SettingsViewModel: ObservableObject {
     @Published public var highContrast: Bool = false
 
     private let logger = Logger(subsystem: "com.deduper", category: "settings")
+    private lazy var exportDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HH-mm-ss"
+        return formatter
+    }()
 
     public init() {
         loadSettings()
@@ -201,6 +208,28 @@ public final class SettingsViewModel: ObservableObject {
         return try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted])
     }
 
+    public func exportSettingsToDisk() {
+        guard let data = exportSettings() else {
+            logger.error("Settings export failed: unable to serialize settings dictionary")
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.title = "Export Settings"
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "DeduperSettings-\(exportDateFormatter.string(from: Date())).json"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try data.write(to: url, options: [.atomic])
+                logger.info("Settings exported to \(url.path, privacy: .public)")
+            } catch {
+                logger.error("Failed to write settings export: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
     private var cancellables: Set<AnyCancellable> = []
 }
 
@@ -223,6 +252,8 @@ public enum AppTheme: String, CaseIterable, Sendable {
  */
 public struct SettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
+
+    public init() {}
 
     public var body: some View {
         ScrollView {
@@ -318,10 +349,7 @@ public struct SettingsView: View {
                         .foregroundStyle(DesignToken.colorDestructive)
 
                     Button("Export Settings") {
-                        if let data = viewModel.exportSettings() {
-                            // TODO: Implement export functionality
-                            print("Settings exported (\(data.count) bytes)")
-                        }
+                        viewModel.exportSettingsToDisk()
                     }
                     .buttonStyle(.borderedProminent)
                 }

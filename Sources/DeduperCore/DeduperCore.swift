@@ -230,5 +230,4 @@ extension DeduperCore {
     }
 }
 
-// Re-export commonly used types for easier access
-// Note: DuplicateGroupResult is accessed directly from DuplicateDetectionEngine module
+// Note: DuplicateGroupResult is already public in DuplicateDetectionEngine.swift

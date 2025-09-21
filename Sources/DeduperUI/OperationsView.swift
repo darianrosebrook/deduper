@@ -307,6 +307,8 @@ public final class OperationsViewModel: ObservableObject {
 public struct OperationsView: View {
     @StateObject private var viewModel = OperationsViewModel()
 
+    public init() {}
+
     public var body: some View {
         VStack(spacing: 0) {
             // Toolbar

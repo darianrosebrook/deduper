@@ -203,7 +203,8 @@ public final class TestingViewModel: ObservableObject {
             self.baselineDuration = baselineDuration
             self.currentDuration = currentDuration
             self.threshold = threshold
-            self.isWithinThreshold = abs(performanceChange) <= threshold
+            // Calculate isWithinThreshold after all properties are set
+            self.isWithinThreshold = abs(currentDuration - baselineDuration) <= threshold
         }
     }
 
@@ -301,20 +302,20 @@ public final class TestingViewModel: ObservableObject {
                 "status": result.status.rawValue,
                 "duration": result.duration,
                 "timestamp": result.timestamp.ISO8601Format(),
-                "errorMessage": result.errorMessage ?? "",
-                "stackTrace": result.stackTrace ?? "",
-                "coverage": result.coverage ?? 0
+                "errorMessage": result.errorMessage as Any? ?? "" as Any,
+                "stackTrace": result.stackTrace as Any? ?? "" as Any,
+                "coverage": result.coverage ?? 0 as Any
             ]},
             "coverage": [
-                "totalLines": coverageData?.totalLines ?? 0,
-                "coveredLines": coverageData?.coveredLines ?? 0,
-                "coveragePercentage": coverageData?.coveragePercentage ?? 0,
-                "files": coverageData?.files.map { file in [
+                "totalLines": coverageData?.totalLines ?? 0 as Any,
+                "coveredLines": coverageData?.coveredLines ?? 0 as Any,
+                "coveragePercentage": coverageData?.coveragePercentage ?? 0 as Any,
+                "files": (coverageData?.files.map { file in [
                     "fileName": file.fileName,
                     "coveredLines": file.coveredLines,
                     "totalLines": file.totalLines,
                     "coveragePercentage": file.coveragePercentage
-                ]} ?? []
+                ]} ?? []) as Any
             ],
             "qualityMetrics": [
                 "testCount": qualityMetrics.testCount,
@@ -470,6 +471,8 @@ public final class TestingViewModel: ObservableObject {
 public struct TestingView: View {
     @StateObject private var viewModel = TestingViewModel()
 
+    public init() {}
+
     public var body: some View {
         VStack(spacing: 0) {
             // Configuration Panel
@@ -509,11 +512,14 @@ public struct TestingView: View {
                                     Spacer()
                                     Text("\(viewModel.maxRetryCount)")
                                 }
-                                Slider(value: Double($viewModel.maxRetryCount).mapToSliderValue(minValue: 1, maxValue: 10),
-                                       in: 0...1,
-                                       step: 0.1) { _ in
-                                    viewModel.maxRetryCount = Int(Double(viewModel.maxRetryCount).sliderValueToActual(minValue: 1, maxValue: 10))
-                                }
+                                Slider(value: Binding(
+                                    get: { Double(viewModel.maxRetryCount) },
+                                    set: { newValue in
+                                        viewModel.maxRetryCount = Int(newValue)
+                                    }
+                                ),
+                                       in: 1.0...10.0,
+                                       step: 1.0)
                             }
                         }
                     }

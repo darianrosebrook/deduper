@@ -63,24 +63,40 @@ A professional-grade, native macOS application that intelligently finds and mana
    swift build
    ```
 
-3. **For Xcode development (optional):**
+3. **For Xcode development:**
    ```bash
-   # Generate Xcode project if needed
-   swift package generate-xcodeproj
-   open Deduper.xcodeproj
+   # Open the package directly in Xcode (Swift Package Manager projects)
+   xed Sources/
+   # OR open the entire project directory
+   xed .
    ```
 
 4. **Run the application:**
-   - Select the `Deduper` executable target
-   - Choose your development team for signing
-   - Press `Cmd + R` to build and run
+   ```bash
+   # Run directly from command line
+   swift run
+
+   # OR build and run in Xcode
+   # Select the `Deduper` executable target
+   # Choose your development team for signing
+   # Press `Cmd + R` to build and run
+   ```
 
 ### **Current Status**
 - ✅ **Core Services (`DeduperCore`)**: Fully implemented and building successfully
 - ✅ **Architecture**: Complete enterprise-grade service layer with dependency injection
 - ✅ **Documentation**: 72 comprehensive guides and specifications
 - ✅ **Build System**: Swift Package Manager with proper targets
-- 🔄 **UI Components**: Advanced implementation with some compilation issues remaining
+- ✅ **CoreData Model**: Programmatic model with secure transformers (no compilation issues)
+- ✅ **UI Components**: Advanced implementation with concurrency fixes applied
+- 🔄 **Implementation Plan**: Detailed roadmap for remaining TODOs available
+
+### Recent Updates & Fixes
+
+- ✅ **CoreData Transformer Security**: All transformable attributes now use `NSSecureUnarchiveFromDataTransformer`
+- ✅ **Concurrency Compliance**: Fixed main actor isolation warnings in UI components
+- ✅ **Build System**: Resolved model compilation issues - project now builds cleanly
+- ✅ **Implementation Roadmap**: Created detailed plans for remaining TODOs in `/docs/TODOS/`
 
 ### First Launch
 
@@ -88,6 +104,12 @@ A professional-grade, native macOS application that intelligently finds and mana
 2. **Select Folders**: Choose directories to scan (supports Photos library, external drives, etc.)
 3. **Configure Settings**: Adjust similarity thresholds and processing options
 4. **Start Scanning**: Begin the duplicate detection process
+
+### Development Notes
+
+- **Xcode Project**: Use `xed .` to open the package directly in Xcode (no need for `generate-xcodeproj`)
+- **CoreData**: Uses programmatic model with secure transformers (no .xcdatamodel file needed)
+- **Build Issues**: If you encounter model loading errors, run `rm -rf .build` to clean
 
 ## Architecture Overview
 

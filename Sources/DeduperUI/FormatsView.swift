@@ -17,6 +17,7 @@ import Combine
 @MainActor
 public final class FormatsViewModel: ObservableObject {
     private let scanOrchestrator = ServiceManager.shared.scanOrchestrator
+    private let scanService = ScanService(persistenceController: ServiceManager.shared.persistence)
     private let logger = Logger(subsystem: "com.deduper", category: "formats")
 
     // MARK: - Supported Formats
@@ -53,6 +54,7 @@ public final class FormatsViewModel: ObservableObject {
     @Published public var totalFilesProcessed: Int = 0
     @Published public var filesByFormat: [String: Int] = [:]
     @Published public var processingErrors: [String] = []
+    @Published public var lastTestSummary: String?
 
     private var cancellables: Set<AnyCancellable> = []
 
@@ -228,6 +230,58 @@ public final class FormatsViewModel: ObservableObject {
         logger.info("Reset format settings to defaults")
     }
 
+    public func testFormatDetection() {
+        processingErrors.removeAll()
+        lastTestSummary = nil
+
+        let formatsToTest = supportedImageFormats
+            .union(supportedVideoFormats)
+            .union(supportedAudioFormats)
+
+        Task.detached { [weak self, formatsToTest] in
+            guard let self else { return }
+
+            let tempDirectory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("DeduperFormatTest-\(UUID().uuidString)", isDirectory: true)
+
+            do {
+                try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+
+                var formatResults: [String: Int] = [:]
+                var errors: [String] = []
+
+                for format in formatsToTest {
+                    let sampleURL = tempDirectory.appendingPathComponent("sample.\(format)")
+                    try Data([0x00]).write(to: sampleURL)
+
+                    let detected = self.scanService.isMediaFile(url: sampleURL)
+                    formatResults[format] = detected ? 1 : 0
+                    if !detected {
+                        errors.append("Failed to detect .\(format) as supported media")
+                    }
+                }
+
+                try? FileManager.default.removeItem(at: tempDirectory)
+
+                await MainActor.run {
+                    self.filesByFormat = formatResults
+                    self.totalFilesProcessed = formatResults.values.reduce(0, +)
+                    self.processingErrors = errors
+                    if errors.isEmpty {
+                        self.lastTestSummary = "All tested media formats were detected successfully."
+                    } else {
+                        self.lastTestSummary = "Detected \(formatResults.values.filter { $0 > 0 }.count) format(s) with \(errors.count) warning(s)."
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.processingErrors = ["Unable to perform format detection test: \(error.localizedDescription)"]
+                    self.lastTestSummary = nil
+                }
+            }
+        }
+    }
+
     public func getFormatStatistics() -> FormatStatistics {
         return FormatStatistics(
             imageFiles: filesByFormat.filter { supportedImageFormats.contains($0.key) }.values.reduce(0, +),
@@ -270,6 +324,8 @@ public struct FormatStatistics: Sendable {
  */
 public struct FormatsView: View {
     @StateObject private var viewModel = FormatsViewModel()
+
+    public init() {}
 
     public var body: some View {
         ScrollView {
@@ -376,10 +432,26 @@ public struct FormatsView: View {
                         .foregroundStyle(DesignToken.colorDestructive)
 
                     Button("Test Format Detection") {
-                        // TODO: Implement format detection testing
-                        print("Testing format detection...")
+                        viewModel.testFormatDetection()
                     }
                     .buttonStyle(.borderedProminent)
+
+                    if let summary = viewModel.lastTestSummary {
+                        Text(summary)
+                            .font(DesignToken.fontFamilyCaption)
+                            .foregroundStyle(DesignToken.colorForegroundSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    if !viewModel.processingErrors.isEmpty {
+                        VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                            ForEach(viewModel.processingErrors, id: \.self) { error in
+                                Text(error)
+                                    .font(DesignToken.fontFamilyCaption)
+                                    .foregroundStyle(DesignToken.colorStatusWarning)
+                            }
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
             }

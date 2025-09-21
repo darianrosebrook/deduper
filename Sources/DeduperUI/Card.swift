@@ -1,5 +1,7 @@
 import SwiftUI
 
+// Import design tokens - DesignTokenShadow is already defined in DesignTokens.swift
+
 /**
  * Author: @darianrosebrook
  * Card is a compound component for grouping related content.
@@ -45,7 +47,12 @@ public struct Card<Content: View>: View {
                 RoundedRectangle(cornerRadius: radius)
                     .stroke(borderColor, lineWidth: borderWidth)
             )
-            .shadow(shadow)
+            .shadow(
+                color: hasShadow ? Color.black.opacity(DesignToken.cardShadowOpacity) : .clear,
+                radius: hasShadow ? DesignToken.cardShadowRadius : 0,
+                x: 0,
+                y: 1
+            )
             .frame(maxWidth: .infinity)
     }
 
@@ -57,7 +64,12 @@ public struct Card<Content: View>: View {
             bottom: DesignToken.cardPadding * 0.75,
             trailing: DesignToken.cardPadding * 0.75
         )
-        case .medium: return EdgeInsets(all: DesignToken.cardPadding)
+        case .medium: return EdgeInsets(
+            top: DesignToken.cardPadding,
+            leading: DesignToken.cardPadding,
+            bottom: DesignToken.cardPadding,
+            trailing: DesignToken.cardPadding
+        )
         case .large: return EdgeInsets(
             top: DesignToken.cardPadding * 1.25,
             leading: DesignToken.cardPadding * 1.25,
@@ -101,16 +113,10 @@ public struct Card<Content: View>: View {
         }
     }
 
-    private var shadow: DesignTokenShadow? {
+    private var hasShadow: Bool {
         switch variant {
-        case .elevated:
-            return Shadow(
-                color: Color.black.opacity(DesignToken.cardShadowOpacity),
-                radius: DesignToken.cardShadowRadius,
-                x: 0,
-                y: 1
-            )
-        case .outlined, .filled, .ghost: return nil
+        case .elevated: return true
+        case .outlined, .filled, .ghost: return false
         }
     }
 }

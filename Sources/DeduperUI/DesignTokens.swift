@@ -54,6 +54,10 @@ public enum DesignToken {
         Color(hex: "#dc2626") // Darker red for text
     }()
 
+    public static let colorForegroundOnBrand: Color = {
+        Color(white: 1.0) // White text on brand colors
+    }()
+
     // MARK: - Background Colors (Semantic)
 
     public static let colorBackgroundPrimary: Color = {
@@ -86,6 +90,20 @@ public enum DesignToken {
         Color(white: 0.95).opacity(0.8) // Semantic highlight state
     }()
 
+    // MARK: - Disabled States (Semantic)
+
+    public static let colorBackgroundDisabled: Color = {
+        Color(white: 0.95) // Light gray for disabled backgrounds
+    }()
+
+    public static let colorForegroundDisabled: Color = {
+        Color(white: 0.5) // Muted gray for disabled text
+    }()
+
+    public static let colorBorderDisabled: Color = {
+        Color(white: 0.8) // Light gray for disabled borders
+    }()
+
     // MARK: - Link Colors (Semantic)
 
     public static let colorLink: Color = {
@@ -103,6 +121,10 @@ public enum DesignToken {
     // MARK: - Status Colors (Semantic)
 
     public static let colorStatusSuccess: Color = {
+        Color(hex: "#10b981") // Green for success
+    }()
+
+    public static let colorSuccess: Color = {
         Color(hex: "#10b981") // Green for success
     }()
 

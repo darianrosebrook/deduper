@@ -111,7 +111,7 @@ public final class LoggingViewModel: ObservableObject {
             level: LogLevel,
             category: String,
             message: String,
-            metadata: [String: Any]? = nil
+            metadata: [String: String]? = nil
         ) {
             self.id = id
             self.timestamp = timestamp
@@ -211,10 +211,9 @@ public final class LoggingViewModel: ObservableObject {
 
     private func setupAutoRefresh() {
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            guard let self = self, self.isAutoRefreshEnabled else { return }
-
             Task { @MainActor [weak self] in
-                await self?.refreshData()
+                guard let self = self, self.isAutoRefreshEnabled else { return }
+                self.refreshData()
             }
         }
     }
@@ -268,10 +267,6 @@ public final class LoggingViewModel: ObservableObject {
         }
     }
 
-    deinit {
-        timer?.invalidate()
-        logContinuation?.finish()
-    }
 }
 
 /**
@@ -279,6 +274,8 @@ public final class LoggingViewModel: ObservableObject {
  */
 public struct LoggingView: View {
     @StateObject private var viewModel = LoggingViewModel()
+
+    public init() {}
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -340,11 +337,12 @@ public struct LoggingView: View {
                     }
 
                 if !viewModel.searchText.isEmpty {
-                    Button(action: { viewModel.searchText = "" }) {
+                    Button("Clear", action: {
+                        viewModel.searchText = ""
+                    })
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(DesignToken.colorForegroundSecondary)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(DesignToken.spacingMD)
@@ -410,19 +408,7 @@ public struct LoggingView: View {
                 }
             }
         }
-        .navigationTitle("Logs & Diagnostics")
-        .background(DesignToken.colorBackgroundPrimary)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Refresh", action: viewModel.refreshData)
-                    .keyboardShortcut("r", modifiers: .command)
-            }
-        }
-        .onAppear {
-            viewModel.refreshData()
-        }
     }
-}
 
 /**
  * Individual log entry row

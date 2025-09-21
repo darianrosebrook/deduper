@@ -93,6 +93,58 @@ public struct MergeTransactionRecord: Codable, Equatable, Sendable {
     }
 }
 
+public struct MergeHistoryEntry: Sendable {
+    public struct RemovedFile: Sendable {
+        public let id: UUID
+        public let name: String
+        public let size: Int64
+
+        public init(id: UUID, name: String, size: Int64) {
+            self.id = id
+            self.name = name
+            self.size = size
+        }
+    }
+
+    public let transaction: MergeTransactionRecord
+    public let keeperName: String?
+    public let removedFiles: [RemovedFile]
+
+    public var totalBytesFreed: Int64 {
+        removedFiles.reduce(0) { $0 + $1.size }
+    }
+
+    public init(transaction: MergeTransactionRecord, keeperName: String?, removedFiles: [RemovedFile]) {
+        self.transaction = transaction
+        self.keeperName = keeperName
+        self.removedFiles = removedFiles
+    }
+}
+
+private struct DetectionMetricsRecord: Codable {
+    let totalAssets: Int
+    let totalComparisons: Int
+    let naiveComparisons: Int
+    let reductionPercentage: Double
+    let bucketsCreated: Int
+    let averageBucketSize: Double
+    let timeElapsedMs: Int
+    let incompleteGroups: Int
+    let recordedAt: Date
+
+    init(metrics: DetectionMetrics, recordedAt: Date = Date()) {
+        self.totalAssets = metrics.totalAssets
+        self.totalComparisons = metrics.totalComparisons
+        self.naiveComparisons = metrics.naiveComparisons
+        self.reductionPercentage = metrics.reductionPercentage
+        self.bucketsCreated = metrics.bucketsCreated
+        self.averageBucketSize = metrics.averageBucketSize
+        self.timeElapsedMs = metrics.timeElapsedMs
+        self.incompleteGroups = metrics.incompleteGroups
+        self.recordedAt = recordedAt
+    }
+}
+
 // MARK: - Persistence Controller
 
 @MainActor
@@ -183,6 +235,23 @@ public final class PersistenceController: ObservableObject {
             return attr
         }
 
+        func makeTransformableAttribute(_ name: String, optional: Bool = true, transformerName: String? = nil, customClassName: String? = nil) -> NSAttributeDescription {
+            let attr = NSAttributeDescription()
+            attr.name = name
+            attr.attributeType = .transformableAttributeType
+            attr.isOptional = optional
+
+            if let transformerName = transformerName {
+                attr.valueTransformerName = transformerName
+            }
+
+            if let customClassName = customClassName {
+                attr.attributeValueClassName = customClassName
+            }
+
+            return attr
+        }
+
         func makeRelationship(name: String, destination: NSEntityDescription, toMany: Bool, deleteRule: NSDeleteRule, optional: Bool = true) -> NSRelationshipDescription {
             let rel = NSRelationshipDescription()
             rel.name = name
@@ -265,7 +334,7 @@ public final class PersistenceController: ObservableObject {
             makeAttribute("durationSec", .doubleAttributeType, defaultValue: 0),
             makeAttribute("width", .integer32AttributeType, defaultValue: 0),
             makeAttribute("height", .integer32AttributeType, defaultValue: 0),
-            makeAttribute("frameHashes", .transformableAttributeType),
+            makeTransformableAttribute("frameHashes", transformerName: "NSSecureUnarchiveFromDataTransformer", customClassName: "NSArray"),
             makeAttribute("computedAt", .dateAttributeType)
         ]
 
@@ -275,7 +344,7 @@ public final class PersistenceController: ObservableObject {
             makeAttribute("cameraModel", .stringAttributeType),
             makeAttribute("gpsLat", .doubleAttributeType),
             makeAttribute("gpsLon", .doubleAttributeType),
-            makeAttribute("keywords", .transformableAttributeType),
+            makeTransformableAttribute("keywords", transformerName: "NSSecureUnarchiveFromDataTransformer", customClassName: "NSArray"),
             makeAttribute("exifBlob", .binaryDataAttributeType)
         ]
 
@@ -303,7 +372,7 @@ public final class PersistenceController: ObservableObject {
             makeAttribute("id", .UUIDAttributeType, optional: false),
             makeAttribute("action", .integer16AttributeType, optional: false, defaultValue: 0),
             makeAttribute("performedAt", .dateAttributeType, optional: false),
-            makeAttribute("mergedFields", .transformableAttributeType)
+            makeTransformableAttribute("mergedFields", transformerName: "NSSecureUnarchiveFromDataTransformer", customClassName: "NSDictionary")
         ]
 
         mergeTransaction.properties = [
@@ -316,7 +385,7 @@ public final class PersistenceController: ObservableObject {
 
         preference.properties = [
             makeAttribute("key", .stringAttributeType, optional: false),
-            makeAttribute("value", .binaryDataAttributeType)
+            makeTransformableAttribute("value", transformerName: "NSSecureUnarchiveFromDataTransformer", customClassName: "NSData")
         ]
 
         // Relationships (after attributes to ensure entity exists)
@@ -703,6 +772,18 @@ public final class PersistenceController: ObservableObject {
         }
     }
 
+    public func saveDetectionResults(
+        _ groups: [DuplicateGroupResult],
+        metrics: DetectionMetrics
+    ) async throws {
+        for group in groups {
+            try await createOrUpdateGroup(from: group)
+        }
+
+        let metricsRecord = DetectionMetricsRecord(metrics: metrics)
+        try await setPreference("DetectionMetrics.last", value: metricsRecord)
+    }
+
     // MARK: - Decisions & Transactions
 
     public func recordDecision(_ decision: GroupDecisionRecord) async throws {
@@ -744,6 +825,45 @@ public final class PersistenceController: ObservableObject {
             record.setValue(nil, forKey: "undoneAt")
             record.setValue(data, forKey: "payload")
             record.setValue(group, forKey: "group")
+        }
+    }
+
+    public func fetchMergeHistoryEntries(limit: Int = 50) async throws -> [MergeHistoryEntry] {
+        try await performBackground { context in
+            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "MergeTransaction")
+            request.fetchLimit = limit
+            request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
+
+            let records = try context.fetch(request)
+            let decoder = JSONDecoder()
+
+            return try records.compactMap { record -> MergeHistoryEntry? in
+                guard let payload = record.value(forKey: "payload") as? Data else {
+                    return nil
+                }
+
+                let transaction = try decoder.decode(MergeTransactionRecord.self, from: payload)
+                let keeperName = try self.resolveFileName(id: transaction.keeperFileId, in: context)
+                let removedFiles = try self.resolveFileInfos(ids: transaction.removedFileIds, in: context)
+
+                return MergeHistoryEntry(
+                    transaction: transaction,
+                    keeperName: keeperName,
+                    removedFiles: removedFiles
+                )
+            }
+        }
+    }
+
+    public func deleteMergeTransaction(id: UUID) async throws {
+        try await performBackground { context in
+            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "MergeTransaction")
+            request.fetchLimit = 1
+            request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+
+            if let record = try context.fetch(request).first {
+                context.delete(record)
+            }
         }
     }
 
@@ -902,6 +1022,35 @@ public final class PersistenceController: ObservableObject {
         request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
         request.fetchLimit = 1
         return try context.fetch(request).first
+    }
+
+    nonisolated private func resolveFileInfos(ids: [UUID], in context: NSManagedObjectContext) throws -> [MergeHistoryEntry.RemovedFile] {
+        guard !ids.isEmpty else { return [] }
+
+        let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "File")
+        request.predicate = NSPredicate(format: "id IN %@", ids.map { $0 as NSUUID })
+
+        let records = try context.fetch(request)
+        var infoById: [UUID: MergeHistoryEntry.RemovedFile] = [:]
+
+        for record in records {
+            guard let id = record.value(forKey: "id") as? UUID else { continue }
+            let path = record.value(forKey: "path") as? String
+            let size = record.value(forKey: "fileSize") as? Int64 ?? 0
+            let name = path.flatMap { URL(fileURLWithPath: $0).lastPathComponent } ?? "Unknown"
+            infoById[id] = MergeHistoryEntry.RemovedFile(id: id, name: name, size: size)
+        }
+
+        return ids.compactMap { infoById[$0] }
+    }
+
+    nonisolated private func resolveFileName(id: UUID?, in context: NSManagedObjectContext) throws -> String? {
+        guard let id else { return nil }
+        guard let record = try fetchFile(id: id, in: context) else { return nil }
+        if let path = record.value(forKey: "path") as? String {
+            return URL(fileURLWithPath: path).lastPathComponent
+        }
+        return nil
     }
 
     nonisolated private func encodeSignals(_ signals: [ConfidenceSignal]) -> Data? {

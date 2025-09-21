@@ -52,7 +52,7 @@ public struct Dropdown<Option: Identifiable & Hashable, Content: View>: View {
     public var body: some View {
         Menu {
             ForEach(options) { option in
-                Button {
+                SwiftUI.Button {
                     toggleSelection(for: option.id)
                 } label: {
                     option.content
@@ -68,7 +68,7 @@ public struct Dropdown<Option: Identifiable & Hashable, Content: View>: View {
                 Spacer()
 
                 Image(systemName: "chevron.down")
-                    .font(DesignToken.fontSizeSM)
+                    .font(.system(size: DesignToken.fontSizeSM))
                     .foregroundStyle(DesignToken.colorForegroundSecondary)
             }
             .padding(DesignToken.spacingMD)

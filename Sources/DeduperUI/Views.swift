@@ -2,6 +2,7 @@ import SwiftUI
 import DeduperCore
 import OSLog
 import Foundation
+import AppKit
 
 // Import ServiceManager directly for UI access
 @MainActor
@@ -32,6 +33,8 @@ extension DeduperCore {
 public struct OnboardingView: View {
     @StateObject private var viewModel = OnboardingViewModel()
 
+    public init() {}
+
     public var body: some View {
         VStack(spacing: DesignToken.spacingLG) {
             Text("Welcome to Deduper")
@@ -46,7 +49,7 @@ public struct OnboardingView: View {
                 Text("Get Started:")
                     .font(DesignToken.fontFamilyHeading)
 
-                Button(action: viewModel.selectFolders) {
+                Button("Select Folders", action: viewModel.selectFolders)
                     if viewModel.isValidating {
                         HStack {
                             Text("Validating...")
@@ -84,7 +87,7 @@ public struct OnboardingView: View {
                         .font(DesignToken.fontFamilyCaption)
                     } else {
                         VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
-                            ForEach(validationResult.issues) { issue in
+                            ForEach(validationResult.issues, id: \.url) { issue in
                                 HStack {
                                     Image(systemName: "exclamationmark.triangle.fill")
                                         .foregroundStyle(DesignToken.colorWarning)
@@ -105,10 +108,7 @@ public struct OnboardingView: View {
 
             Spacer()
         }
-        .padding(DesignToken.spacingXXXL)
-        .background(DesignToken.colorBackgroundPrimary)
     }
-}
 
 @MainActor
 public class OnboardingViewModel: ObservableObject {
@@ -154,6 +154,8 @@ public class OnboardingViewModel: ObservableObject {
 public struct ScanStatusView: View {
     @StateObject private var viewModel = ScanStatusViewModel()
 
+    public init() {}
+
     public var body: some View {
         VStack(spacing: DesignToken.spacingLG) {
             Text("Scanning for Duplicates")
@@ -168,34 +170,162 @@ public struct ScanStatusView: View {
                 .foregroundStyle(DesignToken.colorForegroundSecondary)
 
             HStack {
-            Button("Pause", variant: .secondary, size: .medium) {
-                viewModel.pause()
-            }
-            .disabled(viewModel.isPaused)
+                Button(viewModel.controlButtonTitle, variant: .secondary, size: .medium) {
+                    viewModel.pause()
+                }
 
-            Button("Cancel", variant: .secondary, size: .medium) {
-                viewModel.cancel()
+                Button("Cancel", variant: .secondary, size: .medium) {
+                    viewModel.cancel()
+                }
+                .disabled(!viewModel.canCancel)
             }
+
+            if let error = viewModel.lastError {
+                Text(error)
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorStatusError)
             }
         }
         .padding(DesignToken.spacingXXXL)
         .background(DesignToken.colorBackgroundPrimary)
+        .onAppear {
+            viewModel.beginScanningIfNeeded()
+        }
     }
 }
 
-public class ScanStatusViewModel: ObservableObject {
-    @Published public var progress: Double = 0.3
+@MainActor
+public final class ScanStatusViewModel: ObservableObject {
+    private let orchestrator = ServiceManager.shared.scanOrchestrator
+    private let permissionsService = ServiceManager.shared.permissionsService
+    private let logger = Logger(subsystem: "com.deduper", category: "scan-status")
+
+    @Published public var progress: Double = 0.0
     @Published public var isPaused: Bool = false
-    public var statusText: String { "Processing files... (\(Int(progress * 100))%)" }
+    @Published public var isScanning: Bool = false
+    @Published public var statusText: String = "Ready to scan"
+    @Published public var lastError: String?
+
+    private var scanTask: Task<Void, Never>?
+    private var monitoredURLs: [URL] = []
+    private var processedItems: Int = 0
+    private var hasStartedScan = false
+
+    public var controlButtonTitle: String {
+        if !hasStartedScan { return "Start" }
+        return isPaused ? "Resume" : "Pause"
+    }
+
+    public var canCancel: Bool {
+        hasStartedScan
+    }
+
+    public func beginScanningIfNeeded() {
+        guard !hasStartedScan else { return }
+        monitoredURLs = permissionsService.folderPermissions
+            .filter { $0.status == .granted }
+            .map { $0.url }
+
+        guard !monitoredURLs.isEmpty else {
+            statusText = "Select folders in Onboarding to begin scanning."
+            return
+        }
+
+        resumeScan(resetProgress: true)
+    }
 
     public func pause() {
-        isPaused.toggle()
-        // TODO: Implement pause/resume
+        guard hasStartedScan else {
+            beginScanningIfNeeded()
+            return
+        }
+
+        if isPaused {
+            resumeScan(resetProgress: false)
+            return
+        }
+
+        isPaused = true
+        isScanning = false
+        statusText = "Scan paused"
+        stopCurrentScan()
     }
 
     public func cancel() {
-        // TODO: Implement cancellation
-        print("Scan cancelled")
+        guard hasStartedScan else { return }
+
+        stopCurrentScan()
+        isPaused = false
+        isScanning = false
+        hasStartedScan = false
+        progress = 0.0
+        processedItems = 0
+        statusText = "Scan cancelled"
+    }
+
+    private func resumeScan(resetProgress: Bool) {
+        guard !monitoredURLs.isEmpty else {
+            statusText = "No folders available to scan."
+            return
+        }
+
+        if resetProgress {
+            progress = 0.0
+            processedItems = 0
+        }
+
+        hasStartedScan = true
+        isPaused = false
+        isScanning = true
+        statusText = "Scanning \(monitoredURLs.count) folder(s)..."
+        lastError = nil
+
+        stopCurrentScan()
+
+        scanTask = Task { [weak self] in
+            guard let self else { return }
+            let stream = await self.orchestrator.startContinuousScan(urls: self.monitoredURLs)
+            for await event in stream {
+                if Task.isCancelled { break }
+                await MainActor.run {
+                    self.handle(event: event)
+                }
+            }
+        }
+    }
+
+    private func stopCurrentScan() {
+        orchestrator.stopAll()
+        scanTask?.cancel()
+        scanTask = nil
+    }
+
+    @MainActor
+    private func handle(event: ScanEvent) {
+        switch event {
+        case .started(let url):
+            statusText = "Scanning \(url.lastPathComponent)"
+        case .progress(let count):
+            processedItems = count
+            progress = max(progress, estimatedProgress(for: count))
+        case .item:
+            processedItems += 1
+            progress = max(progress, estimatedProgress(for: processedItems))
+        case .skipped(let url, let reason):
+            logger.debug("Skipped \(url.path, privacy: .public): \(reason, privacy: .public)")
+        case .error(let path, let message):
+            lastError = "Error scanning \(path): \(message)"
+            logger.error("Scan error: \(message, privacy: .public)")
+        case .finished(let metrics):
+            progress = 1.0
+            statusText = "Initial scan complete (\(metrics.mediaFiles) media files)"
+            isScanning = true
+        }
+    }
+
+    private func estimatedProgress(for count: Int) -> Double {
+        let estimate = 1.0 - exp(-Double(max(count, 1)) / 400.0)
+        return min(0.95, estimate)
     }
 }
 
@@ -209,62 +339,27 @@ public class ScanStatusViewModel: ObservableObject {
  */
 public struct GroupsListView: View {
     @StateObject private var viewModel = GroupsListViewModel()
-    @State private var selectedGroup: DeduperCore.DuplicateGroupResult?
+    @State private var selectedGroup: DuplicateGroupResult?
     @State private var showSimilarityControls = false
     @State private var searchText = ""
     @State private var selectedGroupIndex = 0
     @FocusState private var isFocused: Bool
 
+    public init() {}
+
     public var body: some View {
         VStack {
-            // Search and filter bar
-            HStack {
-                TextField("Search groups...", text: $viewModel.searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(minWidth: 200)
-                    .onChange(of: viewModel.searchText) { _ in
-                        viewModel.applyFilters()
-                    }
-
-                Button("Similarity", systemImage: "slider.horizontal.3", variant: .secondary, size: .medium) {
-                    showSimilarityControls.toggle()
-                }
-
-                Spacer()
-
-                Text("\(viewModel.filteredGroups.count) groups")
-                    .font(DesignToken.fontFamilyCaption)
-                    .foregroundStyle(DesignToken.colorForegroundSecondary)
-            }
-            .padding(DesignToken.spacingMD)
-
-            // Groups list with virtualization and keyboard navigation
-            ScrollView {
-                LazyVStack(spacing: DesignToken.spacingXS) {
-                    ForEach(Array(viewModel.filteredGroups.enumerated()), id: \.1.id) { (index, group) in
-                        GroupRowView(group: group)
-                            .focused($isFocused, equals: selectedGroupIndex == index)
-                            .onTapGesture {
-                                selectedGroup = group
-                                selectedGroupIndex = index
-                            }
-                            .contextMenu {
-                                Button("Select as Keeper") {
-                                    viewModel.setKeeper(for: group)
-                                }
-                                Button("Merge Group") {
-                                    viewModel.mergeGroup(group)
-                                }
-                                Divider()
-                                Button("Show in Finder") {
-                                    viewModel.showInFinder(group)
-                                }
-                            }
-                    }
-                }
-                .padding(DesignToken.spacingMD)
-            }
+            searchAndFilterBar
+            groupsList
         }
+        .onAppear {
+            viewModel.loadGroups()
+        }
+        .applyGroupsKeyboardShortcuts(
+            viewModel: viewModel,
+            selectedGroup: $selectedGroup,
+            selectedIndex: $selectedGroupIndex
+        )
         .background(DesignToken.colorBackgroundPrimary)
         .navigationTitle("Duplicate Groups")
         .toolbar {
@@ -281,48 +376,110 @@ public struct GroupsListView: View {
         .sheet(isPresented: $showSimilarityControls) {
             SimilarityControlsView()
         }
-        .onAppear {
-            viewModel.loadGroups()
-        }
-        // Keyboard navigation for group selection with accessibility
-        .onKeyPress(.downArrow) {
-            if selectedGroupIndex < viewModel.filteredGroups.count - 1 {
-                selectedGroupIndex += 1
-                selectedGroup = viewModel.filteredGroups[selectedGroupIndex]
-                // macOS accessibility announcement (would need AppleScript or NSWorkspace for full implementation)(notification: .announcement, argument: "Selected group \(selectedGroupIndex + 1) of \(viewModel.filteredGroups.count)")
-            }
-            return .handled
-        }
-        .onKeyPress(.upArrow) {
-            if selectedGroupIndex > 0 {
-                selectedGroupIndex -= 1
-                selectedGroup = viewModel.filteredGroups[selectedGroupIndex]
-                // macOS accessibility announcement (would need AppleScript or NSWorkspace for full implementation)(notification: .announcement, argument: "Selected group \(selectedGroupIndex + 1) of \(viewModel.filteredGroups.count)")
-            }
-            return .handled
-        }
-        .onKeyPress(.return) {
-            if let selectedGroup = selectedGroup {
-                // macOS accessibility announcement (would need AppleScript or NSWorkspace for full implementation)(notification: .announcement, argument: "Opening group details")
-                print("Navigate to group: \(selectedGroup.id)")
-            }
-            return .handled
-        }
-        .onKeyPress(" ") {
-            if let selectedGroup = selectedGroup {
-                viewModel.setKeeper(for: selectedGroup)
-                // macOS accessibility announcement (would need AppleScript or NSWorkspace for full implementation)(notification: .announcement, argument: "Set as keeper")
-            }
-            return .handled
+        .alert(item: $viewModel.activeAlert) { alert in
+            Alert(title: Text(alert.title), message: Text(alert.message), dismissButton: .default(Text("OK")))
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Duplicate groups list")
         .accessibilityHint("Use arrow keys to navigate, spacebar to select keeper, return to open details")
     }
+
+    private var searchAndFilterBar: some View {
+        HStack {
+            TextField("Search groups...", text: $viewModel.searchText)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 200)
+                .onChange(of: viewModel.searchText) { _ in
+                    viewModel.applyFilters()
+                }
+
+            Button("Similarity", systemImage: "slider.horizontal.3", variant: .secondary, size: .medium) {
+                showSimilarityControls.toggle()
+            }
+
+            Spacer()
+
+            Text("\(viewModel.filteredGroups.count) groups")
+                .font(DesignToken.fontFamilyCaption)
+                .foregroundStyle(DesignToken.colorForegroundSecondary)
+        }
+        .padding(DesignToken.spacingMD)
+    }
+
+private var groupsList: some View {
+        ScrollView {
+            LazyVStack(spacing: DesignToken.spacingXS) {
+                ForEach(Array(viewModel.filteredGroups.enumerated()), id: \.1.id) { (index, group) in
+                    GroupRowView(group: group)
+                        .focused($isFocused, equals: selectedGroupIndex == index)
+                        .onTapGesture {
+                            selectedGroup = group
+                            selectedGroupIndex = index
+                        }
+                        .contextMenu {
+                            Button("Select as Keeper") {
+                                viewModel.setKeeper(for: group)
+                            }
+                            Button("Merge Group") {
+                                viewModel.mergeGroup(group)
+                            }
+                            Divider()
+                            Button("Show in Finder") {
+                                viewModel.showInFinder(group)
+                            }
+                        }
+                }
+            }
+            .padding(DesignToken.spacingMD)
+        }
+    }
+}
+
+// MARK: - Keyboard Support
+
+private extension View {
+    @ViewBuilder
+    func applyGroupsKeyboardShortcuts(
+        viewModel: GroupsListViewModel,
+        selectedGroup: Binding<DuplicateGroupResult?>,
+        selectedIndex: Binding<Int>
+    ) -> some View {
+        if #available(macOS 14.0, *) {
+            self
+                .onKeyPress(.downArrow) {
+                    guard !viewModel.filteredGroups.isEmpty else { return .ignored }
+                    if selectedIndex.wrappedValue < viewModel.filteredGroups.count - 1 {
+                        selectedIndex.wrappedValue += 1
+                        selectedGroup.wrappedValue = viewModel.filteredGroups[selectedIndex.wrappedValue]
+                    }
+                    return .handled
+                }
+                .onKeyPress(.upArrow) {
+                    guard !viewModel.filteredGroups.isEmpty else { return .ignored }
+                    if selectedIndex.wrappedValue > 0 {
+                        selectedIndex.wrappedValue -= 1
+                        selectedGroup.wrappedValue = viewModel.filteredGroups[selectedIndex.wrappedValue]
+                    }
+                    return .handled
+                }
+                .onKeyPress(.return) {
+                    guard let current = selectedGroup.wrappedValue else { return .ignored }
+                    selectedGroup.wrappedValue = current
+                    return .handled
+                }
+                .onKeyPress(" ") {
+                    guard let current = selectedGroup.wrappedValue else { return .ignored }
+                    viewModel.setKeeper(for: current)
+                    return .handled
+                }
+        } else {
+            self
+        }
+    }
 }
 
 public struct GroupRowView: View {
-    public let group: DeduperCore.DuplicateGroupResult
+    public let group: DuplicateGroupResult
 
     public var body: some View {
         Card(variant: .elevated, size: .medium) {
@@ -371,38 +528,71 @@ public struct GroupRowView: View {
 
 @MainActor
 public final class GroupsListViewModel: ObservableObject {
-    private let duplicateEngine = ServiceManager.shared.duplicateEngine
+    public struct GroupsAlert: Identifiable {
+        public let id = UUID()
+        public let title: String
+        public let message: String
+    }
 
-    @Published public var groups: [DeduperCore.DuplicateGroupResult] = []
-    @Published public var filteredGroups: [DeduperCore.DuplicateGroupResult] = []
+    private let duplicateEngine = ServiceManager.shared.duplicateEngine
+    private let mergeService = ServiceManager.shared.mergeService
+    private let persistenceController = ServiceManager.shared.persistence
+    private let similaritySettingsStore = SimilaritySettingsStore.shared
+    private let logger = Logger(subsystem: "com.deduper", category: "groups")
+
+    @Published public var groups: [DuplicateGroupResult] = []
+    @Published public var filteredGroups: [DuplicateGroupResult] = []
     @Published public var isLoading = false
     @Published public var error: String?
     @Published public var searchText = ""
-    @Published public var selectedGroup: DeduperCore.DuplicateGroupResult?
+    @Published public var activeAlert: GroupsAlert?
 
     private var searchDebounceTimer: Timer?
+    private var similaritySettings = SimilaritySettings()
 
     public init() {
-        // Subscribe to similarity settings changes
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(similaritySettingsChanged),
             name: .similaritySettingsChanged,
             object: nil
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keeperSelectionChanged(_:)),
+            name: .keeperSelectionChanged,
+            object: nil
+        )
+
+        Task { [weak self] in
+            guard let self else { return }
+            let settings = await similaritySettingsStore.current()
+            await MainActor.run {
+                self.similaritySettings = settings
+            }
+        }
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     public func loadGroups() {
+        guard !isLoading else { return }
+
         isLoading = true
         error = nil
 
         Task {
             do {
-                // Load duplicate groups from the detection engine
+                let settings = await similaritySettingsStore.current()
                 let loadedGroups = try await duplicateEngine.findDuplicates()
+
                 await MainActor.run {
+                    self.similaritySettings = settings
                     self.groups = loadedGroups
-                    self.applyFilters()
+                    self.performFiltering()
                     self.isLoading = false
                 }
             } catch {
@@ -414,45 +604,200 @@ public final class GroupsListViewModel: ObservableObject {
         }
     }
 
-    public func setKeeper(for group: DeduperCore.DuplicateGroupResult) {
-        // TODO: Implement keeper selection
-        print("Set keeper for group: \(group.id)")
-    }
-
-    public func mergeGroup(_ group: DeduperCore.DuplicateGroupResult) {
-        // TODO: Implement group merge
-        print("Merge group: \(group.id)")
-    }
-
-    public func showInFinder(_ group: DeduperCore.DuplicateGroupResult) {
-        // TODO: Implement Finder integration
-        print("Show group in Finder: \(group.id)")
-    }
-
-    public func applyFilters() {
-        // Cancel previous timer
-        searchDebounceTimer?.invalidate()
-
-        // Debounce search to improve performance
-        searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-            guard let self = self else { return }
-
-            DispatchQueue.main.async {
-                if self.searchText.isEmpty {
-                    self.filteredGroups = self.groups
-                } else {
-                    self.filteredGroups = self.groups.filter { group in
-                        group.id.localizedCaseInsensitiveContains(self.searchText)
-                    }
+    public func setKeeper(for group: DuplicateGroupResult) {
+        Task {
+            do {
+                let keeperId = try await mergeService.suggestKeeper(for: group.groupId)
+                await MainActor.run {
+                    self.applyKeeperSelection(keeperId, to: group.groupId, broadcast: true)
+                }
+            } catch {
+                await MainActor.run {
+                    self.presentError(error)
                 }
             }
         }
     }
 
+    public func mergeGroup(_ group: DuplicateGroupResult) {
+        Task {
+            do {
+                let keeperId: UUID
+                if let existing = group.keeperSuggestion {
+                    keeperId = existing
+                } else {
+                    keeperId = try await mergeService.suggestKeeper(for: group.groupId)
+                }
+                let result = try await mergeService.merge(groupId: group.groupId, keeperId: keeperId)
+
+                await MainActor.run {
+                    self.removeGroup(groupId: group.groupId)
+                    self.activeAlert = GroupsAlert(
+                        title: "Merge Complete",
+                        message: "Removed \(result.removedFileIds.count) file(s)."
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    self.presentError(error)
+                }
+            }
+        }
+    }
+
+    public func showInFinder(_ group: DuplicateGroupResult) {
+        let urls = group.members.compactMap { member in
+            persistenceController.resolveFileURL(id: member.fileId)
+        }
+
+        guard !urls.isEmpty else {
+            presentErrorMessage("Unable to locate files on disk for this group.")
+            return
+        }
+
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
+    }
+
+    public func applyFilters() {
+        searchDebounceTimer?.invalidate()
+        searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                self.performFiltering()
+            }
+        }
+    }
+
+    private func performFiltering() {
+        var filtered = groups.filter { $0.confidence >= similaritySettings.overallThreshold }
+
+        if !searchText.isEmpty {
+            filtered = filtered.filter { group in
+                let search = searchText.lowercased()
+                if group.rationaleLines.joined(separator: " ").lowercased().contains(search) {
+                    return true
+                }
+                return String(describing: group.groupId).lowercased().contains(search)
+            }
+        }
+
+        filtered.sort { score(for: $0) > score(for: $1) }
+        filteredGroups = filtered
+    }
+
+    private func score(for group: DuplicateGroupResult) -> Double {
+        var score = group.confidence
+        let rationale = group.rationaleLines.joined(separator: " ").lowercased()
+        for signal in similaritySettings.enabledSignals {
+            if rationale.contains(signal.lowercased()) {
+                score += 0.05
+            }
+        }
+        return score
+    }
+
+    @discardableResult
+    private func updateGroup(groupId: UUID, transform: (DuplicateGroupResult) -> DuplicateGroupResult) -> DuplicateGroupResult? {
+        var updatedGroup: DuplicateGroupResult?
+
+        groups = groups.map { current in
+            guard current.groupId == groupId else { return current }
+            let transformed = transform(current)
+            updatedGroup = transformed
+            return transformed
+        }
+
+        filteredGroups = filteredGroups.map { current in
+            guard current.groupId == groupId else { return current }
+            return transform(current)
+        }
+
+        return updatedGroup
+    }
+
+    private func removeGroup(groupId: UUID) {
+        groups.removeAll { $0.groupId == groupId }
+        filteredGroups.removeAll { $0.groupId == groupId }
+    }
+
+    private func applyKeeperSelection(_ keeperId: UUID, to groupId: UUID, broadcast: Bool) {
+        if let existing = groups.first(where: { $0.groupId == groupId }), existing.keeperSuggestion == keeperId {
+            return
+        }
+
+        guard let updatedGroup = updateGroup(groupId: groupId, transform: { current in
+            if current.keeperSuggestion == keeperId {
+                return current
+            }
+            return DuplicateGroupResult(
+                groupId: current.groupId,
+                members: current.members,
+                confidence: current.confidence,
+                rationaleLines: current.rationaleLines,
+                keeperSuggestion: keeperId,
+                incomplete: current.incomplete,
+                mediaType: current.mediaType
+            )
+        }) else {
+            return
+        }
+
+        if broadcast {
+            activeAlert = GroupsAlert(
+                title: "Keeper Updated",
+                message: "Selected keeper has been updated for the group."
+            )
+        }
+
+        Task {
+            do {
+                try await persistenceController.createOrUpdateGroup(from: updatedGroup)
+            } catch {
+                logger.error("Failed to persist keeper selection: \(error.localizedDescription)")
+            }
+        }
+
+        if broadcast {
+            NotificationCenter.default.post(
+                name: .keeperSelectionChanged,
+                object: nil,
+                userInfo: ["groupId": updatedGroup.groupId, "keeperId": keeperId]
+            )
+        }
+    }
+
+    private func presentError(_ error: Error) {
+        logger.error("Groups action failed: \(error.localizedDescription)")
+        presentErrorMessage(error.localizedDescription)
+    }
+
+    private func presentErrorMessage(_ message: String) {
+        activeAlert = GroupsAlert(
+            title: "Operation Failed",
+            message: message
+        )
+    }
+
     @objc private func similaritySettingsChanged() {
-        // TODO: Re-rank groups based on new similarity settings
-        print("Similarity settings changed - re-ranking groups")
-        loadGroups()
+        Task { [weak self] in
+            guard let self else { return }
+            let settings = await similaritySettingsStore.current()
+            await MainActor.run {
+                self.similaritySettings = settings
+                self.performFiltering()
+            }
+        }
+    }
+
+    @objc private func keeperSelectionChanged(_ notification: Notification) {
+        guard let groupId = notification.userInfo?["groupId"] as? UUID else { return }
+        guard let keeperId = notification.userInfo?["keeperId"] as? UUID else { return }
+
+        if let existing = groups.first(where: { $0.groupId == groupId }), existing.keeperSuggestion == keeperId {
+            return
+        }
+
+        applyKeeperSelection(keeperId, to: groupId, broadcast: false)
     }
 }
 
@@ -462,18 +807,36 @@ public final class GroupsListViewModel: ObservableObject {
 @MainActor
 public final class GroupDetailViewModel: ObservableObject {
     private let mergeService = ServiceManager.shared.mergeService
-    private let thumbnailService = ServiceManager.shared.thumbnailService
+    private let persistenceController = ServiceManager.shared.persistence
 
-    @Published public var selectedGroup: DeduperCore.DuplicateGroupResult?
+    @Published public var selectedGroup: DuplicateGroupResult?
     @Published public var isProcessing = false
-    @Published public var mergePlan: DeduperCore.MergePlan?
-    @Published public var mergeResult: DeduperCore.MergeResult?
+    @Published public var mergePlan: MergePlan?
+    @Published public var mergeResult: MergeResult?
     @Published public var error: String?
+    @Published public var infoMessage: String?
+    @Published public var selectedKeeperId: UUID?
 
-    public init(group: DeduperCore.DuplicateGroupResult) {
+    public init(group: DuplicateGroupResult) {
         self.selectedGroup = group
+        self.selectedKeeperId = group.keeperSuggestion ?? group.members.first?.fileId
         Task {
             await loadMergePlan()
+        }
+    }
+
+    public func selectSuggestedKeeper() async {
+        guard let group = selectedGroup else { return }
+
+        do {
+            let keeperId = try await mergeService.suggestKeeper(for: group.groupId)
+            await MainActor.run {
+                self.updateKeeperSelection(to: keeperId)
+            }
+        } catch {
+            await MainActor.run {
+                self.error = error.localizedDescription
+            }
         }
     }
 
@@ -487,6 +850,7 @@ public final class GroupDetailViewModel: ObservableObject {
             let plan = try await mergeService.planMerge(groupId: group.groupId, keeperId: keeperId)
             await MainActor.run {
                 self.mergePlan = plan
+                self.selectedKeeperId = keeperId
             }
         } catch {
             await MainActor.run {
@@ -500,21 +864,63 @@ public final class GroupDetailViewModel: ObservableObject {
         error = nil
 
         do {
-            guard let group = selectedGroup,
-                  let keeperId = group.keeperSuggestion ?? group.members.first?.fileId else {
-                throw MergeError.groupNotFound(group.groupId)
+            guard let group = selectedGroup else {
+                throw MergeError.groupNotFound(UUID())
+            }
+
+            guard let keeperId = selectedKeeperId ?? group.keeperSuggestion ?? group.members.first?.fileId else {
+                throw MergeError.keeperNotFound(group.groupId)
             }
 
             let result = try await mergeService.merge(groupId: group.groupId, keeperId: keeperId)
             await MainActor.run {
                 self.mergeResult = result
                 self.isProcessing = false
+                self.infoMessage = "Merged group successfully."
+                self.mergePlan = nil
+                self.selectedKeeperId = keeperId
             }
         } catch {
             await MainActor.run {
                 self.error = error.localizedDescription
                 self.isProcessing = false
             }
+        }
+    }
+
+    public func updateKeeperSelection(to keeperId: UUID) {
+        guard let currentGroup = selectedGroup else { return }
+
+        selectedKeeperId = keeperId
+
+        let updatedGroup = DuplicateGroupResult(
+            groupId: currentGroup.groupId,
+            members: currentGroup.members,
+            confidence: currentGroup.confidence,
+            rationaleLines: currentGroup.rationaleLines,
+            keeperSuggestion: keeperId,
+            incomplete: currentGroup.incomplete,
+            mediaType: currentGroup.mediaType
+        )
+
+        selectedGroup = updatedGroup
+        infoMessage = "Keeper selection updated."
+
+        NotificationCenter.default.post(
+            name: .keeperSelectionChanged,
+            object: nil,
+            userInfo: ["groupId": updatedGroup.groupId, "keeperId": keeperId]
+        )
+
+        Task {
+            do {
+                try await persistenceController.createOrUpdateGroup(from: updatedGroup)
+            } catch {
+                await MainActor.run {
+                    self.error = error.localizedDescription
+                }
+            }
+            await self.loadMergePlan()
         }
     }
 }
@@ -528,43 +934,65 @@ public final class GroupDetailViewModel: ObservableObject {
  - Design System: Composer component with complex state management.
  */
 public struct GroupDetailView: View {
-    public let group: DeduperCore.DuplicateGroupResult
+    public let group: DuplicateGroupResult
     @StateObject private var viewModel: GroupDetailViewModel
 
-    public init(group: DeduperCore.DuplicateGroupResult) {
+    public init(group: DuplicateGroupResult) {
         self.group = group
         self._viewModel = StateObject(wrappedValue: GroupDetailViewModel(group: group))
     }
 
     public var body: some View {
+        let currentGroup = viewModel.selectedGroup ?? group
+
         VStack {
             // Header with group info
             VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
-                Text("Group \(group.id)")
+                Text("Group \(currentGroup.id)")
                     .font(DesignToken.fontFamilyTitle)
 
                 HStack {
-                    Text("\(group.members.count) items")
+                    Text("\(currentGroup.members.count) items")
                         .font(DesignToken.fontFamilyBody)
                     Spacer()
-                    Text(ByteCountFormatter.string(fromByteCount: group.spacePotentialSaved, countStyle: .file))
+                    Text(ByteCountFormatter.string(fromByteCount: currentGroup.spacePotentialSaved, countStyle: .file))
                         .font(DesignToken.fontFamilyCaption)
                         .foregroundStyle(DesignToken.colorForegroundSecondary)
                 }
             }
             .padding(DesignToken.spacingMD)
 
+            if let firstMember = currentGroup.members.first {
+                let keeperBinding = Binding<UUID>(
+                    get: {
+                        viewModel.selectedKeeperId ?? currentGroup.keeperSuggestion ?? firstMember.fileId
+                    },
+                    set: { newKeeper in
+                        viewModel.updateKeeperSelection(to: newKeeper)
+                    }
+                )
+
+                Picker("Keeper", selection: keeperBinding) {
+                    ForEach(currentGroup.members, id: \.fileId) { member in
+                        Text(member.fileId.uuidString)
+                            .tag(member.fileId)
+                    }
+                }
+                .pickerStyle(.menu)
+                .padding(.horizontal, DesignToken.spacingMD)
+            }
+
             Divider()
 
             // Evidence and metadata comparison
             ScrollView {
                 VStack(spacing: DesignToken.spacingMD) {
-                    if let mergePlan = viewModel.mergePlan {
+                    if viewModel.mergePlan != nil {
                         EvidencePanel(items: [
                             EvidenceItem(id: "phash", label: "pHash", distanceText: "8", thresholdText: "10", verdict: .pass),
                             EvidenceItem(id: "date", label: "date", distanceText: "2m", thresholdText: "5m", verdict: .warn),
                             EvidenceItem(id: "size", label: "fileSize", distanceText: "1.2MB", thresholdText: "1.5MB", verdict: .pass),
-                        ], overallConfidence: group.confidence)
+                        ], overallConfidence: currentGroup.confidence)
                     } else {
                         ProgressView("Loading merge plan...")
                     }
@@ -580,6 +1008,7 @@ public struct GroupDetailView: View {
                                 rightValue: newValue
                             )
                         })
+                        MergePlanView(plan: mergePlan)
                     } else {
                         ProgressView("Loading metadata...")
                     }
@@ -607,9 +1036,10 @@ public struct GroupDetailView: View {
 
             // Actions
             HStack {
-                Button("Select as Keeper", variant: .primary, size: .medium) {
-                    // TODO: Implement keeper selection UI
-                    print("Select as Keeper clicked")
+                Button("Select Suggested Keeper", variant: .primary, size: .medium) {
+                    Task {
+                        await viewModel.selectSuggestedKeeper()
+                    }
                 }
 
                 Spacer()
@@ -627,34 +1057,69 @@ public struct GroupDetailView: View {
                 }
             }
             .padding(DesignToken.spacingMD)
+
+            if let info = viewModel.infoMessage {
+                Text(info)
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    .padding(.bottom, DesignToken.spacingMD)
+            }
+
+            if let error = viewModel.error {
+                Text(error)
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorStatusError)
+                    .padding(.bottom, DesignToken.spacingMD)
+            }
         }
         .background(DesignToken.colorBackgroundPrimary)
         .frame(minWidth: 600, minHeight: 500)
-        // TODO: Add keyboard shortcuts when macOS 14.0+ support is available
+        // Keyboard shortcuts are applied conditionally for macOS 14.0+
     }
 }
 
 // MARK: - Merge Plan View
 
 /**
- DeduperCore.MergePlanView shows the plan before executing merges.
+ MergePlanView shows the plan before executing merges.
  - Summary of what will be kept vs deleted.
  - Per-field metadata merge decisions.
  - Design System: Composer component with confirmation flows.
  */
 public struct MergePlanView: View {
-    public var body: some View {
-        VStack {
-            Text("Merge Plan")
-                .font(DesignToken.fontFamilyTitle)
+    public let plan: MergePlan?
 
-            DeduperCore.MergePlanSheet(
-                keeperName: "IMG_1234.JPG",
-                removals: [DeduperCore.MergePlanItem(displayName: "IMG_1234 (1).JPG")],
-                spaceSavedBytes: 1_234_567
-            )
+    public init(plan: MergePlan?) {
+        self.plan = plan
+    }
+
+    public var body: some View {
+        Group {
+            if let plan = plan {
+                MergePlanSheet(
+                    keeperName: plan.keeperId.uuidString,
+                    removals: plan.trashList.map { MergePlanItem(displayName: $0.uuidString) },
+                    metadataMerges: plan.fieldChanges.map { change in
+                        MergePlanField(
+                            id: change.field,
+                            label: change.field.capitalized,
+                            from: change.oldValue,
+                            into: change.newValue
+                        )
+                    },
+                    spaceSavedBytes: 0
+                )
+            } else {
+                VStack(spacing: DesignToken.spacingSM) {
+                    Text("Merge plan not available")
+                        .font(DesignToken.fontFamilyBody)
+                    Text("Select a keeper to preview merge actions.")
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                }
+                .padding(DesignToken.spacingMD)
+            }
         }
-        .padding(DesignToken.spacingMD)
         .background(DesignToken.colorBackgroundPrimary)
     }
 }
@@ -668,6 +1133,8 @@ public struct MergePlanView: View {
  - Design System: Application assembly with summary presentation.
  */
 public struct CleanupSummaryView: View {
+    public init() {}
+
     public var body: some View {
         VStack(spacing: DesignToken.spacingLG) {
             Text("Cleanup Complete")

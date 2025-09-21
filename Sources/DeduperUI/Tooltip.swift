@@ -8,29 +8,26 @@ import SwiftUI
  * - Can contain rich content including images and links
  * - Design System: Composer component following `/Sources/DesignSystem/COMPONENT_STANDARDS.md`
  */
-public struct Tooltip<Content: View>: View {
-    public enum Position {
-        case top
-        case bottom
-        case left
-        case right
-    }
+public enum TooltipPosition: Sendable {
+    case top
+    case bottom
+    case left
+    case right
+}
 
-    private let content: Content
-    private let tooltipContent: AnyView
-    private let position: Position
+public struct Tooltip: View {
+    private let text: String
+    private let position: TooltipPosition
     private let delay: Double
     private let showArrow: Bool
 
     public init(
-        position: Position = .top,
+        _ text: String,
+        position: TooltipPosition = .top,
         delay: Double = 0.5,
-        showArrow: Bool = true,
-        @ViewBuilder content: () -> Content,
-        @ViewBuilder tooltipContent: () -> some View
+        showArrow: Bool = true
     ) {
-        self.content = content()
-        self.tooltipContent = AnyView(tooltipContent())
+        self.text = text
         self.position = position
         self.delay = delay
         self.showArrow = showArrow
@@ -41,43 +38,46 @@ public struct Tooltip<Content: View>: View {
             position: position,
             delay: delay,
             showArrow: showArrow,
-            tooltipContent: tooltipContent
-        ) {
-            content
-        }
+            tooltipContent: Text(text),
+            content: { Text(text) },
+            text: text
+        )
     }
 }
 
 // MARK: - Tooltip Wrapper
 
-private struct TooltipWrapper<Content: View>: View {
-    let position: Tooltip<Never>.Position
+private struct TooltipWrapper: View {
+    let position: TooltipPosition
     let delay: Double
     let showArrow: Bool
-    let tooltipContent: AnyView
-    let content: Content
+    let tooltipContent: Text
+    let content: () -> Text
+    let text: String
 
     @State private var isShowing = false
     @State private var showTimer: Timer?
 
     init(
-        position: Tooltip<Never>.Position,
+        position: TooltipPosition,
         delay: Double,
         showArrow: Bool,
-        tooltipContent: AnyView,
-        @ViewBuilder content: () -> Content
+        tooltipContent: Text,
+        content: @escaping () -> Text,
+        text: String
     ) {
         self.position = position
         self.delay = delay
         self.showArrow = showArrow
         self.tooltipContent = tooltipContent
-        self.content = content()
+        self.content = content
+        self.text = text
     }
 
     var body: some View {
         ZStack {
             // Trigger content
-            content
+            content()
                 .onHover { hovering in
                     handleHover(hovering)
                 }
@@ -98,10 +98,13 @@ private struct TooltipWrapper<Content: View>: View {
     }
 
     private var tooltipView: some View {
-        VStack(spacing: 0) {
+        // Capture position value to avoid main actor isolation issues in alignment guides
+        let capturedPosition = position
+
+        return VStack(spacing: 0) {
             // Arrow
             if showArrow {
-                TooltipArrow(position: position)
+                TooltipArrow(position: capturedPosition)
             }
 
             // Content
@@ -117,14 +120,14 @@ private struct TooltipWrapper<Content: View>: View {
                 )
         }
         .alignmentGuide(.top) { d in
-            switch position {
+            switch capturedPosition {
             case .top: return d[.bottom] + 8
             case .bottom: return d[.top] - 8
             default: return d[.top]
             }
         }
         .alignmentGuide(.bottom) { d in
-            switch position {
+            switch capturedPosition {
             case .bottom: return d[.top] - 8
             case .top: return d[.bottom] + 8
             default: return d[.bottom]
@@ -137,13 +140,17 @@ private struct TooltipWrapper<Content: View>: View {
 
         if hovering {
             showTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
-                withAnimation(.easeInOut(duration: DesignToken.animationDurationFast)) {
-                    isShowing = true
+                Task { @MainActor in
+                    withAnimation(.easeInOut(duration: DesignToken.animationDurationFast)) {
+                        isShowing = true
+                    }
                 }
             }
         } else {
-            withAnimation(.easeInOut(duration: DesignToken.animationDurationFast)) {
-                isShowing = false
+            Task { @MainActor in
+                withAnimation(.easeInOut(duration: DesignToken.animationDurationFast)) {
+                    isShowing = false
+                }
             }
         }
     }
@@ -152,7 +159,7 @@ private struct TooltipWrapper<Content: View>: View {
 // MARK: - Tooltip Arrow
 
 private struct TooltipArrow: View {
-    let position: Tooltip<Never>.Position
+    let position: TooltipPosition
 
     var body: some View {
         Triangle()
@@ -195,36 +202,18 @@ private struct Triangle: Shape {
 extension View {
     public func tooltip(
         _ text: String,
-        position: Tooltip<Never>.Position = .top,
+        position: TooltipPosition = .top,
         delay: Double = 0.5,
         showArrow: Bool = true
     ) -> some View {
         Tooltip(
+            text,
             position: position,
             delay: delay,
-            showArrow: showArrow,
-            content: { self }
-        ) {
-            Text(text)
-                .font(DesignToken.fontFamilyCaption)
-                .foregroundStyle(DesignToken.colorForegroundPrimary)
-        }
-    }
-
-    public func tooltip<Content: View>(
-        position: Tooltip<Content>.Position = .top,
-        delay: Double = 0.5,
-        showArrow: Bool = true,
-        @ViewBuilder content: @escaping () -> Content
-    ) -> some View {
-        Tooltip(
-            position: position,
-            delay: delay,
-            showArrow: showArrow,
-            content: { self },
-            tooltipContent: content
+            showArrow: showArrow
         )
     }
+
 }
 
 // MARK: - Preview
@@ -235,21 +224,12 @@ extension View {
 
         HStack(spacing: DesignToken.spacingMD) {
             Button("Help", systemImage: "questionmark.circle", variant: .secondary, size: .small) {}
-                .tooltip("Get help with this feature")
+                .tooltip("Get help with this feature", position: .top, delay: 0.5, showArrow: true)
 
             Image(systemName: "gear")
                 .resizable()
                 .frame(width: 24, height: 24)
-                .tooltip(position: .bottom, delay: 0.5, showArrow: true) {
-                    VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
-                        Text("Settings")
-                            .font(DesignToken.fontFamilyHeading)
-                        Text("Configure your preferences")
-                            .font(DesignToken.fontFamilyCaption)
-                            .foregroundStyle(DesignToken.colorForegroundSecondary)
-                    }
-                }
+                .tooltip("Settings", position: .bottom, delay: 0.5, showArrow: true)
         }
     }
-    .padding(DesignToken.spacingMD)
 }

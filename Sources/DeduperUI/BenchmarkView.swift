@@ -330,8 +330,19 @@ public final class BenchmarkViewModel: ObservableObject {
         while Date() < endTime && isRunning {
             let operationStart = Date()
 
-            // Simulate operation based on test type
-            try await simulateOperation()
+            do {
+                try await simulateOperation()
+            } catch {
+                failedOperations += 1
+
+                let elapsed = Date().timeIntervalSince(startTime)
+                await MainActor.run {
+                    self.progress = min(elapsed / testDuration, 1.0)
+                }
+
+                try await Task.sleep(nanoseconds: 10_000_000)
+                continue
+            }
 
             let operationEnd = Date()
             let latency = operationEnd.timeIntervalSince(operationStart)
@@ -363,7 +374,7 @@ public final class BenchmarkViewModel: ObservableObject {
             // Update progress
             let elapsed = Date().timeIntervalSince(startTime)
             await MainActor.run {
-                self.progress = elapsed / testDuration
+                self.progress = min(elapsed / testDuration, 1.0)
             }
 
             // Small delay to simulate real processing
@@ -371,8 +382,10 @@ public final class BenchmarkViewModel: ObservableObject {
         }
 
         let totalDuration = Date().timeIntervalSince(startTime)
-        let operationsPerSecond = Double(operationsCompleted) / totalDuration
-        let averageLatency = operationsCompleted > 0 ? totalLatency / Double(operationsCompleted) : 0
+        let successfulOperations = operationsCompleted
+        let totalOperations = operationsCompleted + failedOperations
+        let operationsPerSecond = totalDuration > 0 ? Double(successfulOperations) / totalDuration : 0
+        let averageLatency = successfulOperations > 0 ? totalLatency / Double(successfulOperations) : 0
 
         return BenchmarkResult(
             testType: selectedTestType,
@@ -381,8 +394,8 @@ public final class BenchmarkViewModel: ObservableObject {
             averageLatency: averageLatency,
             peakMemoryUsage: peakMemory,
             averageCPUUsage: currentCPUUsage,
-            totalOperations: operationsCompleted,
-            successfulOperations: operationsCompleted - failedOperations,
+            totalOperations: totalOperations,
+            successfulOperations: successfulOperations,
             failedOperations: failedOperations,
             configuration: BenchmarkConfiguration(
                 fileCount: fileCount,
@@ -410,15 +423,15 @@ public final class BenchmarkViewModel: ObservableObject {
 
     private func setupMetricsTimer() {
         metricsTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self, self.isRunning else { return }
-
-            Task { [weak self] in
-                await self?.updateRealTimeMetrics()
+            Task { @MainActor [weak self] in
+                guard let self = self, self.isRunning else { return }
+                self.updateRealTimeMetrics()
             }
         }
     }
 
-    private func updateRealTimeMetrics() async {
+    @MainActor
+    private func updateRealTimeMetrics() {
         // Update real-time metrics periodically
         if enableMemoryProfiling {
             currentMemoryUsage = Int64.random(in: 50_000_000...200_000_000)
@@ -429,8 +442,8 @@ public final class BenchmarkViewModel: ObservableObject {
     }
 
     deinit {
-        benchmarkTimer?.invalidate()
-        metricsTimer?.invalidate()
+        // Note: Timer cleanup should be handled by the system
+        // when the view is deallocated
     }
 }
 
@@ -454,6 +467,8 @@ public struct PerformanceComparison: Sendable {
  */
 public struct BenchmarkView: View {
     @StateObject private var viewModel = BenchmarkViewModel()
+
+    public init() {}
 
     public var body: some View {
         VStack(spacing: 0) {

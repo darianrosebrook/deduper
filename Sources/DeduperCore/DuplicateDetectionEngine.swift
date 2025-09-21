@@ -260,19 +260,22 @@ public struct DuplicateGroupMember: Sendable, Equatable {
     public let signals: [ConfidenceSignal]
     public let penalties: [ConfidencePenalty]
     public let rationale: [String]
+    public let fileSize: Int64
 
     public init(
         fileId: UUID,
         confidence: Double,
         signals: [ConfidenceSignal],
         penalties: [ConfidencePenalty],
-        rationale: [String]
+        rationale: [String],
+        fileSize: Int64 = 0
     ) {
         self.fileId = fileId
         self.confidence = confidence
         self.signals = signals
         self.penalties = penalties
         self.rationale = rationale
+        self.fileSize = fileSize
     }
 }
 
@@ -284,6 +287,12 @@ public struct DuplicateGroupResult: Sendable, Equatable {
     public let keeperSuggestion: UUID?
     public let incomplete: Bool
     public let mediaType: MediaType
+
+    // Convenience properties for UI layer
+    public var id: UUID { groupId }
+    public var spacePotentialSaved: Int64 {
+        members.map { $0.fileSize }.reduce(0, +) * Int64(members.count - 1)
+    }
 
     public init(
         groupId: UUID,
@@ -313,6 +322,8 @@ public struct DuplicateGroupResult: Sendable, Equatable {
                lhs.mediaType == rhs.mediaType
     }
 }
+
+extension DuplicateGroupResult: Identifiable {}
 
 public struct GroupRationale: Sendable, Equatable {
     public let groupId: UUID
@@ -460,7 +471,7 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
     private let logger = Logger(subsystem: "app.deduper", category: "grouping")
     private let hashingService: ImageHashingService
     private let stateQueue = DispatchQueue(label: "app.deduper.detect.state", attributes: .concurrent)
-    private var lastGroups: [UUID: DuplicateGroupResult] = [:]
+    private var _lastGroups: [UUID: DuplicateGroupResult] = [:]
     private var lastMetrics: DetectionMetrics?
 
     public init(hashingService: ImageHashingService = ImageHashingService()) {
@@ -469,6 +480,18 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
     
     public var lastDetectionMetrics: DetectionMetrics? {
         return stateQueue.sync { lastMetrics }
+    }
+
+    public var lastGroups: [DuplicateGroupResult] {
+        return stateQueue.sync { Array(_lastGroups.values) }
+    }
+
+    // MARK: - Public API
+
+    /// Find duplicate groups across all scanned files
+    /// - Returns: Array of duplicate group results
+    public func findDuplicates() async throws -> [DuplicateGroupResult] {
+        return lastGroups
     }
 
     // MARK: Candidate Bucketing
@@ -483,7 +506,7 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
 
     public func explain(groupId: UUID) -> GroupRationale? {
         return stateQueue.sync {
-            guard let group = lastGroups[groupId] else { return nil }
+            guard let group = _lastGroups[groupId] else { return nil }
             return GroupRationale(group: group)
         }
     }
@@ -688,15 +711,18 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
         )
         
         stateQueue.sync(flags: .barrier) {
-            lastGroups = Dictionary(uniqueKeysWithValues: grouped.map { ($0.groupId, $0) })
+            _lastGroups = Dictionary(uniqueKeysWithValues: grouped.map { ($0.groupId, $0) })
             lastMetrics = metrics
             
-            // TODO: Integrate with Module 06 - Results Storage & Persistence
-            // - Persist DuplicateGroup entities with confidenceScore, rationaleSummary, keeperSuggestion
-            // - Persist GroupMember entities with per-signal contributions and distance values
-            // - Persist ComparisonMetric entities for metrics dashboards
-            // - Index by status (open/resolved/ignored) and by highest confidence
-            // This integration should happen when Module 06 persistence layer is available
+        }
+
+        Task {
+            do {
+                try await PersistenceController.shared.saveDetectionResults(grouped, metrics: metrics)
+                logger.debug("Persisted detection results: \(grouped.count) groups")
+            } catch {
+                logger.error("Failed to persist detection results: \(error.localizedDescription)")
+            }
         }
         
         // Log performance metrics
@@ -1516,6 +1542,8 @@ private struct ConfidenceCalculator {
             return (pair.0 == pair.1) ? acc + 1 : acc
         }
 
+
         return jaro + Double(prefix) * 0.1 * (1 - jaro)
     }
+
 }
