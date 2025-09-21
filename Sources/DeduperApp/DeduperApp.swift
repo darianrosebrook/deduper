@@ -1,4 +1,5 @@
 import SwiftUI
+import DeduperUI
 
 /**
  Author: @darianrosebrook
@@ -12,7 +13,7 @@ public struct DeduperApp: App {
 
     public var body: some Scene {
         WindowGroup {
-            MainView()
+            DeduperUI.MainView()
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)

@@ -39,11 +39,7 @@ let package = Package(
         .executableTarget(
             name: "Deduper",
             dependencies: ["DeduperUI"],
-            path: "Sources/DeduperApp",
-            resources: [
-                .process("Info.plist"),
-                .process("Deduper.entitlements")
-            ]
+            path: "Sources/DeduperApp"
         ),
         .testTarget(
             name: "DeduperCoreTests",

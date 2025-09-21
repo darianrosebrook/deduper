@@ -36,7 +36,7 @@ public final class OnboardingService: ObservableObject {
         }
     }
 
-    public init(bookmarkManager: BookmarkManager = BookmarkManager.shared) {
+    public init(bookmarkManager: BookmarkManager = BookmarkManager()) {
         self.bookmarkManager = bookmarkManager
         checkExistingPermissions()
     }
@@ -84,9 +84,9 @@ public final class OnboardingService: ObservableObject {
     public func checkExistingPermissions() {
         Task {
             do {
-                let bookmarks = try await bookmarkManager.resolveAllBookmarks()
+                let bookmarks = bookmarkManager.getAllBookmarks()
                 if !bookmarks.isEmpty {
-                    selectedFolders = bookmarks
+                    selectedFolders = bookmarks.compactMap { bookmarkManager.resolve(bookmark: $0) }
                     permissionStatus = .granted
                     isOnboardingComplete = true
                     logger.info("Found existing permissions for \(bookmarks.count) folders")
@@ -132,7 +132,7 @@ public final class OnboardingService: ObservableObject {
 
             // Validate access and create bookmark
             do {
-                let bookmark = try await bookmarkManager.createBookmark(for: url)
+                _ = try bookmarkManager.save(folderURL: url, name: url.lastPathComponent)
                 validUrls.append(url)
                 logger.info("Created bookmark for: \(url.lastPathComponent)")
             } catch {

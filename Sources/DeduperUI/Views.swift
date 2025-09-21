@@ -21,11 +21,6 @@ public typealias MergeError = DeduperCore.MergeError
 // Re-export core types for UI use
 public typealias DuplicateGroup = DeduperCore.DuplicateDetectionEngine.DuplicateGroupResult
 public typealias ScannedFile = DeduperCore.ScannedFile
-public typealias DuplicateGroupMember = DeduperCore.DuplicateDetectionEngine.DuplicateGroupMember
-public typealias FolderValidationResult = DeduperCore.FolderSelectionService.FolderValidationResult
-public typealias MergePlan = DeduperCore.MergePlan
-public typealias MergeResult = DeduperCore.MergeResult
-public typealias MergeError = DeduperCore.MergeError
 
 // MARK: - Onboarding View
 
@@ -364,8 +359,7 @@ public final class GroupsListViewModel: ObservableObject {
     @Published public var isLoading = false
     @Published public var error: String?
     @Published public var searchText = ""
-
-    private var searchText = ""
+    @Published public var selectedGroup: DuplicateGroup?
 
     public init() {
         // Subscribe to similarity settings changes

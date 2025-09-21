@@ -46,8 +46,20 @@ public enum DesignToken {
         Color(hex: "#d97706") // Darker orange for text
     }()
 
+    public static let colorError: Color = {
+        Color(hex: "#dc2626") // Red for error states
+    }()
+
+    public static let colorWarning: Color = {
+        Color(hex: "#d97706") // Orange for warning states
+    }()
+
     public static let colorForegroundInfo: Color = {
         Color(hex: "#2563eb") // Darker blue for text
+    }()
+
+    public static let colorForegroundError: Color = {
+        Color(hex: "#dc2626") // Darker red for text
     }()
 
     // MARK: - Background Colors (Semantic)
