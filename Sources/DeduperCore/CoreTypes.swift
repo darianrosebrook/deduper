@@ -14,9 +14,9 @@ public enum MediaType: Int16, CaseIterable, Sendable {
     public var utType: UTType? {
         switch self {
         case .photo:
-            return .image
+            return UTType.image
         case .video:
-            return .movie
+            return UTType.movie
         }
     }
     
@@ -73,12 +73,20 @@ public struct ScanOptions: Equatable, Sendable {
     public let followSymlinks: Bool
     public let concurrency: Int
     public let incremental: Bool
-    
-    public init(excludes: [ExcludeRule] = [], followSymlinks: Bool = false, concurrency: Int = ProcessInfo.processInfo.activeProcessorCount, incremental: Bool = true) {
+    public let incrementalLookbackHours: Double
+
+    public init(
+        excludes: [ExcludeRule] = [],
+        followSymlinks: Bool = false,
+        concurrency: Int = ProcessInfo.processInfo.activeProcessorCount,
+        incremental: Bool = true,
+        incrementalLookbackHours: Double = 24.0
+    ) {
         self.excludes = excludes
         self.followSymlinks = followSymlinks
         self.concurrency = max(1, min(concurrency, ProcessInfo.processInfo.activeProcessorCount))
         self.incremental = incremental
+        self.incrementalLookbackHours = max(0.1, incrementalLookbackHours) // Minimum 6 minutes
     }
 }
 
@@ -509,6 +517,100 @@ extension MediaMetadata {
 
         return 0.0
     }
+
+    /// Convert metadata to a snapshot dictionary for transaction logging
+    public func toMetadataSnapshot() -> [String: Any] {
+        var snapshot: [String: Any] = [:]
+
+        // Basic file info
+        snapshot["fileName"] = fileName
+        snapshot["fileSize"] = fileSize
+        snapshot["mediaType"] = mediaType.rawValue
+        snapshot["createdAt"] = createdAt?.timeIntervalSince1970
+        snapshot["modifiedAt"] = modifiedAt?.timeIntervalSince1970
+
+        // Image/video specific
+        if let dimensions = dimensions {
+            snapshot["dimensions"] = ["width": dimensions.width, "height": dimensions.height]
+        }
+        snapshot["captureDate"] = captureDate?.timeIntervalSince1970
+        snapshot["cameraModel"] = cameraModel
+        snapshot["gpsLat"] = gpsLat
+        snapshot["gpsLon"] = gpsLon
+        snapshot["durationSec"] = durationSec
+        snapshot["keywords"] = keywords
+        snapshot["tags"] = tags
+        snapshot["inferredUTType"] = inferredUTType
+
+        return snapshot
+    }
+
+    /// Create MediaMetadata from a snapshot dictionary
+    public static func fromSnapshot(_ snapshot: [String: Any]) -> MediaMetadata? {
+        guard let fileName = snapshot["fileName"] as? String,
+              let fileSize = snapshot["fileSize"] as? Int64,
+              let mediaTypeRaw = snapshot["mediaType"] as? Int16 else {
+            return nil
+        }
+
+        let mediaType = MediaType(rawValue: mediaTypeRaw) ?? .photo
+
+        let createdAt = (snapshot["createdAt"] as? Double).map { Date(timeIntervalSince1970: $0) }
+        let modifiedAt = (snapshot["modifiedAt"] as? Double).map { Date(timeIntervalSince1970: $0) }
+
+        var dimensions: (width: Int, height: Int)? = nil
+        if let dims = snapshot["dimensions"] as? [String: Int] {
+            dimensions = (dims["width"] ?? 0, dims["height"] ?? 0)
+        }
+
+        let captureDate = (snapshot["captureDate"] as? Double).map { Date(timeIntervalSince1970: $0) }
+        let cameraModel = snapshot["cameraModel"] as? String
+        let gpsLat = snapshot["gpsLat"] as? Double
+        let gpsLon = snapshot["gpsLon"] as? Double
+        let durationSec = snapshot["durationSec"] as? Double
+        let keywords = snapshot["keywords"] as? [String]
+        let tags = snapshot["tags"] as? [String]
+        let inferredUTType = snapshot["inferredUTType"] as? String
+
+        return MediaMetadata(
+            fileName: fileName,
+            fileSize: fileSize,
+            mediaType: mediaType,
+            createdAt: createdAt,
+            modifiedAt: modifiedAt,
+            dimensions: dimensions,
+            captureDate: captureDate,
+            cameraModel: cameraModel,
+            gpsLat: gpsLat,
+            gpsLon: gpsLon,
+            durationSec: durationSec,
+            keywords: keywords,
+            tags: tags,
+            inferredUTType: inferredUTType
+        )
+    }
+
+    /// Convert metadata to a JSON string snapshot for transaction logging
+    public func toMetadataSnapshotString() -> String {
+        let snapshot = toMetadataSnapshot()
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: snapshot, options: [])
+            return String(data: jsonData, encoding: .utf8) ?? "{}"
+        } catch {
+            return "{}"
+        }
+    }
+
+    /// Create MediaMetadata from a JSON string snapshot
+    public static func fromSnapshotString(_ snapshotString: String) -> MediaMetadata? {
+        guard let data = snapshotString.data(using: .utf8) else { return nil }
+        do {
+            let snapshot = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+            return snapshot.flatMap { fromSnapshot($0) }
+        } catch {
+            return nil
+        }
+    }
 }
 
 // MARK: - Merge Types (Module 09)
@@ -521,24 +623,36 @@ public struct MergeConfig: Sendable, Equatable {
     public let enableUndo: Bool
     public let undoDepth: Int
     public let retentionDays: Int
+    public let moveToTrash: Bool
+    public let requireConfirmation: Bool
+    public let atomicWrites: Bool
 
     public static let `default` = MergeConfig(
         enableDryRun: true,
         enableUndo: true,
         undoDepth: 1,
-        retentionDays: 7
+        retentionDays: 7,
+        moveToTrash: true,
+        requireConfirmation: true,
+        atomicWrites: true
     )
 
     public init(
         enableDryRun: Bool = true,
         enableUndo: Bool = true,
         undoDepth: Int = 1,
-        retentionDays: Int = 7
+        retentionDays: Int = 7,
+        moveToTrash: Bool = true,
+        requireConfirmation: Bool = true,
+        atomicWrites: Bool = true
     ) {
         self.enableDryRun = enableDryRun
         self.enableUndo = enableUndo
         self.undoDepth = max(1, min(undoDepth, 10))
         self.retentionDays = max(1, retentionDays)
+        self.moveToTrash = moveToTrash
+        self.requireConfirmation = requireConfirmation
+        self.atomicWrites = atomicWrites
     }
 }
 
@@ -690,3 +804,10 @@ public enum MergeError: Error, LocalizedError, Sendable {
         }
     }
 }
+
+// MARK: - Public Type Re-exports
+
+/// Re-export commonly used types for easier access
+public typealias CoreMergePlan = MergePlan
+public typealias CoreMergeResult = MergeResult
+public typealias CoreMergeError = MergeError

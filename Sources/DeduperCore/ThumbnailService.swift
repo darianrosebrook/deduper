@@ -224,9 +224,13 @@ public final class ThumbnailService {
         Task {
             var successCount = 0
 
-            await DeduperCore.shared.withConcurrencyCap(maxConcurrent: maxConcurrent, items: limitedIds) { fileId in
-                if await self.image(for: fileId, targetSize: size) != nil {
-                    successCount += 1
+            await withTaskGroup(of: Void.self) { group in
+                for fileId in limitedIds {
+                    group.addTask {
+                        if await self.image(for: fileId, targetSize: size) != nil {
+                            // Successfully preloaded thumbnail
+                        }
+                    }
                 }
             }
 

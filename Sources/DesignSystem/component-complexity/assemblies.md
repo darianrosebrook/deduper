@@ -474,10 +474,10 @@ export default function App() {
         <h3>Assembly Characteristics:</h3>
         <ul style={{ paddingLeft: '20px' }}>
           <li>🏗️ <strong>Product-specific:</strong> Checkout logic unique to this business</li>
-          <li>🧩 <strong>Uses system layers:</strong> Primitives + Compounds + Composers</li>
-          <li>📍 <strong>Lives in app code:</strong> Not in the design system itself</li>
-          <li>🔄 <strong>Business logic:</strong> Validation, flow control, data handling</li>
-          <li>⚡ <strong>Fast to build:</strong> System provides reliable building blocks</li>
+          <li><strong>Uses system layers:</strong> Primitives + Compounds + Composers</li>
+          <li><strong>Lives in app code:</strong> Not in the design system itself</li>
+          <li><strong>Business logic:</strong> Validation, flow control, data handling</li>
+          <li><strong>Fast to build:</strong> System provides reliable building blocks</li>
         </ul>
       </div>
     </div>

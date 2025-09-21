@@ -47,7 +47,7 @@ See `docs/COMMON_GOTCHAS.md` for detailed rationale and verification cues.
 
 ```
 deduper/
-  DeduperApp/                 # macOS app target (SwiftUI)
+  Sources/DeduperApp/         # macOS app executable target
   DeduperCore/                # Swift package or framework target (core logic)
   DeduperCoreTests/           # Unit tests for core logic
   DeduperIntegrationTests/    # Integration tests (scanning → grouping)
@@ -203,7 +203,7 @@ Indexes: fileSize, modifiedAt, captureDate, hash64, durationSec, (width,height) 
 
 ## Milestone A — Create the Project and Targets (safe, testable)
 
-1. Create macOS App project: “DeduperApp” (SwiftUI, Swift, sandbox enabled)
+1. Create Swift Package Manager project with executable target: “Deduper”
 2. Add Swift Package “DeduperCore” (File → Add Packages… or local package) with product type “library”
 3. Add Core Data model under `Resources/Deduper.xcdatamodeld` with entities above
 4. Add test targets: `DeduperCoreTests`, `DeduperIntegrationTests`, `DeduperUITests`

@@ -12,7 +12,7 @@ Entitlements, bookmarks, TCC prompts, and onboarding UX.
 ### Acceptance Criteria
 
 - [x] Required entitlements configured; least privilege - implemented in Deduper.entitlements.
-- [x] Bookmarks persisted and resolved; access started/stopped correctly - implemented in BookmarkManager and OnboardingService.
+- [x] Bookmarks persisted and resolved; access started/stopped correctly - implemented in PermissionsService and BookmarkManager.
 - [x] Pre-permission explainer; clear recovery if access denied - implemented in OnboardingService with permission guidance.
 - [x] Info.plist usage descriptions present and user-facing text reviewed - implemented in Info.plist with proper descriptions.
 - [x] Onboarding explains managed library risks and proposes safe workflows - implemented in OnboardingService.
@@ -39,7 +39,7 @@ Entitlements, bookmarks, TCC prompts, and onboarding UX.
 - [x] Smooth onboarding; resilient access handling; tests pass.
 - [x] Entitlements configured with least privilege principle
 - [x] Info.plist with proper usage descriptions for all permissions
-- [x] OnboardingService with managed library safety guidance
+- [x] PermissionsService with comprehensive permission management
 - [x] Bookmark lifecycle fully implemented with error recovery
 
 ✅ Complete permissions and entitlements system with secure onboarding flow and comprehensive error handling.

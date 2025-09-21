@@ -33,16 +33,29 @@ Author: @darianrosebrook
 
 - UI tests simulate denial and validate guidance; bookmarks round-trip tests.
 
-### Pseudocode
+### Public API
 
-```swift
-func startAccessing(_ bookmark: Data) -> URL? {
-    var isStale = false
-    guard let url = try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &isStale) else { return nil }
-    guard url.startAccessingSecurityScopedResource() else { return nil }
-    return url
-}
-```
+- PermissionsService
+  - requestPermissions(for urls: [URL]) async -> PermissionRequestResult
+  - requestPermission(for url: URL) async throws -> Bool
+  - validateAllPermissions() async
+  - validatePermission(FolderPermission) async
+  - revokePermission(for url: URL) async
+  - revokePermission(UUID) async
+  - getAccessibleFolders() async -> [FolderPermission]
+  - hasPermission(for url: URL) -> Bool
+
+- FolderPermission
+  - id: UUID
+  - url: URL
+  - bookmarkData: Data
+  - status: PermissionStatus
+  - lastAccessed: Date
+  - displayName: String
+  - totalSize: Int64
+
+- PermissionStatus
+  - .notRequested, .granted, .denied, .expired, .invalid
 
 ### See Also — External References
 

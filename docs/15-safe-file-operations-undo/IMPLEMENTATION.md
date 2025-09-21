@@ -1,68 +1,104 @@
-## 15 · Safe File Operations, Undo, and Recovery — Implementation Plan
+## 15 · Safe File Operations & Undo — Implementation Plan
 Author: @darianrosebrook
 
 ### Objectives
 
-- Guarantee data safety during merges and deletions; provide undo.
+- Provide comprehensive operation history and undo functionality for safe file operations.
 
-### Transaction Model
+### Strategy
 
-- Before merge: snapshot keeper metadata and target duplicates list.
-- Write metadata to temporary file; replace atomically.
-- Move duplicates to Trash; record resulting locations.
-- Persist transaction record for undo.
+- **Operation Tracking**: Complete audit trail of all file operations
+- **Undo System**: Safe rollback of operations with validation
+- **Statistics**: Operation analytics and success rate tracking
+- **Safety Measures**: Confirmation dialogs and dry-run capabilities
 
-### Undo
+### Public API
 
-- Restore files from Trash (or archive) to original paths when possible.
-- Revert keeper metadata using snapshot.
+- OperationsViewModel
+  - operations: [MergeOperation]
+  - totalSpaceFreed: Int64
+  - totalOperations: Int
+  - successRate: Double
+  - averageConfidence: Double
+  - loadOperations()
+  - undoOperation(MergeOperation)
+  - retryOperation(MergeOperation)
+  - exportOperations() -> Data?
 
-### Safeguards
+- MergeOperation
+  - id: UUID
+  - groupId: UUID
+  - keeperFileId: UUID
+  - removedFileIds: [UUID]
+  - spaceFreed: Int64
+  - confidence: Double
+  - timestamp: Date
+  - wasDryRun: Bool
+  - wasSuccessful: Bool
+  - errorMessage: String?
+  - metadataChanges: [String]
+  - canUndo: Bool
+  - statusDescription: String
+  - statusColor: Color
 
-- Early permission checks; fail fast with guidance.
-- Collision handling for restores; suffix filenames.
-- Crash mid-merge: on next launch, read transaction and complete rollback.
+- TimeRange
+  - .lastHour, .lastDay, .lastWeek, .lastMonth, .allTime
+  - description: String
+  - timeInterval: TimeInterval
 
-### Verification
+- OperationFilter
+  - .all, .successful, .failed, .dryRun, .undone
+  - description: String
 
-- Simulate crash mid-merge; assert no data loss and consistent state on resume.
-- Undo restores files/metadata in fixtures.
+- SortOption
+  - .newestFirst, .oldestFirst, .largestFirst, .smallestFirst
+  - description: String
 
-### Pseudocode
+### Implementation Details
+
+#### Operation Management
+
+- **Complete Audit Trail**: Every file operation is tracked with full metadata
+- **Safety Features**: Dry-run capability and operation validation
+- **Undo System**: Safe rollback with conflict detection
+- **Statistics**: Success rates, space freed, and confidence tracking
+
+#### Data Structure
 
 ```swift
-struct TransactionRecord {
+struct MergeOperation: Identifiable {
     let id: UUID
-    let keeperId: UUID
-    let modifiedFields: [String: Any]
-    let movedFiles: [(fileId: UUID, originalPath: URL, trashURL: URL)]
-}
+    let groupId: UUID
+    let keeperFileId: UUID
+    let removedFileIds: [UUID]
+    let spaceFreed: Int64
+    let confidence: Double
+    let timestamp: Date
+    let wasDryRun: Bool
+    let wasSuccessful: Bool
+    let errorMessage: String?
+    let metadataChanges: [String]
 
-func beginTransaction(_ plan: MergePlan) -> TransactionRecord {
-    // Persist a record to the store before any writes
-}
-
-func writeEXIFAtomically(to fileId: UUID, fields: [String: Any]) throws {
-    // Write to temp -> replaceItemAt for atomicity
-}
-
-func moveToTrash(_ fileIds: [UUID]) throws {
-    // FileManager.trashItem; record resulting URL
-}
-
-func restoreFiles(_ tx: TransactionRecord) throws {
-    // Move from Trash to originalPath; handle collisions
-}
-
-func revertEXIF(_ tx: TransactionRecord) throws {
-    // Reapply previous metadata snapshot
+    var canUndo: Bool { wasSuccessful && !wasDryRun }
 }
 ```
 
+#### Safety Measures
+
+- **Validation**: Pre-operation checks and post-operation verification
+- **Confirmation**: User confirmation for destructive operations
+- **Dry Runs**: Preview mode to validate operations before execution
+- **Conflict Detection**: Prevent undo operations that would cause conflicts
+
+### Verification
+
+- Undo operations work correctly and safely
+- Operation history is complete and accurate
+- Statistics calculations are correct
+- Export functionality works properly
+
 ### See Also — External References
 
-- [Established] Apple — FileManager.trashItem: `https://developer.apple.com/documentation/foundation/filemanager/2293212-trashitem`
-- [Established] Atomic file replace: `https://developer.apple.com/documentation/foundation/filemanager/1412642-replaceitemat`
-- [Cutting-edge] Designing robust undo systems (article): `https://www.objc.io/issues/4-core-data/undo-management/`
-
-
+- [Established] Apple — File System Programming: `https://developer.apple.com/documentation/foundation/file_system_programming_guide`
+- [Established] Apple — File Manager: `https://developer.apple.com/documentation/foundation/filemanager`
+- [Cutting-edge] Undo patterns: `https://martinfowler.com/eaaCatalog/memento.html`

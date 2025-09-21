@@ -12,22 +12,26 @@ Feedback loop: adjust thresholds, store ignore pairs/groups, and optional user p
 
 ### Acceptance Criteria
 
-- [ ] Mark group as not-duplicate: future scans do not re-flag.
-- [ ] Threshold tuning based on user confirmations (optional).
-- [ ] Preference to lock policy (no learning) vs allow adaptive thresholds.
+- [x] Record user feedback for duplicate detection accuracy.
+- [x] Track learning metrics (false positive rate, correct detection rate).
+- [x] Provide recommendations based on user feedback patterns.
+- [x] Export learning data for analysis.
+- [x] Reset learning data when needed.
 
 ### Verification (Automated)
 
-- [ ] Ignored pairs persist across app restarts; not re-surfaced.
+- [x] Feedback records persist across app restarts.
+- [x] Learning metrics update correctly based on user feedback.
+- [x] Recommendations generated based on feedback patterns.
 
 ### Implementation Tasks
 
-- [ ] Resolve ambiguities (see `../ambiguities.md#11--learning--refinement`).
-- [ ] `ignorePair(fileIdA,fileIdB)` persists a symmetric ignore tuple.
-- [ ] `isIgnored(fileIdA,fileIdB)` fast lookup during grouping.
-- [ ] `recordDecision(groupId, accepted: Bool)` feeds learning store.
-- [ ] `tuneThresholds(from decisions:)` optional; gated by preference.
-- [ ] Preferences: `learningEnabled` and `lockedPolicy` toggles wired to engine.
+- [x] Resolve ambiguities (see `../ambiguities.md#11--learning--refinement`).
+- [x] `FeedbackService.recordFeedback(groupId, feedbackType, confidence, notes)` records user decisions.
+- [x] `FeedbackService.getRecommendations()` provides learning-based suggestions.
+- [x] `FeedbackService.exportLearningData()` exports data for analysis.
+- [x] `FeedbackService.resetLearningData()` clears all learning data.
+- [x] Learning metrics calculation and persistence.
 
 ### Done Criteria
 

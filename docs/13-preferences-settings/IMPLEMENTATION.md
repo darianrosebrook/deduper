@@ -3,47 +3,95 @@ Author: @darianrosebrook
 
 ### Objectives
 
-- Provide clear settings that influence engine behavior and safety.
+- Provide comprehensive application configuration and user preferences.
 
-### Tabs & Options
+### Strategy
 
-- Detection: image distance threshold, video duration tolerance, name/date hints.
-- Automation: auto-select keeper, auto-merge (off by default).
-- Performance: max concurrency, background monitoring.
-- Safety: move to Trash vs Archive, confirm before merge, undo depth.
-- Privacy: diagnostics toggle, redaction level.
-- Advanced: rebuild index, clear caches, export/import preferences.
+- **Settings Architecture**: Centralized settings management with real-time updates
+- **UI Components**: Settings sections with consistent styling and validation
+- **Persistence**: UserDefaults integration with proper data types
+- **Validation**: Input validation and constraint enforcement
 
-### Implementation
+### Public API
 
-- SwiftUI Settings scene; bind to `Preference` store (module 06).
-- Validation and safe defaults; reset-to-defaults control.
+- SettingsViewModel
+  - launchAtStartup: Bool
+  - confirmBeforeMerge: Bool
+  - showAdvancedOptions: Bool
+  - maxConcurrentOperations: Int
+  - enablePerformanceMonitoring: Bool
+  - memoryUsageLimit: Double
+  - learningEnabled: Bool
+  - dataRetentionDays: Int
+  - analyticsEnabled: Bool
+  - crashReportingEnabled: Bool
+  - performanceDataCollection: Bool
+  - theme: AppTheme
+  - reducedMotion: Bool
+  - highContrast: Bool
+  - resetToDefaults()
+  - exportSettings() -> Data?
 
-### Verification
+- AppTheme
+  - .system, .light, .dark
+  - description: String
 
-- Changing thresholds affects grouping on test fixtures.
-- Action buttons (clear caches, rebuild index) perform and log.
+### Implementation Details
 
-### Pseudocode
+#### Settings Categories
+
+1. **General Settings**
+   - Startup behavior and basic preferences
+   - Confirmation dialogs and advanced options
+
+2. **Performance Settings**
+   - Concurrency limits and resource usage
+   - Memory management and monitoring controls
+
+3. **Learning Settings**
+   - Feedback collection and data retention
+   - Learning algorithm preferences
+
+4. **Privacy Settings**
+   - Analytics and data collection preferences
+   - Crash reporting and privacy controls
+
+5. **UI Settings**
+   - Theme selection and accessibility options
+   - Motion and contrast preferences
+
+#### Data Flow
+
+- **Settings Persistence**: Automatic saving to UserDefaults via Combine publishers
+- **Real-time Updates**: ObservableObject pattern for immediate UI updates
+- **Validation**: Range limits and type safety for all settings
+- **Export/Import**: JSON serialization for settings backup
+
+#### Architecture
 
 ```swift
-struct Preferences {
-    var imageDistanceThreshold: Int = 5
-    var videoDurationToleranceSec: Double = 2.0
-    var autoSelectKeeper: Bool = false
-}
+final class SettingsViewModel: ObservableObject {
+    @Published var maxConcurrentOperations: Int
+    @Published var memoryUsageLimit: Double
+    @Published var learningEnabled: Bool
 
-final class PreferenceStore: ObservableObject {
-    @Published var prefs = Preferences()
-    func save() { /* persist to Core Data Preference */ }
-    func load() { /* read defaults or persisted */ }
+    private var cancellables: Set<AnyCancellable> = []
+
+    init() {
+        setupBindings() // Auto-save to UserDefaults
+    }
 }
 ```
 
+### Verification
+
+- Settings persist across app launches
+- Real-time UI updates when settings change
+- Validation prevents invalid configurations
+- Export functionality works correctly
+
 ### See Also — External References
 
-- [Established] Apple — SwiftUI Settings: `https://developer.apple.com/documentation/swiftui/settings`
-- [Established] Preferences persistence patterns (UserDefaults/Core Data): `https://developer.apple.com/documentation/foundation/userdefaults`
-- [Cutting-edge] Preference architecture patterns (blog): `https://www.pointfree.co/collections/swiftui/application-architecture`
-
-
+- [Established] Apple — UserDefaults: `https://developer.apple.com/documentation/foundation/userdefaults`
+- [Established] Apple — Settings Bundle: `https://developer.apple.com/documentation/foundation/settings_bundle`
+- [Cutting-edge] Configuration management patterns: `https://www.pointfree.co/blog/posts/77-configuration-management-in-swift`

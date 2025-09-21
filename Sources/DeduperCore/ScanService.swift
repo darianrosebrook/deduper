@@ -159,7 +159,7 @@ public final class ScanService: @unchecked Sendable {
         if let resourceValues = try? url.resourceValues(forKeys: [.contentTypeKey, .typeIdentifierKey]),
            let contentType = resourceValues.contentType {
             // Check if it conforms to image or movie types
-            if contentType.conforms(to: .image) || contentType.conforms(to: .movie) {
+            if contentType.conforms(to: UTType.image) || contentType.conforms(to: UTType.movie) {
                 return true
             }
         }
@@ -419,10 +419,10 @@ public final class ScanService: @unchecked Sendable {
                 
                 // Incremental scanning check
                 if options.incremental {
-                    let lastScanDate = Date().addingTimeInterval(-24 * 60 * 60) // 24 hours ago
+                    let lastScanDate = Date().addingTimeInterval(-options.incrementalLookbackHours * 60 * 60)
                     let shouldSkip = await persistenceController.shouldSkipFileThreadSafe(url: fileURL, lastScan: lastScanDate)
                     if shouldSkip {
-                        logger.debug("Skipping unchanged file: \(fileURL.path, privacy: .public)")
+                        logger.debug("Skipping unchanged file: \(fileURL.path, privacy: .public) (last scan: \(lastScanDate))")
                         skippedFiles += 1
                         continue
                     }
@@ -490,8 +490,8 @@ public final class ScanService: @unchecked Sendable {
         if MediaType.photo.commonExtensions.contains(fileExtension) { return .photo }
         if MediaType.video.commonExtensions.contains(fileExtension) { return .video }
         if let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType {
-            if type.conforms(to: .image) { return .photo }
-            if type.conforms(to: .movie) { return .video }
+            if type.conforms(to: UTType.image) { return .photo }
+            if type.conforms(to: UTType.movie) { return .video }
         }
         return .photo
     }

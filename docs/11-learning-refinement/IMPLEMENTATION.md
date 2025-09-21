@@ -18,9 +18,15 @@ Author: @darianrosebrook
 ### Public API
 
 - FeedbackService
-  - ignore(groupId) / unignore(groupId)
-  - isIgnored(fileIdA, fileIdB) -> Bool
-  - stats() -> Confirmation/Rejection by distance
+  - recordFeedback(groupId, feedbackType, confidence, notes)
+  - recordCorrectDuplicate(groupId, confidence)
+  - recordFalsePositive(groupId, confidence)
+  - recordKeeperPreference(groupId, preferredKeeperId, confidence)
+  - recordMergeQuality(groupId, quality, notes)
+  - getFeedback(for groupId) -> [FeedbackItem]
+  - getRecommendations() -> [String]
+  - exportLearningData() -> Data
+  - resetLearningData()
 
 ### Safeguards
 
@@ -35,12 +41,24 @@ Author: @darianrosebrook
 ### Pseudocode
 
 ```swift
-struct IgnorePair: Hashable { let a: UInt64; let b: UInt64 }
+enum FeedbackType: String, Codable {
+    case correctDuplicate, falsePositive, nearDuplicate
+    case notDuplicate, preferredKeeper, mergeQuality
+}
+
+struct FeedbackItem: Identifiable, Codable {
+    let id: UUID
+    let groupId: UUID
+    let feedbackType: FeedbackType
+    let confidence: Double
+    let timestamp: Date
+    let notes: String?
+}
 
 final class FeedbackService {
-    private var ignored: Set<IgnorePair> = []
-    func ignore(_ a: UInt64, _ b: UInt64) { ignored.insert(IgnorePair(a: min(a,b), b: max(a,b))) }
-    func isIgnored(_ a: UInt64, _ b: UInt64) -> Bool { ignored.contains(IgnorePair(a: min(a,b), b: max(a,b))) }
+    func recordFeedback(groupId: UUID, feedbackType: FeedbackType, confidence: Double, notes: String?) async
+    func getRecommendations() async -> [String]
+    func exportLearningData() async -> Data
 }
 ```
 

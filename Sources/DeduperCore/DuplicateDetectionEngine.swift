@@ -283,6 +283,7 @@ public struct DuplicateGroupResult: Sendable, Equatable {
     public let rationaleLines: [String]
     public let keeperSuggestion: UUID?
     public let incomplete: Bool
+    public let mediaType: MediaType
 
     public init(
         groupId: UUID,
@@ -290,7 +291,8 @@ public struct DuplicateGroupResult: Sendable, Equatable {
         confidence: Double,
         rationaleLines: [String],
         keeperSuggestion: UUID?,
-        incomplete: Bool
+        incomplete: Bool,
+        mediaType: MediaType = .photo
     ) {
         self.groupId = groupId
         self.members = members
@@ -298,6 +300,17 @@ public struct DuplicateGroupResult: Sendable, Equatable {
         self.rationaleLines = rationaleLines
         self.keeperSuggestion = keeperSuggestion
         self.incomplete = incomplete
+        self.mediaType = mediaType
+    }
+
+    public static func == (lhs: DuplicateGroupResult, rhs: DuplicateGroupResult) -> Bool {
+        return lhs.groupId == rhs.groupId &&
+               lhs.members == rhs.members &&
+               lhs.confidence == rhs.confidence &&
+               lhs.rationaleLines == rhs.rationaleLines &&
+               lhs.keeperSuggestion == rhs.keeperSuggestion &&
+               lhs.incomplete == rhs.incomplete &&
+               lhs.mediaType == rhs.mediaType
     }
 }
 

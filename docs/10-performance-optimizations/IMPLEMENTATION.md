@@ -34,23 +34,28 @@ Author: @darianrosebrook
 ### Pseudocode
 
 ```swift
-actor WorkQueues {
-    let io = DispatchQueue(label: "io", qos: .utility, attributes: .concurrent)
-    let hashing = DispatchQueue(label: "hash", qos: .userInitiated, attributes: .concurrent)
-    let grouping = DispatchQueue(label: "group", qos: .userInitiated)
+struct PerformanceMetrics {
+    let operation: String
+    let duration: TimeInterval
+    let memoryUsage: Int64
+    let cpuUsage: Double
+    let itemsProcessed: Int
+    let itemsPerSecond: Double
+    let timestamp: Date
 }
 
-func withConcurrencyCap<T>(_ maxConcurrent: Int, items: [T], body: @escaping (T) async -> Void) async {
-    let sem = DispatchSemaphore(value: maxConcurrent)
-    await withTaskGroup(of: Void.self) { group in
-        for item in items {
-            sem.wait()
-            group.addTask {
-                await body(item)
-                sem.signal()
-            }
-        }
-    }
+final class PerformanceService {
+    func recordMetrics(_ metrics: PerformanceMetrics)
+    func startMonitoring(operation: String) -> PerformanceMonitor
+    func getOptimizationRecommendations() async -> [OptimizationRecommendation]
+}
+
+class PerformanceMonitor {
+    let service: PerformanceService
+    let operation: String
+    let startTime: Date
+
+    func stop(itemsProcessed: Int, additionalNotes: String?)
 }
 ```
 

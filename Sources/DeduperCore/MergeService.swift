@@ -166,6 +166,12 @@ public final class MergeService: @unchecked Sendable {
             throw MergeError.undoNotAvailable
         }
 
+        // Check if we're within the configured undo depth
+        let allTransactions = try await getRecentTransactions()
+        guard allTransactions.count <= config.undoDepth else {
+            throw MergeError.undoNotAvailable
+        }
+
         let transaction = try await persistenceController.undoLastTransaction()
         guard let transaction else {
             throw MergeError.undoNotAvailable
@@ -185,12 +191,17 @@ public final class MergeService: @unchecked Sendable {
             }
 
             do {
-                // Move file back from trash
-                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-                restoredFileIds.append(fileId)
-                logger.info("Restored file from trash: \(url.lastPathComponent)")
+                // Restore file based on original operation
+                if config.moveToTrash {
+                    try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                    restoredFileIds.append(fileId)
+                    logger.info("Restored file from trash: \(url.lastPathComponent)")
+                } else {
+                    // If permanent deletion was used, we can't restore
+                    logger.warning("Cannot restore permanently deleted file: \(url.lastPathComponent)")
+                }
             } catch {
-                logger.error("Failed to restore file from trash: \(error.localizedDescription)")
+                logger.error("Failed to restore file: \(error.localizedDescription)")
             }
         }
 
@@ -201,14 +212,26 @@ public final class MergeService: @unchecked Sendable {
                 throw MergeError.keeperNotFound(keeperId)
             }
 
-            // For now, we'll create a backup of the current state before reverting
-            // In a more complete implementation, we would store the original metadata
-            // in the transaction record
+            // Restore original metadata from transaction snapshot
+            if let metadataSnapshotString = transaction.metadataSnapshots,
+               let originalMetadata = MediaMetadata.fromSnapshotString(metadataSnapshotString) {
 
-            // TODO: Implement full metadata reversion using transaction snapshots
-            // This would require storing the original metadata in the transaction
-            logger.info("Metadata reversion would be implemented here for keeper: \(keeperURL.lastPathComponent)")
-            revertedFields = ["captureDate", "gpsLat", "gpsLon", "keywords"] // Placeholder
+                // Write original metadata back to the keeper file
+                try await writeEXIFAtomically(
+                    to: keeperURL,
+                    fields: [
+                        kCGImagePropertyExifDateTimeOriginal as String: originalMetadata.captureDate?.timeIntervalSince1970 ?? 0,
+                        kCGImagePropertyGPSLatitude as String: originalMetadata.gpsLat ?? 0,
+                        kCGImagePropertyGPSLongitude as String: originalMetadata.gpsLon ?? 0,
+                        "keywords" as String: originalMetadata.keywords?.joined(separator: ",") ?? ""
+                    ]
+                )
+
+                revertedFields = ["captureDate", "gpsLat", "gpsLon", "keywords"]
+                logger.info("Successfully reverted metadata for keeper: \(keeperURL.lastPathComponent)")
+            } else {
+                logger.warning("No metadata snapshot available for reversion")
+            }
 
         } catch {
             logger.error("Failed to revert metadata: \(error.localizedDescription)")
@@ -225,23 +248,78 @@ public final class MergeService: @unchecked Sendable {
     // MARK: - Private Methods
 
     internal func fetchGroup(id: UUID) async throws -> DuplicateGroupResult {
-        // This would typically fetch from persistence layer
-        // For now, we'll implement a basic version
         try await persistenceController.performBackground { [self] context in
-            guard try persistenceController.fetchGroup(id: id, in: context) != nil else {
+            guard let group = try persistenceController.fetchGroup(id: id, in: context) else {
                 throw MergeError.groupNotFound(id)
             }
 
-            // Convert NSManagedObject to DuplicateGroupResult
-            // This is a simplified implementation
+            // Fetch group members
+            guard let members = group.value(forKey: "members") as? NSSet else {
+                throw MergeError.groupNotFound(id)
+            }
+
+            var duplicateMembers: [DuplicateGroupMember] = []
+            var keeperSuggestion: UUID? = nil
+
+            for member in members {
+                guard let member = member as? NSManagedObject,
+                      let _ = member.value(forKey: "id") as? UUID,
+                      let fileObject = member.value(forKey: "file") as? NSManagedObject,
+                      let fileId = (fileObject as NSManagedObject).value(forKey: "id") as? UUID,
+                      let confidence = member.value(forKey: "confidenceScore") as? Double else {
+                    continue
+                }
+
+                let duplicateMember = DuplicateGroupMember(
+                    fileId: fileId,
+                    confidence: confidence,
+                    signals: [],
+                    penalties: [],
+                    rationale: [member.value(forKey: "rationale") as? String ?? ""]
+                )
+
+                duplicateMembers.append(duplicateMember)
+
+                // Check if this is the suggested keeper
+                if member.value(forKey: "isKeeperSuggestion") as? Bool == true {
+                    keeperSuggestion = fileId
+                }
+            }
+
+            // Fetch group metadata
+            let confidenceScore = group.value(forKey: "confidenceScore") as? Double ?? 0.0
+            let rationaleSummary = group.value(forKey: "rationale") as? String ?? ""
+            let incomplete = group.value(forKey: "incomplete") as? Bool ?? false
+
+            // Determine media type from first member
+            let mediaType: MediaType = duplicateMembers.isEmpty ? .photo : .photo
+
             return DuplicateGroupResult(
                 groupId: id,
-                members: [], // TODO: Implement proper conversion
-                confidence: 0.0,
-                rationaleLines: [],
-                keeperSuggestion: nil,
-                incomplete: false
+                members: duplicateMembers,
+                confidence: confidenceScore,
+                rationaleLines: rationaleSummary.components(separatedBy: "\n"),
+                keeperSuggestion: keeperSuggestion,
+                incomplete: incomplete,
+                mediaType: mediaType
             )
+        }
+    }
+
+    private func getRecentTransactions() async throws -> [MergeTransactionRecord] {
+        try await persistenceController.performBackground { context in
+            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "MergeTransaction")
+            request.predicate = NSPredicate(format: "undoneAt == nil")
+            request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
+
+            let records = try context.fetch(request)
+            return records.compactMap { record in
+                guard let payload = record.value(forKey: "payload") as? Data,
+                      let transaction = try? JSONDecoder().decode(MergeTransactionRecord.self, from: payload) else {
+                    return nil
+                }
+                return transaction
+            }
         }
     }
 
@@ -451,7 +529,8 @@ public final class MergeService: @unchecked Sendable {
             removedFileIds: removedFileIds,
             createdAt: Date(),
             undoDeadline: Date().addingTimeInterval(Double(config.retentionDays) * 24 * 60 * 60),
-            notes: "Merged fields: \(mergedFields.joined(separator: ", "))"
+            notes: "Merged fields: \(mergedFields.joined(separator: ", "))",
+            metadataSnapshots: plan.keeperMetadata.toMetadataSnapshotString()
         )
 
         try await persistenceController.recordTransaction(transaction)
@@ -465,19 +544,24 @@ public final class MergeService: @unchecked Sendable {
 
         try await writeEXIFAtomically(to: keeperURL, fields: plan.exifWrites)
 
-        // Move other files to trash
+        // Move other files to trash or delete permanently based on config
         for fileId in plan.trashList {
             guard let url = await persistenceController.resolveFileURL(id: fileId) else {
-                logger.warning("Could not resolve URL for file \(fileId) during trash operation")
+                logger.warning("Could not resolve URL for file \(fileId) during cleanup operation")
                 continue
             }
 
             do {
-                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-                logger.info("Moved to trash: \(url.lastPathComponent)")
+                if config.moveToTrash {
+                    try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                    logger.info("Moved to trash: \(url.lastPathComponent)")
+                } else {
+                    try FileManager.default.removeItem(at: url)
+                    logger.info("Permanently deleted: \(url.lastPathComponent)")
+                }
             } catch {
-                logger.error("Failed to move to trash: \(error.localizedDescription)")
-                throw MergeError.transactionFailed("Failed to move \(url.path) to trash")
+                logger.error("Failed to cleanup file: \(error.localizedDescription)")
+                throw MergeError.transactionFailed("Failed to cleanup \(url.path)")
             }
         }
     }
@@ -485,31 +569,37 @@ public final class MergeService: @unchecked Sendable {
     private func writeEXIFAtomically(to url: URL, fields: [String: Any]) async throws {
         guard !fields.isEmpty else { return }
 
-        // Create temporary file with unique name to avoid collisions
-        let tempDir = FileManager.default.temporaryDirectory
-        let tempFileName = "merge_tmp_\(UUID().uuidString)_\(url.lastPathComponent)"
-        let tempURL = tempDir.appendingPathComponent(tempFileName)
+        if config.atomicWrites {
+            // Create temporary file with unique name to avoid collisions
+            let tempDir = FileManager.default.temporaryDirectory
+            let tempFileName = "merge_tmp_\(UUID().uuidString)_\(url.lastPathComponent)"
+            let tempURL = tempDir.appendingPathComponent(tempFileName)
 
-        do {
-            // Copy original file to temp location
-            try FileManager.default.copyItem(at: url, to: tempURL)
+            do {
+                // Copy original file to temp location
+                try FileManager.default.copyItem(at: url, to: tempURL)
 
-            // Write metadata to temp file
-            try await writeEXIF(to: tempURL, fields: fields)
+                // Write metadata to temp file
+                try await writeEXIF(to: tempURL, fields: fields)
 
-            // Verify the temp file is valid before replacing
-            guard FileManager.default.fileExists(atPath: tempURL.path) else {
-                throw MergeError.atomicWriteFailed(url, "Temporary file was not created")
+                // Verify the temp file is valid before replacing
+                guard FileManager.default.fileExists(atPath: tempURL.path) else {
+                    throw MergeError.atomicWriteFailed(url, "Temporary file was not created")
+                }
+
+                // Atomic replace using FileManager's replace method
+                _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
+
+                logger.info("Successfully wrote EXIF metadata to: \(url.lastPathComponent)")
+            } catch {
+                // Clean up temp file on error
+                try? FileManager.default.removeItem(at: tempURL)
+                throw MergeError.atomicWriteFailed(url, error.localizedDescription)
             }
-
-            // Atomic replace using FileManager's replace method
-            _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
-
-            logger.info("Successfully wrote EXIF metadata to: \(url.lastPathComponent)")
-        } catch {
-            // Clean up temp file on error
-            try? FileManager.default.removeItem(at: tempURL)
-            throw MergeError.atomicWriteFailed(url, error.localizedDescription)
+        } else {
+            // Direct write without atomic safety (faster but riskier)
+            try await writeEXIF(to: url, fields: fields)
+            logger.info("Successfully wrote EXIF metadata (non-atomic) to: \(url.lastPathComponent)")
         }
     }
 
@@ -573,9 +663,3 @@ public final class MergeService: @unchecked Sendable {
 
 // MARK: - Extensions
 
-extension DuplicateGroupResult {
-    fileprivate var mediaType: MediaType {
-        // This would be determined from the members
-        return .photo // Default assumption
-    }
-}

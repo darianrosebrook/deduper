@@ -59,6 +59,18 @@ public struct MergeTransactionRecord: Codable, Equatable, Sendable {
     public let createdAt: Date
     public let undoDeadline: Date?
     public let notes: String?
+    public let metadataSnapshots: String?
+
+    public static func == (lhs: MergeTransactionRecord, rhs: MergeTransactionRecord) -> Bool {
+        return lhs.id == rhs.id &&
+               lhs.groupId == rhs.groupId &&
+               lhs.keeperFileId == rhs.keeperFileId &&
+               lhs.removedFileIds == rhs.removedFileIds &&
+               lhs.createdAt == rhs.createdAt &&
+               lhs.undoDeadline == rhs.undoDeadline &&
+               lhs.notes == rhs.notes &&
+               lhs.metadataSnapshots == rhs.metadataSnapshots
+    }
 
     public init(
         id: UUID = UUID(),
@@ -67,7 +79,8 @@ public struct MergeTransactionRecord: Codable, Equatable, Sendable {
         removedFileIds: [UUID],
         createdAt: Date = Date(),
         undoDeadline: Date? = nil,
-        notes: String? = nil
+        notes: String? = nil,
+        metadataSnapshots: String? = nil
     ) {
         self.id = id
         self.groupId = groupId
@@ -76,6 +89,7 @@ public struct MergeTransactionRecord: Codable, Equatable, Sendable {
         self.createdAt = createdAt
         self.undoDeadline = undoDeadline
         self.notes = notes
+        self.metadataSnapshots = metadataSnapshots
     }
 }
 

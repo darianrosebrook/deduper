@@ -69,7 +69,7 @@ SwiftUI screens for onboarding/permissions, scan status, groups list, group deta
   - `Sources/DeduperUI/Views.swift` → `docs/07-user-interface-review/IMPLEMENTATION.md#main-screens`
   - `Sources/DeduperUI/ErrorAlertView.swift` → `docs/07-user-interface-review/CHECKLIST.md#error-handling`
   - `Sources/DeduperUI/PermissionErrorView.swift` → `docs/07-user-interface-review/CHECKLIST.md#permission-errors`
-  - `Sources/DeduperUI/DeduperApp.swift` → `docs/07-user-interface-review/IMPLEMENTATION.md#keyboard-shortcuts`
+  - `Sources/DeduperApp/DeduperApp.swift` → `docs/07-user-interface-review/IMPLEMENTATION.md#keyboard-shortcuts`
   - `Sources/DesignSystem/COMPONENT_STANDARDS.md` → `docs/07-user-interface-review/IMPLEMENTATION.md#design-system`
 
 - Docs → Code

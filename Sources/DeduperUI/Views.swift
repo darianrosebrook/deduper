@@ -3,11 +3,11 @@ import DeduperCore
 import OSLog
 import Foundation
 
-// Re-export core types for UI use
-public typealias FolderValidationResult = DeduperCore.FolderSelectionService.FolderValidationResult
-public typealias MergePlan = DeduperCore.MergePlan
-public typealias MergeResult = DeduperCore.MergeResult
-public typealias MergeError = DeduperCore.MergeError
+// Import ServiceManager directly for UI access
+@MainActor
+extension DeduperCore {
+    public static let serviceManager = ServiceManager.shared
+}
 
 /**
  Author: @darianrosebrook
@@ -18,9 +18,8 @@ public typealias MergeError = DeduperCore.MergeError
 
 // MARK: - Core Types Re-export
 
-// Re-export core types for UI use
-public typealias DuplicateGroup = DeduperCore.DuplicateDetectionEngine.DuplicateGroupResult
-public typealias ScannedFile = DeduperCore.ScannedFile
+// Types are now properly exported from CoreTypes.swift
+// No need for duplicate typealias declarations
 
 // MARK: - Onboarding View
 
@@ -113,7 +112,7 @@ public struct OnboardingView: View {
 
 @MainActor
 public class OnboardingViewModel: ObservableObject {
-    private let folderSelectionService = DeduperCore.ServiceManager.shared.folderSelection
+    private let folderSelectionService = ServiceManager.shared.folderSelection
 
     @Published public var selectedFolders: [URL] = []
     @Published public var isValidating = false
@@ -169,12 +168,14 @@ public struct ScanStatusView: View {
                 .foregroundStyle(DesignToken.colorForegroundSecondary)
 
             HStack {
-                Button("Pause", action: viewModel.pause)
-                    .buttonStyle(.bordered)
-                    .disabled(viewModel.isPaused)
+            Button("Pause", variant: .secondary, size: .medium) {
+                viewModel.pause()
+            }
+            .disabled(viewModel.isPaused)
 
-                Button("Cancel", action: viewModel.cancel)
-                    .buttonStyle(.bordered)
+            Button("Cancel", variant: .secondary, size: .medium) {
+                viewModel.cancel()
+            }
             }
         }
         .padding(DesignToken.spacingXXXL)
@@ -208,7 +209,7 @@ public class ScanStatusViewModel: ObservableObject {
  */
 public struct GroupsListView: View {
     @StateObject private var viewModel = GroupsListViewModel()
-    @State private var selectedGroup: DuplicateGroup?
+    @State private var selectedGroup: DeduperCore.DuplicateGroupResult?
     @State private var showSimilarityControls = false
     @State private var searchText = ""
     @State private var selectedGroupIndex = 0
@@ -218,14 +219,16 @@ public struct GroupsListView: View {
         VStack {
             // Search and filter bar
             HStack {
-                TextField("Search groups...", text: $searchText)
+                TextField("Search groups...", text: $viewModel.searchText)
                     .textFieldStyle(.roundedBorder)
                     .frame(minWidth: 200)
+                    .onChange(of: viewModel.searchText) { _ in
+                        viewModel.applyFilters()
+                    }
 
-                Button(action: { showSimilarityControls.toggle() }) {
-                    Label("Similarity", systemImage: "slider.horizontal.3")
+                Button("Similarity", systemImage: "slider.horizontal.3", variant: .secondary, size: .medium) {
+                    showSimilarityControls.toggle()
                 }
-                .buttonStyle(.bordered)
 
                 Spacer()
 
@@ -245,8 +248,6 @@ public struct GroupsListView: View {
                                 selectedGroup = group
                                 selectedGroupIndex = index
                             }
-                    }
-                }
                             .contextMenu {
                                 Button("Select as Keeper") {
                                     viewModel.setKeeper(for: group)
@@ -268,8 +269,8 @@ public struct GroupsListView: View {
         .navigationTitle("Duplicate Groups")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button(action: { showSimilarityControls.toggle() }) {
-                    Label("Settings", systemImage: "gear")
+                Button("Settings", systemImage: "gear", variant: .ghost, size: .medium) {
+                    showSimilarityControls.toggle()
                 }
                 .keyboardShortcut("s", modifiers: .command)
             }
@@ -283,11 +284,12 @@ public struct GroupsListView: View {
         .onAppear {
             viewModel.loadGroups()
         }
-        // Keyboard navigation for group selection
+        // Keyboard navigation for group selection with accessibility
         .onKeyPress(.downArrow) {
             if selectedGroupIndex < viewModel.filteredGroups.count - 1 {
                 selectedGroupIndex += 1
                 selectedGroup = viewModel.filteredGroups[selectedGroupIndex]
+                // macOS accessibility announcement (would need AppleScript or NSWorkspace for full implementation)(notification: .announcement, argument: "Selected group \(selectedGroupIndex + 1) of \(viewModel.filteredGroups.count)")
             }
             return .handled
         }
@@ -295,11 +297,13 @@ public struct GroupsListView: View {
             if selectedGroupIndex > 0 {
                 selectedGroupIndex -= 1
                 selectedGroup = viewModel.filteredGroups[selectedGroupIndex]
+                // macOS accessibility announcement (would need AppleScript or NSWorkspace for full implementation)(notification: .announcement, argument: "Selected group \(selectedGroupIndex + 1) of \(viewModel.filteredGroups.count)")
             }
             return .handled
         }
         .onKeyPress(.return) {
             if let selectedGroup = selectedGroup {
+                // macOS accessibility announcement (would need AppleScript or NSWorkspace for full implementation)(notification: .announcement, argument: "Opening group details")
                 print("Navigate to group: \(selectedGroup.id)")
             }
             return .handled
@@ -307,59 +311,76 @@ public struct GroupsListView: View {
         .onKeyPress(" ") {
             if let selectedGroup = selectedGroup {
                 viewModel.setKeeper(for: selectedGroup)
+                // macOS accessibility announcement (would need AppleScript or NSWorkspace for full implementation)(notification: .announcement, argument: "Set as keeper")
             }
             return .handled
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Duplicate groups list")
+        .accessibilityHint("Use arrow keys to navigate, spacebar to select keeper, return to open details")
     }
 }
 
 public struct GroupRowView: View {
-    public let group: DuplicateGroup
+    public let group: DeduperCore.DuplicateGroupResult
 
     public var body: some View {
-        HStack(spacing: DesignToken.spacingMD) {
-            // Thumbnail from first group member
-            if let firstMember = group.members.first {
-                ThumbnailView(fileId: firstMember.fileId, size: DesignToken.thumbnailSizeMD)
-                    .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
-            } else {
-                Rectangle()
-                    .fill(DesignToken.colorBackgroundSecondary)
+        Card(variant: .elevated, size: .medium) {
+            HStack(spacing: DesignToken.spacingMD) {
+                // Thumbnail from first group member
+                if let firstMember = group.members.first {
+                    ThumbnailView(fileId: firstMember.fileId, size: DesignToken.thumbnailSizeMD)
+                        .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
+                } else {
+                    Card(variant: .ghost, size: .small) {
+                        Rectangle()
+                            .fill(DesignToken.colorBackgroundSecondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                     .frame(width: 60, height: 60)
-                    .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
-            }
-
-            VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
-                Text("\(group.members.count) items")
-                    .font(DesignToken.fontFamilyBody)
-                HStack(spacing: DesignToken.spacingSM) {
-                    SignalBadge(label: "pHash 92", role: .success)
-                    ConfidenceMeter(value: group.confidence)
                 }
+
+                VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                    Text("\(group.members.count) items")
+                        .font(DesignToken.fontFamilyBody)
+                    HStack(spacing: DesignToken.spacingSM) {
+                        SignalBadge(label: "pHash 92", role: .success)
+                        ConfidenceMeter(value: group.confidence)
+                    }
+                }
+
+                Spacer()
+
+                Text(ByteCountFormatter.string(fromByteCount: group.spacePotentialSaved, countStyle: .file))
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
             }
-
-            Spacer()
-
-            Text(ByteCountFormatter.string(fromByteCount: group.spacePotentialSaved, countStyle: .file))
-                .font(DesignToken.fontFamilyCaption)
-                .foregroundStyle(DesignToken.colorForegroundSecondary)
         }
-        .padding(DesignToken.spacingMD)
-        .background(DesignToken.colorBackgroundSecondary)
-        .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusMD))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint("Tap to view details, use context menu for actions")
+    }
+
+    private var accessibilityLabel: String {
+        let itemCount = group.members.count
+        let confidence = Int(group.confidence * 100)
+        let spaceSaved = ByteCountFormatter.string(fromByteCount: group.spacePotentialSaved, countStyle: .file)
+        return "Duplicate group with \(itemCount) items, \(confidence)% confidence, potential space saved: \(spaceSaved)"
     }
 }
 
 @MainActor
 public final class GroupsListViewModel: ObservableObject {
-    private let duplicateEngine = DeduperCore.ServiceManager.shared.duplicateEngine
+    private let duplicateEngine = ServiceManager.shared.duplicateEngine
 
-    @Published public var groups: [DuplicateGroup] = []
-    @Published public var filteredGroups: [DuplicateGroup] = []
+    @Published public var groups: [DeduperCore.DuplicateGroupResult] = []
+    @Published public var filteredGroups: [DeduperCore.DuplicateGroupResult] = []
     @Published public var isLoading = false
     @Published public var error: String?
     @Published public var searchText = ""
-    @Published public var selectedGroup: DuplicateGroup?
+    @Published public var selectedGroup: DeduperCore.DuplicateGroupResult?
+
+    private var searchDebounceTimer: Timer?
 
     public init() {
         // Subscribe to similarity settings changes
@@ -393,27 +414,37 @@ public final class GroupsListViewModel: ObservableObject {
         }
     }
 
-    public func setKeeper(for group: DuplicateGroup) {
+    public func setKeeper(for group: DeduperCore.DuplicateGroupResult) {
         // TODO: Implement keeper selection
         print("Set keeper for group: \(group.id)")
     }
 
-    public func mergeGroup(_ group: DuplicateGroup) {
+    public func mergeGroup(_ group: DeduperCore.DuplicateGroupResult) {
         // TODO: Implement group merge
         print("Merge group: \(group.id)")
     }
 
-    public func showInFinder(_ group: DuplicateGroup) {
+    public func showInFinder(_ group: DeduperCore.DuplicateGroupResult) {
         // TODO: Implement Finder integration
         print("Show group in Finder: \(group.id)")
     }
 
     public func applyFilters() {
-        if searchText.isEmpty {
-            filteredGroups = groups
-        } else {
-            filteredGroups = groups.filter { group in
-                group.id.localizedCaseInsensitiveContains(searchText)
+        // Cancel previous timer
+        searchDebounceTimer?.invalidate()
+
+        // Debounce search to improve performance
+        searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+
+            DispatchQueue.main.async {
+                if self.searchText.isEmpty {
+                    self.filteredGroups = self.groups
+                } else {
+                    self.filteredGroups = self.groups.filter { group in
+                        group.id.localizedCaseInsensitiveContains(self.searchText)
+                    }
+                }
             }
         }
     }
@@ -430,16 +461,16 @@ public final class GroupsListViewModel: ObservableObject {
 
 @MainActor
 public final class GroupDetailViewModel: ObservableObject {
-    private let mergeService = DeduperCore.ServiceManager.shared.mergeService
-    private let thumbnailService = DeduperCore.ServiceManager.shared.thumbnailService
+    private let mergeService = ServiceManager.shared.mergeService
+    private let thumbnailService = ServiceManager.shared.thumbnailService
 
-    @Published public var selectedGroup: DuplicateGroup?
+    @Published public var selectedGroup: DeduperCore.DuplicateGroupResult?
     @Published public var isProcessing = false
-    @Published public var mergePlan: MergePlan?
-    @Published public var mergeResult: MergeResult?
+    @Published public var mergePlan: DeduperCore.MergePlan?
+    @Published public var mergeResult: DeduperCore.MergeResult?
     @Published public var error: String?
 
-    public init(group: DuplicateGroup) {
+    public init(group: DeduperCore.DuplicateGroupResult) {
         self.selectedGroup = group
         Task {
             await loadMergePlan()
@@ -497,10 +528,10 @@ public final class GroupDetailViewModel: ObservableObject {
  - Design System: Composer component with complex state management.
  */
 public struct GroupDetailView: View {
-    public let group: DuplicateGroup
+    public let group: DeduperCore.DuplicateGroupResult
     @StateObject private var viewModel: GroupDetailViewModel
 
-    public init(group: DuplicateGroup) {
+    public init(group: DeduperCore.DuplicateGroupResult) {
         self.group = group
         self._viewModel = StateObject(wrappedValue: GroupDetailViewModel(group: group))
     }
@@ -576,11 +607,10 @@ public struct GroupDetailView: View {
 
             // Actions
             HStack {
-                Button("Select as Keeper") {
+                Button("Select as Keeper", variant: .primary, size: .medium) {
                     // TODO: Implement keeper selection UI
                     print("Select as Keeper clicked")
                 }
-                .buttonStyle(.borderedProminent)
 
                 Spacer()
 
@@ -588,12 +618,11 @@ public struct GroupDetailView: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Button("Merge Group") {
+                    Button("Merge Group", variant: .secondary, size: .medium) {
                         Task {
                             await viewModel.mergeGroup()
                         }
                     }
-                    .buttonStyle(.bordered)
                     .keyboardShortcut(.return, modifiers: .command)
                 }
             }
@@ -608,7 +637,7 @@ public struct GroupDetailView: View {
 // MARK: - Merge Plan View
 
 /**
- MergePlanView shows the plan before executing merges.
+ DeduperCore.MergePlanView shows the plan before executing merges.
  - Summary of what will be kept vs deleted.
  - Per-field metadata merge decisions.
  - Design System: Composer component with confirmation flows.
@@ -619,9 +648,9 @@ public struct MergePlanView: View {
             Text("Merge Plan")
                 .font(DesignToken.fontFamilyTitle)
 
-            MergePlanSheet(
+            DeduperCore.MergePlanSheet(
                 keeperName: "IMG_1234.JPG",
-                removals: [MergePlanItem(displayName: "IMG_1234 (1).JPG")],
+                removals: [DeduperCore.MergePlanItem(displayName: "IMG_1234 (1).JPG")],
                 spaceSavedBytes: 1_234_567
             )
         }
@@ -652,8 +681,7 @@ public struct CleanupSummaryView: View {
                 Text("• Groups processed: 1")
             }
 
-            Button("View History") { }
-                .buttonStyle(.borderedProminent)
+            Button("View History", variant: .primary, size: .medium) { }
         }
         .padding(DesignToken.spacingXXXL)
         .background(DesignToken.colorBackgroundPrimary)
@@ -662,26 +690,6 @@ public struct CleanupSummaryView: View {
 
 // MARK: - Settings View
 
-/**
- SettingsView allows configuration of scan behavior and preferences.
- - Sensitivity thresholds, file type handling.
- - Exclusion rules and scan folders.
- - Design System: Application assembly with tabbed organization.
- */
-public struct SettingsView: View {
-    public var body: some View {
-        VStack {
-            Text("Settings")
-                .font(DesignToken.fontFamilyTitle)
-
-            Text("Settings implementation coming soon...")
-                .font(DesignToken.fontFamilyBody)
-                .foregroundStyle(DesignToken.colorForegroundSecondary)
-        }
-        .padding(DesignToken.spacingMD)
-        .background(DesignToken.colorBackgroundPrimary)
-    }
-}
 
 // MARK: - History View
 
@@ -706,43 +714,43 @@ public struct ErrorAlertView: View {
     }
 
     public var body: some View {
-        VStack(spacing: DesignToken.spacingMD) {
-            // Error icon
-            Image(systemName: "exclamationmark.triangle.fill")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 48, height: 48)
-                .foregroundStyle(DesignToken.colorError)
-
-            // Error title and description
-            VStack(spacing: DesignToken.spacingXS) {
-                Text("Error")
-                    .font(DesignToken.fontFamilyHeading)
+        Card(variant: .elevated, size: .large) {
+            VStack(spacing: DesignToken.spacingMD) {
+                // Error icon
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 48, height: 48)
                     .foregroundStyle(DesignToken.colorError)
 
-                Text(error.localizedDescription)
-                    .font(DesignToken.fontFamilyBody)
-                    .foregroundStyle(DesignToken.colorForegroundSecondary)
-                    .multilineTextAlignment(.center)
-            }
+                // Error title and description
+                VStack(spacing: DesignToken.spacingXS) {
+                    Text("Error")
+                        .font(DesignToken.fontFamilyHeading)
+                        .foregroundStyle(DesignToken.colorError)
 
-            // Action buttons
-            HStack(spacing: DesignToken.spacingSM) {
+                    Text(error.localizedDescription)
+                        .font(DesignToken.fontFamilyBody)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                // Action buttons
+                HStack(spacing: DesignToken.spacingSM) {
                 if let recoveryAction = recoveryAction {
-                    Button("Try Again", action: recoveryAction)
-                        .buttonStyle(.borderedProminent)
+                    Button("Try Again", variant: .primary, size: .medium) {
+                        recoveryAction()
+                    }
                 }
 
                 if let dismissAction = dismissAction {
-                    Button("Dismiss", action: dismissAction)
-                        .buttonStyle(.bordered)
+                    Button("Dismiss", variant: .secondary, size: .medium) {
+                        dismissAction()
+                    }
+                }
                 }
             }
         }
-        .padding(DesignToken.spacingLG)
-        .background(DesignToken.colorBackgroundSecondary)
-        .cornerRadius(DesignToken.cornerRadiusMD)
-        .shadow(radius: DesignToken.shadowSM)
     }
 }
 
@@ -791,13 +799,19 @@ public struct PermissionErrorView: View {
             .foregroundStyle(DesignToken.colorForegroundSecondary)
 
             // Action button
-            Button("Open System Settings", action: recoveryAction)
-                .buttonStyle(.borderedProminent)
+                Button("Open System Settings", variant: .primary, size: .medium) {
+                    recoveryAction()
+                }
         }
         .padding(DesignToken.spacingLG)
         .background(DesignToken.colorBackgroundSecondary)
         .cornerRadius(DesignToken.cornerRadiusMD)
-        .shadow(radius: DesignToken.shadowSM)
+        .shadow(
+            color: DesignToken.shadowSM.color,
+            radius: DesignToken.shadowSM.radius,
+            x: DesignToken.shadowSM.x,
+            y: DesignToken.shadowSM.y
+        )
     }
 }
 
@@ -900,6 +914,29 @@ public struct ThumbnailView: View {
             logger.warning("Failed to load thumbnail for \(fileId): \(error.localizedDescription)")
         }
         isLoading = false
+    }
+}
+
+// MARK: - Main View
+
+/**
+ MainView serves as the root container for the application UI.
+ - Routes between different screens based on application state.
+ - Provides navigation and layout structure.
+ - Design System: Application assembly with navigation complexity.
+ */
+public struct MainView: View {
+    public var body: some View {
+        VStack {
+            Text("Deduper Application")
+                .font(DesignToken.fontFamilyTitle)
+
+            Text("Main application interface")
+                .font(DesignToken.fontFamilyBody)
+                .foregroundStyle(DesignToken.colorForegroundSecondary)
+        }
+        .frame(minWidth: 600, minHeight: 400)
+        .background(DesignToken.colorBackgroundPrimary)
     }
 }
 

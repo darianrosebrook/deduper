@@ -29,7 +29,13 @@ public struct DeduperCore {
         "version": version,
         "buildDate": ISO8601DateFormatter().string(from: Date())
     ]
-    
+
+    /// Shared service manager instance
+    @MainActor
+    public static var serviceManager: ServiceManager {
+        ServiceManager.shared
+    }
+
     public init() {
         // Library initialization
     }
@@ -91,6 +97,15 @@ public final class ServiceManager: ObservableObject {
     /// Persistence controller for data storage
     public let persistence: PersistenceController
 
+    /// Feedback service for learning and refinement
+    public let feedbackService: FeedbackService
+
+    /// Performance service for monitoring and optimization
+    public let performanceService: PerformanceService
+
+    /// Permissions service for managing file access permissions
+    public let permissionsService: PermissionsService
+
     // MARK: - Initialization
 
     private init() {
@@ -118,6 +133,15 @@ public final class ServiceManager: ObservableObject {
 
         // Initialize duplicate detection engine
         self.duplicateEngine = DuplicateDetectionEngine()
+
+        // Initialize feedback service
+        self.feedbackService = FeedbackService(persistence: persistence)
+
+        // Initialize performance service
+        self.performanceService = PerformanceService()
+
+        // Initialize permissions service
+        self.permissionsService = PermissionsService(bookmarkManager: BookmarkManager())
     }
 
     // MARK: - Public Methods
@@ -163,21 +187,39 @@ public final class ServiceManager: ObservableObject {
     public func withConcurrencyCap<T>(
         maxConcurrent: Int,
         items: [T],
-        body: @escaping (T) async -> Void
-    ) async {
-        let semaphore = DispatchSemaphore(value: maxConcurrent)
+        body: @escaping @Sendable (T) async -> Void
+    ) async where T: Sendable {
+        let cap = max(1, min(maxConcurrent, ProcessInfo.processInfo.activeProcessorCount * 2))
 
         await withTaskGroup(of: Void.self) { group in
-            for item in items {
-                semaphore.wait()
-                group.addTask {
-                    await body(item)
-                    semaphore.signal()
+            var index = 0
+            var activeTasks = 0
+
+            while index < items.count {
+                // Start new tasks up to the concurrency limit
+                while activeTasks < cap && index < items.count {
+                    let item = items[index]
+                    group.addTask { [body] in
+                        await body(item)
+                    }
+                    index += 1
+                    activeTasks += 1
+                }
+
+                // Wait for at least one task to complete
+                if activeTasks > 0 {
+                    await group.next()
+                    activeTasks -= 1
                 }
             }
+
+            // Wait for all remaining tasks to complete
+            await group.waitForAll()
         }
     }
+
 }
+
 
 // MARK: - Library Information
 
@@ -187,3 +229,6 @@ extension DeduperCore {
         return buildInfo
     }
 }
+
+// Re-export commonly used types for easier access
+// Note: DuplicateGroupResult is accessed directly from DuplicateDetectionEngine module

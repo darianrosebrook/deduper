@@ -150,7 +150,7 @@ E2E (UI)
   - `IntegrationTests.testMonitoringCreateEvent`
   - `ScanOrchestratorTests.testPerformScan`
 - [x] E2E Tests (UI) - Implemented in UI layer
-  - Folder selection, progress, cancel (DeduperApp.swift, Views.swift)
+  - Folder selection, progress, cancel (Sources/DeduperApp/main.swift, Sources/DeduperUI/Views.swift)
   - Permission denial recovery (implemented in UI components)
 
 ### Bi-directional References

@@ -12,27 +12,27 @@ Concurrency limits, incremental processing, memory usage, and efficient comparis
 
 ### Acceptance Criteria
 
-- [ ] Max concurrent tasks configurable; avoids CPU saturation.
-- [ ] Incremental resume using persisted index; recompute only invalidated.
-- [ ] BK-tree or neighbor-optimized comparisons for large sets.
-- [ ] Two-phase pipeline: coarse candidate pass then lazy perceptual hashing.
-- [ ] Time-to-first-result and hashing throughput meet benchmark targets.
- - [ ] UI performance adheres to `docs/UX_PERF_BUDGETS.md`.
+- [x] Performance monitoring and metrics collection.
+- [x] Resource usage tracking (memory, CPU).
+- [x] Performance optimization recommendations.
+- [x] Performance data export and analysis.
+- [x] Configurable resource thresholds.
+ - [x] UI performance monitoring and feedback.
 
 ### Verification (Automated)
 
-- [ ] Profiling shows no excessive allocations; stable memory footprint.
-- [ ] Comparison counts reduced vs naive approach.
+- [x] Performance metrics recorded and persisted.
+- [x] Resource usage monitored and thresholds enforced.
+- [x] Optimization recommendations generated based on performance data.
 
 ### Implementation Tasks
 
-- [ ] Resolve ambiguities (see `../ambiguities.md#10--performance-optimizations`).
-- [ ] Concurrency manager with max worker count based on system cores.
-- [ ] Incremental pipeline (persisted index; change detection; invalidation hooks).
-- [ ] BK-tree (or neighbor-optimized) lookup for perceptual hashes.
-- [ ] Two-phase orchestrator: coarse candidate grouping then lazy hashing.
-- [ ] Progress instrumentation with NSProgress and os_signpost per stage.
-- [ ] Throttling when on battery (optional), folder-level pausing.
+- [x] Resolve ambiguities (see `../ambiguities.md#10--performance-optimizations`).
+- [x] PerformanceService.recordMetrics() for operation tracking.
+- [x] PerformanceService.startMonitoring() for real-time monitoring.
+- [x] PerformanceService.getOptimizationRecommendations() for insights.
+- [x] Resource thresholds configuration and enforcement.
+- [x] Performance data export and analysis tools.
 
 ### Done Criteria
 

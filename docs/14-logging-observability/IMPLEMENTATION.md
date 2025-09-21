@@ -1,61 +1,95 @@
-## 14 · Logging, Error Handling, and Observability — Implementation Plan
+## 14 · Logging & Observability — Implementation Plan
 Author: @darianrosebrook
 
 ### Objectives
 
-- Capture actionable logs, categorize errors, and enable performance profiling.
+- Provide comprehensive logging and performance monitoring capabilities.
 
-### Logging
+### Strategy
 
-- `OSLog` categories: scan, access, metadata, hash, video, grouping, merge, ui, persist, cache.
-- Redact sensitive paths; include stable IDs.
+- **Log Collection**: Real-time log streaming with filtering and search
+- **Performance Metrics**: System resource monitoring and performance tracking
+- **Diagnostics**: Troubleshooting tools and system diagnostics
+- **Export Capabilities**: Data export for analysis and debugging
 
-### Errors
+### Public API
 
-- Error taxonomy: UserError (actionable), SystemError (permissions/disk), InternalError (bugs).
-- Consistent mapping to UI banners and retry guidance.
+- LoggingViewModel
+  - logEntries: [LogEntry]
+  - filteredEntries: [LogEntry]
+  - logLevels: Set<LogLevel>
+  - categories: Set<String>
+  - searchText: String
+  - performanceMetrics: [PerformanceMetrics]
+  - currentMemoryUsage: Int64
+  - currentCPUUsage: Double
+  - refreshData()
+  - clearLogs()
+  - exportLogs() -> Data?
+  - getLogLevelStats() -> [LogLevel: Int]
+  - getCategoryStats() -> [String: Int]
 
-### Diagnostics
+- LogEntry
+  - id: UUID
+  - timestamp: Date
+  - level: LogLevel
+  - category: String
+  - message: String
+  - metadata: [String: Any]?
 
-- Export bundle: recent logs, anonymized stats, environment info (no secrets).
+- LogLevel
+  - .debug, .info, .warning, .error, .critical
+  - color: Color
+  - icon: String
 
-### Instrumentation
+- TimeRange
+  - .lastMinute, .lastHour, .lastDay, .lastWeek, .allTime
+  - description: String
+  - timeInterval: TimeInterval
 
-- Signposts around long-running tasks (scan, hash, compare, merge, UI list render).
+### Implementation Details
 
-### Verification
+#### Log Management
 
-- Logs visible in Console.app; signposts in Instruments; export includes expected files.
+- **Real-time Streaming**: AsyncStream for continuous log collection
+- **Filtering**: By time range, log level, category, and search text
+- **Statistics**: Automatic calculation of log level and category distributions
+- **Persistence**: Log history with configurable retention
 
-### Pseudocode
+#### Performance Monitoring
+
+- **Resource Tracking**: Memory usage, CPU usage, system metrics
+- **Performance Metrics**: Operation timing, throughput, efficiency
+- **Threshold Monitoring**: Configurable alerts for performance issues
+- **Historical Data**: Performance trends and analysis
+
+#### UI Architecture
 
 ```swift
-import os.log
-let logScan = Logger(subsystem: "app.deduper", category: "scan")
+final class LoggingViewModel: ObservableObject {
+    @Published var logEntries: [LogEntry] = []
+    @Published var performanceMetrics: [PerformanceMetrics] = []
+    @Published var logLevels: Set<LogLevel> = [.info, .warning, .error]
 
-func logError(_ path: String, _ reason: String) {
-    logScan.error("Scan error at %{public}@ reason=%{public}@", path, reason)
+    private var logStream: AsyncStream<LogEntry>?
+    private var timer: Timer?
+
+    init() {
+        setupLogStreaming()
+        setupAutoRefresh()
+    }
 }
 ```
 
+### Verification
+
+- Real-time log streaming works correctly
+- Performance metrics update in real-time
+- Filtering and search functionality works
+- Export functionality generates valid data
+
 ### See Also — External References
 
-### Guardrails & Golden Path (Module-Specific)
-
-- Preconditions and early exits:
-  - If sensitive path segments detected, redact before logging; drop events that could leak PII.
-- Safe defaults:
-  - Structured logs with stable IDs; map errors to actionable UI messages.
-  - Diagnostics export omits secrets and large payloads; size caps enforced.
-- Performance bounds:
-  - Rate-limit repetitive errors; avoid synchronous disk I/O on the main thread.
-- Accessibility & localization:
-  - Localized error copy with developer comments; consistent tone and clarity.
-- Observability:
-  - Signposts around long tasks; counters for failures, retries, cancellations.
-- See also: `../COMMON_GOTCHAS.md`.
-- [Established] Apple — Unified Logging (OSLog): `https://developer.apple.com/documentation/os/logging`
-- [Established] Apple — Signposts and Instruments: `https://developer.apple.com/videos/play/wwdc2018/405/`
-- [Cutting-edge] Practical structured logging guide: `https://www.swiftybeaver.com/blog/structured-logging-in-swift`
-
-
+- [Established] Apple — OSLog: `https://developer.apple.com/documentation/os/logging`
+- [Established] Apple — Unified Logging System: `https://developer.apple.com/documentation/os/logging/unified_logging_system`
+- [Cutting-edge] Observability patterns: `https://microservices.io/patterns/observability/application-metrics.html`

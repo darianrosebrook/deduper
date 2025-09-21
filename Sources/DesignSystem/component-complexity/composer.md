@@ -98,7 +98,7 @@ Before we see composers in action, let's understand what happens
 without them. Consider building modals across a large application:
 
 ```tsx
-// ❌ Without Composer: Scattered logic, inconsistent behavior
+// Without Composer: Scattered logic, inconsistent behavior
 import { useState, useEffect } from 'react';
 
 export function BadModal({ isOpen, onClose, children }: {
@@ -161,7 +161,7 @@ export default function App() {
 
   return (
     <div style={{ padding: '20px', fontFamily: 'system-ui' }}>
-      <h2>❌ Problems Without Composers</h2>
+      <h2>Problems Without Composers</h2>
       
       <button 
         onClick={() => setShowModal(true)}
@@ -180,12 +180,12 @@ export default function App() {
       <BadModal isOpen={showModal} onClose={() => setShowModal(false)}>
         <h3>Issues with this approach:</h3>
         <ul style={{ textAlign: 'left', paddingLeft: '20px' }}>
-          <li>🐛 Clicking content closes modal (missing stopPropagation)</li>
-          <li>♿ No focus trap or ARIA attributes</li>
-          <li>🔄 Every modal reimplements escape key handling</li>
-          <li>📱 No responsive behavior considerations</li>
-          <li>🎨 Inconsistent styling across modals</li>
-          <li>🧪 Hard to test - logic scattered everywhere</li>
+          <li>Clicking content closes modal (missing stopPropagation)</li>
+          <li>No focus trap or ARIA attributes</li>
+          <li>Every modal reimplements escape key handling</li>
+          <li>No responsive behavior considerations</li>
+          <li>Inconsistent styling across modals</li>
+          <li>Hard to test - logic scattered everywhere</li>
         </ul>
         
         <button 
@@ -394,10 +394,10 @@ export default function App() {
           <p>This is a basic modal with header and body slots.</p>
           <p>The modal composer handles:</p>
           <ul>
-            <li>✅ Focus trap and escape key</li>
-            <li>✅ Overlay click to close</li>
-            <li>✅ Flexible content via slots</li>
-            <li>✅ Consistent styling</li>
+            <li>Focus trap and escape key</li>
+            <li>Overlay click to close</li>
+            <li>Flexible content via slots</li>
+            <li>Consistent styling</li>
           </ul>
         </Modal.Body>
         <Modal.Footer>
@@ -495,10 +495,10 @@ export default function App() {
       }}>
         <h3>Composer Benefits:</h3>
         <ul style={{ margin: 0, paddingLeft: '20px' }}>
-          <li>🎯 <strong>Orchestration:</strong> Handles focus, keyboard, overlay behavior</li>
-          <li>🧩 <strong>Slotting:</strong> Header/Body/Footer for flexible composition</li>
-          <li>♿ <strong>Accessibility:</strong> Focus trap, escape key, ARIA built-in</li>
-          <li>🔄 <strong>Reusability:</strong> Same modal, different content patterns</li>
+          <li><strong>Orchestration:</strong> Handles focus, keyboard, overlay behavior</li>
+          <li><strong>Slotting:</strong> Header/Body/Footer for flexible composition</li>
+          <li><strong>Accessibility:</strong> Focus trap, escape key, ARIA built-in</li>
+          <li><strong>Reusability:</strong> Same modal, different content patterns</li>
         </ul>
       </div>
     </div>
@@ -555,7 +555,7 @@ export function Input(props: InputProps) {
 ```
 
 ```tsx
-// ✅ Form Field Composer: Context-based orchestration
+// Form Field Composer: Context-based orchestration
 import { createContext, useContext, useState, useId } from 'react';
 import { Input } from './Input';
 
@@ -757,17 +757,17 @@ export default function App() {
     e.preventDefault();
     // In real implementation, you'd validate all fields
     alert('Form submitted! Check console for orchestration benefits.');
-    console.log('🎯 Composer Benefits Demonstrated:');
-    console.log('✅ Consistent ARIA relationships across all fields');
-    console.log('✅ Centralized validation orchestration');
-    console.log('✅ Context-based child coordination');
-    console.log('✅ No prop drilling - children access field state via context');
-    console.log('✅ Reusable validation patterns');
+    console.log('Composer Benefits Demonstrated:');
+    console.log('Consistent ARIA relationships across all fields');
+    console.log('Centralized validation orchestration');
+    console.log('Context-based child coordination');
+    console.log('No prop drilling - children access field state via context');
+    console.log('Reusable validation patterns');
   };
 
   return (
     <div style={{ padding: '20px', fontFamily: 'system-ui', maxWidth: '500px' }}>
-      <h2>✅ Form Field Composer</h2>
+      <h2>Form Field Composer</h2>
       <p style={{ color: '#666', marginBottom: '30px' }}>
         This composer orchestrates validation, accessibility, and child coordination 
         through React Context. Notice how each field is self-contained yet consistent.
@@ -835,7 +835,7 @@ export default function App() {
         borderRadius: '4px',
         color: '#155724'
       }}>
-        <h3 style={{ margin: '0 0 12px 0' }}>🎯 Composer Orchestration:</h3>
+        <h3 style={{ margin: '0 0 12px 0' }}>Composer Orchestration:</h3>
         <ul style={{ margin: 0, paddingLeft: '20px' }}>
           <li><strong>Context Coordination:</strong> Children access field state without prop drilling</li>
           <li><strong>ARIA Management:</strong> Automatic describedBy relationships</li>
@@ -855,7 +855,7 @@ Composers solve the "coordination problem" that emerges in
 design systems at scale. They provide governance through
 orchestration:
 
-### 🎯 Orchestration Benefits
+### Orchestration Benefits
 
 - **Single Source of Truth**: Complex behavior lives in
   one place, not scattered across implementations
@@ -866,7 +866,7 @@ orchestration:
 - **Easier Testing**: Test the composer once, trust it
   everywhere
 
-### 🧩 Composition Benefits
+### Composition Benefits
 
 - **Flexible Content**: Slots allow varied content
   while maintaining consistent behavior

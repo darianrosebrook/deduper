@@ -61,7 +61,7 @@ public struct MetadataDiff: View {
     private func cellText(_ value: String?, differs: Bool) -> some View {
         let text = (value?.isEmpty ?? true) ? "—" : (value ?? "—")
         return Text(text)
-            .font(DesignToken.fontFamilyCaption)
+            .font(.caption)
             .padding(DesignToken.spacingXS)
             .background(differs ? DesignToken.colorStatusWarning.opacity(0.15) : DesignToken.colorBackgroundPrimary)
             .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
