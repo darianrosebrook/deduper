@@ -219,15 +219,18 @@ public final class ThumbnailService {
      */
     public func preloadThumbnails(for fileIds: [UUID], size: CGSize, priority: Int = 10) {
         let limitedIds = Array(fileIds.prefix(priority))
+        let maxConcurrent = min(4, ProcessInfo.processInfo.activeProcessorCount) // Cap at 4 concurrent thumbnail generations
 
         Task {
             var successCount = 0
-            for fileId in limitedIds {
-                if await image(for: fileId, targetSize: size) != nil {
+
+            await DeduperCore.shared.withConcurrencyCap(maxConcurrent: maxConcurrent, items: limitedIds) { fileId in
+                if await self.image(for: fileId, targetSize: size) != nil {
                     successCount += 1
                 }
             }
-            logger.info("Preloaded \(successCount)/\(limitedIds.count) thumbnails")
+
+            logger.info("Preloaded \(successCount)/\(limitedIds.count) thumbnails with concurrency cap of \(maxConcurrent)")
         }
     }
 

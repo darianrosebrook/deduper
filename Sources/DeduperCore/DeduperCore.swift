@@ -133,6 +133,50 @@ public final class ServiceManager: ObservableObject {
         // This would typically be called when the app becomes inactive
         // For now, we don't have a dedicated monitoring service
     }
+
+    // MARK: - Performance Controls
+
+    /**
+     * WorkQueues provides separate dispatch queues for different types of operations
+     * to avoid contention and optimize performance.
+     */
+    public actor WorkQueues {
+        public let io = DispatchQueue(label: "com.deduper.io", qos: .utility, attributes: .concurrent)
+        public let hashing = DispatchQueue(label: "com.deduper.hashing", qos: .userInitiated, attributes: .concurrent)
+        public let grouping = DispatchQueue(label: "com.deduper.grouping", qos: .userInitiated)
+        public let metadata = DispatchQueue(label: "com.deduper.metadata", qos: .userInitiated, attributes: .concurrent)
+
+        public init() {}
+    }
+
+    /// Shared work queues for performance optimization
+    public let workQueues = WorkQueues()
+
+    /**
+     * Executes async operations with a concurrency cap to prevent overwhelming the system.
+     *
+     * - Parameters:
+     *   - maxConcurrent: Maximum number of concurrent operations
+     *   - items: Items to process
+     *   - body: Async operation to perform on each item
+     */
+    public func withConcurrencyCap<T>(
+        maxConcurrent: Int,
+        items: [T],
+        body: @escaping (T) async -> Void
+    ) async {
+        let semaphore = DispatchSemaphore(value: maxConcurrent)
+
+        await withTaskGroup(of: Void.self) { group in
+            for item in items {
+                semaphore.wait()
+                group.addTask {
+                    await body(item)
+                    semaphore.signal()
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Library Information
