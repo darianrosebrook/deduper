@@ -60,6 +60,8 @@ public struct DeduperCore {
 @MainActor
 public final class ServiceManager: ObservableObject {
 
+    // MARK: - Public API
+
     // MARK: - Properties
 
     /// Shared instance
@@ -96,9 +98,9 @@ public final class ServiceManager: ObservableObject {
         self.persistence = PersistenceController.shared
 
         // Initialize core services
-        self.folderSelection = FolderSelectionService(persistence: persistence)
-        self.metadataService = MetadataExtractionService(persistence: persistence)
-        self.indexQuery = IndexQueryService(persistence: persistence)
+        self.folderSelection = FolderSelectionService()
+        self.metadataService = MetadataExtractionService(persistenceController: persistence)
+        self.indexQuery = IndexQueryService(persistenceController: persistence)
 
         // Initialize thumbnail service
         self.thumbnailService = ThumbnailService.shared
@@ -111,17 +113,11 @@ public final class ServiceManager: ObservableObject {
 
         // Initialize scan orchestrator
         self.scanOrchestrator = ScanOrchestrator(
-            persistence: persistence,
-            metadataService: metadataService,
-            thumbnailService: thumbnailService
+            persistenceController: persistence
         )
 
         // Initialize duplicate detection engine
-        self.duplicateEngine = DuplicateDetectionEngine(
-            persistence: persistence,
-            metadataService: metadataService,
-            indexQuery: indexQuery
-        )
+        self.duplicateEngine = DuplicateDetectionEngine()
     }
 
     // MARK: - Public Methods

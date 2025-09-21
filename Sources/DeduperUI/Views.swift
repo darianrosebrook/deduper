@@ -1,6 +1,13 @@
 import SwiftUI
 import DeduperCore
 import OSLog
+import Foundation
+
+// Re-export core types for UI use
+public typealias FolderValidationResult = DeduperCore.FolderSelectionService.FolderValidationResult
+public typealias MergePlan = DeduperCore.MergePlan
+public typealias MergeResult = DeduperCore.MergeResult
+public typealias MergeError = DeduperCore.MergeError
 
 /**
  Author: @darianrosebrook
@@ -12,9 +19,13 @@ import OSLog
 // MARK: - Core Types Re-export
 
 // Re-export core types for UI use
-public typealias DuplicateGroup = DeduperCore.DuplicateGroupResult
+public typealias DuplicateGroup = DeduperCore.DuplicateDetectionEngine.DuplicateGroupResult
 public typealias ScannedFile = DeduperCore.ScannedFile
-public typealias DuplicateGroupMember = DeduperCore.DuplicateGroupMember
+public typealias DuplicateGroupMember = DeduperCore.DuplicateDetectionEngine.DuplicateGroupMember
+public typealias FolderValidationResult = DeduperCore.FolderSelectionService.FolderValidationResult
+public typealias MergePlan = DeduperCore.MergePlan
+public typealias MergeResult = DeduperCore.MergeResult
+public typealias MergeError = DeduperCore.MergeError
 
 // MARK: - Onboarding View
 
@@ -111,7 +122,7 @@ public class OnboardingViewModel: ObservableObject {
 
     @Published public var selectedFolders: [URL] = []
     @Published public var isValidating = false
-    @Published public var validationResult: DeduperCore.FolderValidationResult?
+    @Published public var validationResult: FolderValidationResult?
 
     public func selectFolders() {
         // Use the folder selection service to pick folders
@@ -313,8 +324,15 @@ public struct GroupRowView: View {
     public var body: some View {
         HStack(spacing: DesignToken.spacingMD) {
             // Thumbnail from first group member
-            ThumbnailView(fileId: group.members.first?.id ?? UUID(), size: DesignToken.thumbnailSizeMD)
-                .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
+            if let firstMember = group.members.first {
+                ThumbnailView(fileId: firstMember.fileId, size: DesignToken.thumbnailSizeMD)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
+            } else {
+                Rectangle()
+                    .fill(DesignToken.colorBackgroundSecondary)
+                    .frame(width: 60, height: 60)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
+            }
 
             VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
                 Text("\(group.members.count) items")
@@ -423,8 +441,8 @@ public final class GroupDetailViewModel: ObservableObject {
 
     @Published public var selectedGroup: DuplicateGroup?
     @Published public var isProcessing = false
-    @Published public var mergePlan: DeduperCore.MergePlan?
-    @Published public var mergeResult: DeduperCore.MergeResult?
+    @Published public var mergePlan: MergePlan?
+    @Published public var mergeResult: MergeResult?
     @Published public var error: String?
 
     public init(group: DuplicateGroup) {
@@ -459,7 +477,7 @@ public final class GroupDetailViewModel: ObservableObject {
         do {
             guard let group = selectedGroup,
                   let keeperId = group.keeperSuggestion ?? group.members.first?.fileId else {
-                throw DeduperCore.MergeError.groupNotFound(group.groupId)
+                throw MergeError.groupNotFound(group.groupId)
             }
 
             let result = try await mergeService.merge(groupId: group.groupId, keeperId: keeperId)
@@ -516,18 +534,30 @@ public struct GroupDetailView: View {
             // Evidence and metadata comparison
             ScrollView {
                 VStack(spacing: DesignToken.spacingMD) {
-                    EvidencePanel(items: [
-                        EvidenceItem(id: "phash", label: "pHash", distanceText: "8", thresholdText: "10", verdict: .pass),
-                        EvidenceItem(id: "date", label: "date", distanceText: "2m", thresholdText: "5m", verdict: .warn),
-                        EvidenceItem(id: "size", label: "fileSize", distanceText: "1.2MB", thresholdText: "1.5MB", verdict: .pass),
-                    ], overallConfidence: group.confidence)
+                    if let mergePlan = viewModel.mergePlan {
+                        EvidencePanel(items: [
+                            EvidenceItem(id: "phash", label: "pHash", distanceText: "8", thresholdText: "10", verdict: .pass),
+                            EvidenceItem(id: "date", label: "date", distanceText: "2m", thresholdText: "5m", verdict: .warn),
+                            EvidenceItem(id: "size", label: "fileSize", distanceText: "1.2MB", thresholdText: "1.5MB", verdict: .pass),
+                        ], overallConfidence: group.confidence)
+                    } else {
+                        ProgressView("Loading merge plan...")
+                    }
 
-                    MetadataDiff(fields: [
-                        MetadataField(id: "date", label: "Date", leftValue: "2021-06-01", rightValue: "2021-06-01"),
-                        MetadataField(id: "camera", label: "Camera", leftValue: "iPhone 14 Pro", rightValue: "iPhone 13"),
-                        MetadataField(id: "resolution", label: "Resolution", leftValue: "4032×3024", rightValue: "4032×3024"),
-                        MetadataField(id: "location", label: "GPS", leftValue: "37.7749,-122.4194", rightValue: nil),
-                    ])
+                    if let mergePlan = viewModel.mergePlan {
+                        MetadataDiff(fields: mergePlan.fieldChanges.map { change in
+                            let oldValue = change.oldValue ?? "N/A"
+                            let newValue = change.newValue ?? "N/A"
+                            return MetadataField(
+                                id: change.field,
+                                label: change.field.capitalized,
+                                leftValue: oldValue,
+                                rightValue: newValue
+                            )
+                        })
+                    } else {
+                        ProgressView("Loading metadata...")
+                    }
 
                     // Preview placeholder
                     VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
@@ -565,7 +595,9 @@ public struct GroupDetailView: View {
                         .controlSize(.small)
                 } else {
                     Button("Merge Group") {
-                        viewModel.mergeGroup()
+                        Task {
+                            await viewModel.mergeGroup()
+                        }
                     }
                     .buttonStyle(.bordered)
                     .keyboardShortcut(.return, modifiers: .command)
