@@ -774,6 +774,7 @@ public final class PersistenceController: ObservableObject {
     }
 
     public func preferenceValue<T: Codable>(for key: String, as type: T.Type) async throws -> T? {
+        _ = type
         if let cached = preferenceCache[key] {
             return try JSONDecoder().decode(T.self, from: cached)
         }
