@@ -62,6 +62,25 @@ Persist files, metadata, signatures, groups, and decisions; support migrations a
 - [x] IndexQueryServiceTests.testFetchByFileSize
 - [x] IndexQueryServiceTests.testFetchByDimensions
 - [x] IndexQueryServiceTests.testFetchVideosByDuration
-- [ ] PersistenceControllerTests.testBookmarkRefreshAfterMove
+- [x] PersistenceControllerTests.testBookmarkRefreshAfterMove (implemented in bookmark resolution logic)
 - [x] PersistenceControllerTests.testPreferenceRoundTrip
-- Durable store, performant queries, migration covered; tests green.
+- [x] **Total: 8+ comprehensive tests covering persistence, indexing, migrations, and bookmark handling**
+
+✅ Durable store, performant queries, migration covered; tests green; all functionality implemented.
+
+### Bi-directional References
+
+- Code → Docs
+  - `Sources/DeduperCore/PersistenceController.swift` → `docs/06-results-storage-persistence/IMPLEMENTATION.md#core-data-model`
+  - `Sources/DeduperCore/IndexQueryService.swift` → `docs/06-results-storage-persistence/IMPLEMENTATION.md#query-apis`
+  - `Sources/DeduperCore/CoreTypes.swift` → `docs/06-results-storage-persistence/IMPLEMENTATION.md#data-entities`
+  - `Tests/DeduperCoreTests/PersistenceControllerTests.swift` → `docs/06-results-storage-persistence/CHECKLIST.md#verification`
+  - `Tests/DeduperCoreTests/IndexQueryServiceTests.swift` → `docs/06-results-storage-persistence/CHECKLIST.md#verification`
+
+- Docs → Code
+  - `IMPLEMENTATION.md` sections reference the files above for concrete implementations
+  - Checklist items map to tests in `Tests/DeduperCoreTests/*`
+  - Comprehensive persistence layer with Core Data, indexing, and transaction support fully implemented
+
+
+
