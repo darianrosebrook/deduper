@@ -2,6 +2,9 @@ import SwiftUI
 import DeduperCore
 import OSLog
 import Combine
+import Foundation
+import mach
+import Darwin
 
 /**
  * BenchmarkView provides comprehensive performance testing and benchmarking capabilities.
@@ -324,52 +327,45 @@ public final class BenchmarkViewModel: ObservableObject {
         var totalLatency: Double = 0
         var realTimeMetrics: [RealTimeMetric] = []
 
-        // Simulate benchmark workload
+        // Start performance monitoring
+        let performanceTask = Task {
+            while !Task.isCancelled {
+                try await Task.sleep(nanoseconds: 100_000_000) // 100ms sampling
+
+                // Get real system metrics
+                let metrics = await getRealSystemMetrics()
+                if let metrics = metrics {
+                    await MainActor.run {
+                        self.currentMemoryUsage = metrics.memoryUsage
+                        self.currentCPUUsage = metrics.cpuUsage
+                        self.realTimeMetrics.append(RealTimeMetric(
+                            memoryUsage: metrics.memoryUsage,
+                            cpuUsage: metrics.cpuUsage,
+                            operationsCompleted: operationsCompleted
+                        ))
+                    }
+                    peakMemory = max(peakMemory, metrics.memoryUsage)
+                }
+            }
+        }
+
+        // Perform real benchmark workload based on test type
         let endTime = startTime.addingTimeInterval(testDuration)
 
         while Date() < endTime && isRunning {
             let operationStart = Date()
 
             do {
-                try await simulateOperation()
+                try await performRealOperation()
+                operationsCompleted += 1
             } catch {
                 failedOperations += 1
-
-                let elapsed = Date().timeIntervalSince(startTime)
-                await MainActor.run {
-                    self.progress = min(elapsed / testDuration, 1.0)
-                }
-
-                try await Task.sleep(nanoseconds: 10_000_000)
-                continue
+                logger.error("Operation failed: \(error.localizedDescription)")
             }
 
             let operationEnd = Date()
             let latency = operationEnd.timeIntervalSince(operationStart)
             totalLatency += latency
-            operationsCompleted += 1
-
-            // Record real-time metrics
-            if enableMemoryProfiling {
-                let currentMemory = Int64.random(in: 50_000_000...200_000_000) // Mock memory usage
-                peakMemory = max(peakMemory, currentMemory)
-                currentMemoryUsage = currentMemory
-            }
-
-            if enableCPUProfiling {
-                currentCPUUsage = Double.random(in: 0.1...0.8)
-            }
-
-            // Record real-time metric
-            realTimeMetrics.append(RealTimeMetric(
-                memoryUsage: currentMemoryUsage,
-                cpuUsage: currentCPUUsage,
-                operationsCompleted: operationsCompleted
-            ))
-
-            await MainActor.run {
-                self.realTimeMetrics = realTimeMetrics
-            }
 
             // Update progress
             let elapsed = Date().timeIntervalSince(startTime)
@@ -377,15 +373,30 @@ public final class BenchmarkViewModel: ObservableObject {
                 self.progress = min(elapsed / testDuration, 1.0)
             }
 
-            // Small delay to simulate real processing
-            try await Task.sleep(nanoseconds: 10_000_000) // 10ms
+            // Small delay between operations
+            try await Task.sleep(nanoseconds: 5_000_000) // 5ms
         }
+
+        // Cancel performance monitoring
+        performanceTask.cancel()
+        try? await performanceTask.value
 
         let totalDuration = Date().timeIntervalSince(startTime)
         let successfulOperations = operationsCompleted
         let totalOperations = operationsCompleted + failedOperations
         let operationsPerSecond = totalDuration > 0 ? Double(successfulOperations) / totalDuration : 0
         let averageLatency = successfulOperations > 0 ? totalLatency / Double(successfulOperations) : 0
+
+        // Record final performance metrics
+        let finalMetrics = PerformanceService.PerformanceMetrics(
+            operation: "benchmark_\(selectedTestType.rawValue)",
+            duration: totalDuration,
+            memoryUsage: peakMemory,
+            cpuUsage: currentCPUUsage,
+            itemsProcessed: totalOperations
+        )
+
+        await performanceService.recordMetrics(finalMetrics)
 
         return BenchmarkResult(
             testType: selectedTestType,
@@ -407,12 +418,187 @@ public final class BenchmarkViewModel: ObservableObject {
         )
     }
 
-    private func simulateOperation() async throws {
-        // Simulate operation with random chance of failure
-        let shouldFail = Double.random(in: 0...1) < 0.05 // 5% failure rate
-        if shouldFail {
-            throw NSError(domain: "BenchmarkError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Simulated operation failure"])
+    private func performRealOperation() async throws {
+        switch selectedTestType {
+        case .scan:
+            try await performScanOperation()
+        case .hash:
+            try await performHashOperation()
+        case .compare:
+            try await performCompareOperation()
+        case .merge:
+            try await performMergeOperation()
+        case .full:
+            try await performFullPipelineOperation()
         }
+    }
+
+    private func performScanOperation() async throws {
+        // Real scan operation using ScanOrchestrator
+        let scanOrchestrator = ServiceManager.shared.scanOrchestrator
+        let mockFiles = createMockFileList(count: 10) // Use small batch for benchmarking
+
+        do {
+            let startTime = Date()
+            _ = try await scanOrchestrator.scanFolders(mockFiles)
+            let duration = Date().timeIntervalSince(startTime)
+            logger.debug("Real scan operation completed in \(duration) seconds")
+        } catch {
+            logger.error("Scan operation failed: \(error.localizedDescription)")
+            throw error
+        }
+    }
+
+    private func performHashOperation() async throws {
+        // Real hash operation using ThumbnailService for image processing
+        let thumbnailService = ServiceManager.shared.thumbnailService
+        let mockFiles = createMockImageFiles(count: 5)
+
+        do {
+            let startTime = Date()
+            for file in mockFiles {
+                // Use thumbnail generation as a proxy for hash computation
+                _ = try await thumbnailService.generateThumbnail(for: file, size: .medium)
+            }
+            let duration = Date().timeIntervalSince(startTime)
+            logger.debug("Real hash operation completed in \(duration) seconds")
+        } catch {
+            logger.error("Hash operation failed: \(error.localizedDescription)")
+            throw error
+        }
+    }
+
+    private func performCompareOperation() async throws {
+        // Real compare operation using DuplicateDetectionEngine
+        let duplicateEngine = ServiceManager.shared.duplicateEngine
+
+        do {
+            let startTime = Date()
+            let mockGroups = createMockComparisonGroups()
+            _ = try await duplicateEngine.processGroups(mockGroups)
+            let duration = Date().timeIntervalSince(startTime)
+            logger.debug("Real compare operation completed in \(duration) seconds")
+        } catch {
+            logger.error("Compare operation failed: \(error.localizedDescription)")
+            throw error
+        }
+    }
+
+    private func performMergeOperation() async throws {
+        // Real merge operation using MergeService
+        let mergeService = ServiceManager.shared.mergeService
+
+        do {
+            let startTime = Date()
+            let mockMergePlan = createMockMergePlan()
+            _ = try await mergeService.executeMergePlan(mockMergePlan)
+            let duration = Date().timeIntervalSince(startTime)
+            logger.debug("Real merge operation completed in \(duration) seconds")
+        } catch {
+            logger.error("Merge operation failed: \(error.localizedDescription)")
+            throw error
+        }
+    }
+
+    private func performFullPipelineOperation() async throws {
+        // Real full pipeline operation
+        try await performScanOperation()
+        try await performHashOperation()
+        try await performCompareOperation()
+        try await performMergeOperation()
+    }
+
+    private func getRealSystemMetrics() async -> (memoryUsage: Int64, cpuUsage: Double)? {
+        // Get real system memory usage
+        var taskInfo = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size) / 4
+        let result = withUnsafeMutablePointer(to: &taskInfo) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+
+        if result == KERN_SUCCESS {
+            let memoryUsage = Int64(taskInfo.phys_footprint)
+            let cpuUsage = await getRealCPUUsage()
+            return (memoryUsage: memoryUsage, cpuUsage: cpuUsage)
+        }
+
+        return nil
+    }
+
+    private func getRealCPUUsage() async -> Double {
+        // Get real CPU usage using host_processor_info
+        var processorInfo = processor_info_array_t()
+        var processorMsgCount: mach_msg_type_number_t = 0
+        var processorCount: natural_t = 0
+
+        let result = host_processor_info(mach_host_self(),
+                                       PROCESSOR_CPU_LOAD_INFO,
+                                       &processorCount,
+                                       &processorInfo,
+                                       &processorMsgCount)
+
+        if result == KERN_SUCCESS {
+            defer { vm_deallocate(mach_task_self_, vm_address_t(processorInfo), vm_size_t(processorMsgCount)) }
+
+            var totalUsage: Double = 0
+            for i in 0..<processorCount {
+                let cpuInfo = processorInfo[i]
+                let user = Double(cpuInfo.cpu_ticks[CP_USER])
+                let sys = Double(cpuInfo.cpu_ticks[CP_SYS])
+                let idle = Double(cpuInfo.cpu_ticks[CP_IDLE])
+                let nice = Double(cpuInfo.cpu_ticks[CP_NICE])
+                let total = user + sys + idle + nice
+
+                if total > 0 {
+                    totalUsage += (user + sys) / total
+                }
+            }
+
+            return totalUsage / Double(processorCount)
+        }
+
+        return 0.0
+    }
+
+    private func createMockFileList(count: Int) -> [URL] {
+        // Create mock file URLs for testing
+        let tempDir = FileManager.default.temporaryDirectory
+        return (0..<count).map { i in
+            tempDir.appendingPathComponent("mock_file_\(i).jpg")
+        }
+    }
+
+    private func createMockImageFiles(count: Int) -> [URL] {
+        // Create mock image file URLs
+        return createMockFileList(count: count)
+    }
+
+    private func createMockComparisonGroups() -> [DuplicateGroup] {
+        // Create mock duplicate groups for comparison testing
+        let mockFiles = createMockFileList(count: 3)
+        return [DuplicateGroup(
+            id: UUID(),
+            files: mockFiles.map { DuplicateFile(url: $0) },
+            similarityScore: 0.85,
+            detectionMethod: .hashComparison,
+            confidence: .high,
+            createdAt: Date()
+        )]
+    }
+
+    private func createMockMergePlan() -> MergePlan {
+        // Create mock merge plan for testing
+        let mockFiles = createMockFileList(count: 3)
+        return MergePlan(
+            id: UUID(),
+            primaryFile: mockFiles[0],
+            duplicateFiles: Array(mockFiles[1...]),
+            mergeStrategy: .keepPrimary,
+            conflictResolution: .automatic,
+            createdAt: Date()
+        )
     }
 
     private func loadBaselineResults() {
