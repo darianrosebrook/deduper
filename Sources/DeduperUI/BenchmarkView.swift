@@ -575,29 +575,54 @@ public final class BenchmarkViewModel: ObservableObject {
         return createMockFileList(count: count)
     }
 
-    private func createMockComparisonGroups() -> [DuplicateGroup] {
+    private func createMockComparisonGroups() -> [DuplicateGroupResult] {
         // Create mock duplicate groups for comparison testing
         let mockFiles = createMockFileList(count: 3)
-        return [DuplicateGroup(
-            id: UUID(),
-            files: mockFiles.map { DuplicateFile(url: $0) },
-            similarityScore: 0.85,
-            detectionMethod: .hashComparison,
-            confidence: .high,
-            createdAt: Date()
+        let mockMetadata = createMockMetadata()
+
+        return [DuplicateGroupResult(
+            groupId: UUID(),
+            keeperId: UUID(),
+            keeperMetadata: mockMetadata,
+            mergedMetadata: mockMetadata,
+            exifWrites: [:],
+            trashList: [],
+            fieldChanges: []
         )]
     }
 
     private func createMockMergePlan() -> MergePlan {
         // Create mock merge plan for testing
-        let mockFiles = createMockFileList(count: 3)
+        let mockMetadata = createMockMetadata()
+
         return MergePlan(
-            id: UUID(),
-            primaryFile: mockFiles[0],
-            duplicateFiles: Array(mockFiles[1...]),
-            mergeStrategy: .keepPrimary,
-            conflictResolution: .automatic,
-            createdAt: Date()
+            groupId: UUID(),
+            keeperId: UUID(),
+            keeperMetadata: mockMetadata,
+            mergedMetadata: mockMetadata,
+            exifWrites: [:],
+            trashList: [],
+            fieldChanges: []
+        )
+    }
+
+    private func createMockMetadata() -> MediaMetadata {
+        // Create mock metadata for testing
+        return MediaMetadata(
+            fileName: "mock_file.jpg",
+            fileSize: 1024,
+            mediaType: .photo,
+            createdAt: Date(),
+            modifiedAt: Date(),
+            dimensions: (width: 1920, height: 1080),
+            captureDate: Date(),
+            cameraModel: nil,
+            gpsLat: nil,
+            gpsLon: nil,
+            durationSec: nil,
+            keywords: nil,
+            tags: nil,
+            inferredUTType: "public.jpeg"
         )
     }
 

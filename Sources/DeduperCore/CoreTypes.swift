@@ -807,7 +807,102 @@ public enum MergeError: Error, LocalizedError, Sendable {
 
 // MARK: - Public Type Re-exports
 
+/**
+ * Operation tracking for safe file operations and undo functionality
+ */
+public struct MergeOperation: Identifiable, Sendable, Equatable {
+    public let id: UUID
+    public let groupId: UUID
+    public let keeperFileId: UUID
+    public let keeperFilePath: String
+    public let removedFileIds: [UUID]
+    public let removedFilePaths: [String]
+    public let spaceFreed: Int64
+    public let timestamp: Date
+    public let wasSuccessful: Bool
+    public let wasDryRun: Bool
+    public let operationType: OperationType
+    public let metadataChanges: [String: Any]
+
+    public enum OperationType: String, Sendable, Equatable {
+        case merge
+        case undo
+        case dryRun
+    }
+
+    public init(
+        id: UUID = UUID(),
+        groupId: UUID,
+        keeperFileId: UUID,
+        keeperFilePath: String,
+        removedFileIds: [UUID],
+        removedFilePaths: [String],
+        spaceFreed: Int64 = 0,
+        timestamp: Date = Date(),
+        wasSuccessful: Bool = true,
+        wasDryRun: Bool = false,
+        operationType: OperationType = .merge,
+        metadataChanges: [String: Any] = [:]
+    ) {
+        self.id = id
+        self.groupId = groupId
+        self.keeperFileId = keeperFileId
+        self.keeperFilePath = keeperFilePath
+        self.removedFileIds = removedFileIds
+        self.removedFilePaths = removedFilePaths
+        self.spaceFreed = spaceFreed
+        self.timestamp = timestamp
+        self.wasSuccessful = wasSuccessful
+        self.wasDryRun = wasDryRun
+        self.operationType = operationType
+        self.metadataChanges = metadataChanges
+    }
+
+    public static func == (lhs: MergeOperation, rhs: MergeOperation) -> Bool {
+        return lhs.id == rhs.id &&
+               lhs.groupId == rhs.groupId &&
+               lhs.keeperFileId == rhs.keeperFileId &&
+               lhs.removedFileIds == rhs.removedFileIds &&
+               lhs.wasDryRun == rhs.wasDryRun
+    }
+}
+
+/**
+ * Undo operation tracking
+ */
+public struct UndoOperation: Identifiable, Sendable, Equatable {
+    public let id: UUID
+    public let originalOperationId: UUID
+    public let restoredFileIds: [UUID]
+    public let restoredFilePaths: [String]
+    public let spaceRecovered: Int64
+    public let timestamp: Date
+    public let wasSuccessful: Bool
+
+    public init(
+        id: UUID = UUID(),
+        originalOperationId: UUID,
+        restoredFileIds: [UUID],
+        restoredFilePaths: [String],
+        spaceRecovered: Int64 = 0,
+        timestamp: Date = Date(),
+        wasSuccessful: Bool = true
+    ) {
+        self.id = id
+        self.originalOperationId = originalOperationId
+        self.restoredFileIds = restoredFileIds
+        self.restoredFilePaths = restoredFilePaths
+        self.spaceRecovered = spaceRecovered
+        self.timestamp = timestamp
+        self.wasSuccessful = wasSuccessful
+    }
+}
+
+// MARK: - Public Type Re-exports
+
 /// Re-export commonly used types for easier access
 public typealias CoreMergePlan = MergePlan
 public typealias CoreMergeResult = MergeResult
 public typealias CoreMergeError = MergeError
+public typealias CoreMergeOperation = MergeOperation
+public typealias CoreUndoOperation = UndoOperation
