@@ -14,13 +14,22 @@ import Foundation
         #expect(FileManager.default.fileExists(atPath: url.path), "Missing fixture: \(name)")
         return url
     }
+
+    private let referenceClip = "Snapchat-7264795816042222207.mp4"
+    private let comparisonClip = "Snapchat-7477392024873137008.mp4"
+    private let variantClips: [String] = [
+        "Snapchat-7264795816042222207.mp4",
+        "Snapchat-7440230918189806176.mp4",
+        "Snapchat-7302344032709803562.mp4",
+        "Snapchat-7496682729015355275.mp4"
+    ]
     
     @Test("Video fingerprinting performance meets baseline target")
     func testVideoFingerprintingPerformance() async throws {
         let fingerprinter = VideoFingerprinter()
         
         // Use a short video for consistent timing
-        let videoURL = fixtureURL("finalVideo (1).mp4")
+        let videoURL = fixtureURL(referenceClip)
         
         let startTime = Date()
         
@@ -59,8 +68,8 @@ import Foundation
         let fingerprinter = VideoFingerprinter()
         
         // Create two different video signatures
-        let videoURL1 = fixtureURL("finalVideo (1).mp4")
-        let videoURL2 = fixtureURL("Snapchat-7477392024873137008.mp4")
+        let videoURL1 = fixtureURL(referenceClip)
+        let videoURL2 = fixtureURL(comparisonClip)
         
         guard let signature1 = fingerprinter.fingerprint(url: videoURL1),
               let signature2 = fingerprinter.fingerprint(url: videoURL2) else {
@@ -92,12 +101,7 @@ import Foundation
         let fingerprinter = VideoFingerprinter()
         
         // Test multiple videos to track failure rates
-        let videoURLs = [
-            fixtureURL("finalVideo (1).mp4"),
-            fixtureURL("finalVideo (2).mp4"),
-            fixtureURL("finalVideo (3).mp4"),
-            fixtureURL("finalVideo (4).mp4")
-        ]
+        let videoURLs = variantClips.map { fixtureURL($0) }
         
         var totalAttempts = 0
         var successfulFingerprints = 0

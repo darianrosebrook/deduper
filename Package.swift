@@ -25,7 +25,7 @@ let package = Package(
     targets: [
         .target(
             name: "DeduperCore",
-            dependencies: [],
+            dependencies: [], 
             path: "Sources/DeduperCore",
             resources: [
                 .process("Resources")

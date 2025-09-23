@@ -3,6 +3,46 @@
 
 import Foundation
 
+// MARK: - Enhancement Feature Flags
+
+/**
+ Feature flags for advanced testing and performance enhancements.
+ These can be controlled via environment variables or build configurations.
+ */
+public struct EnhancementFeatureFlags {
+    public static let chaosTestingEnabled: Bool = {
+        if let envVar = ProcessInfo.processInfo.environment["DEDUPE_CHAOS_TESTING"] {
+            return envVar.lowercased() == "true" || envVar == "1"
+        }
+        return false
+    }()
+
+    public static let abTestingEnabled: Bool = {
+        if let envVar = ProcessInfo.processInfo.environment["DEDUPE_AB_TESTING"] {
+            return envVar.lowercased() == "true" || envVar == "1"
+        }
+        return false
+    }()
+
+    public static let precomputedIndexesEnabled: Bool = {
+        if let envVar = ProcessInfo.processInfo.environment["DEDUPE_PRECOMPUTED_INDEXES"] {
+            return envVar.lowercased() == "true" || envVar == "1"
+        }
+        return false
+    }()
+
+    public static let performanceMonitoringEnabled: Bool = {
+        if let envVar = ProcessInfo.processInfo.environment["DEDUPE_PERFORMANCE_MONITORING"] {
+            return envVar.lowercased() == "true" || envVar == "1"
+        }
+        return false
+    }()
+
+    public static let allEnhancementsEnabled: Bool = {
+        chaosTestingEnabled && abTestingEnabled && precomputedIndexesEnabled && performanceMonitoringEnabled
+    }()
+}
+
 /**
  * DeduperCore - Core library for duplicate photo and video detection
  * 
@@ -82,6 +122,9 @@ public final class ServiceManager: ObservableObject {
     /// Duplicate detection engine
     public let duplicateEngine: DuplicateDetectionEngine
 
+    /// Session persistence and store for resumable scans
+    public let sessionStore: SessionStore
+
     /// Metadata extraction service
     public let metadataService: MetadataExtractionService
 
@@ -105,6 +148,18 @@ public final class ServiceManager: ObservableObject {
 
     /// Permissions service for managing file access permissions
     public let permissionsService: PermissionsService
+
+    /// Chaos testing framework for resilience validation
+    public let chaosTestingService: ChaosTestingFramework?
+
+    /// A/B testing framework for confidence calibration
+    public let abTestingService: ABTestingFramework?
+
+    /// Pre-computed index service for large datasets
+    public let precomputedIndexService: PrecomputedIndexService?
+
+    /// Performance monitoring service for comprehensive tracking
+    public let performanceMonitoringService: PerformanceMonitoringService?
 
     // MARK: - Initialization
 
@@ -134,6 +189,13 @@ public final class ServiceManager: ObservableObject {
         // Initialize duplicate detection engine
         self.duplicateEngine = DuplicateDetectionEngine()
 
+        // Session persistence & store (must be created after orchestrator)
+        let sessionPersistence = SessionPersistence()
+        self.sessionStore = SessionStore(
+            orchestrator: scanOrchestrator,
+            persistence: sessionPersistence
+        )
+
         // Initialize feedback service
         self.feedbackService = FeedbackService(persistence: persistence)
 
@@ -142,6 +204,12 @@ public final class ServiceManager: ObservableObject {
 
         // Initialize permissions service
         self.permissionsService = PermissionsService(bookmarkManager: BookmarkManager())
+
+        // Initialize enhancement services (optional - only when feature flags are enabled)
+        self.chaosTestingService = EnhancementFeatureFlags.chaosTestingEnabled ? ChaosTestingFramework() : nil
+        self.abTestingService = EnhancementFeatureFlags.abTestingEnabled ? ABTestingFramework() : nil
+        self.precomputedIndexService = EnhancementFeatureFlags.precomputedIndexesEnabled ? PrecomputedIndexService() : nil
+        self.performanceMonitoringService = EnhancementFeatureFlags.performanceMonitoringEnabled ? PerformanceMonitoringService() : nil
     }
 
     // MARK: - Public Methods

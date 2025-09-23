@@ -1,4 +1,9 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 /**
  Author: @darianrosebrook
@@ -10,181 +15,111 @@ import SwiftUI
  */
 public enum DesignToken {
 
+    private static let parser = DesignTokenParser.shared
+
+    private static func color(_ tokenPath: String) -> Color {
+        let lightValue = parser.resolveColorTokenString(tokenPath, for: .light)
+        let darkValue = parser.resolveColorTokenString(tokenPath, for: .dark)
+
+#if os(macOS)
+        if let lightValue, let darkValue, lightValue != darkValue {
+            return Color(NSColor(name: nil) { appearance in
+                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                let token = isDark ? darkValue : lightValue
+                return NSColor(tokenValue: token)
+            })
+        }
+#elseif canImport(UIKit)
+        if let lightValue, let darkValue, lightValue != darkValue {
+            return Color(UIColor { traitCollection in
+                let isDark = traitCollection.userInterfaceStyle == .dark
+                let token = isDark ? darkValue : lightValue
+                return UIColor(tokenValue: token)
+            })
+        }
+#endif
+
+        if let fallback = lightValue ?? darkValue {
+            return Color(tokenValue: fallback)
+        }
+
+        return parser.resolveColor(tokenPath)
+    }
+
     // MARK: - Status Colors (Semantic)
 
-    public static let colorStatusDanger: Color = {
-        Color(hex: "#ef4444") // Using semantic red from design tokens
-    }()
+    public static var colorStatusDanger: Color { color("semantic.color.status.danger") }
 
     // MARK: - Foreground Colors (Semantic)
 
-    public static let colorForegroundPrimary: Color = .primary
-
-    public static let colorForegroundSecondary: Color = .secondary
-
-    public static let colorForegroundTertiary: Color = {
-        Color(white: 0.5).opacity(0.5) // Approximation for tertiary text
-    }()
-
-    public static let colorForegroundSuccess: Color = {
-        Color(hex: "#059669") // Darker green for text
-    }()
-
-    public static let colorForegroundWarning: Color = {
-        Color(hex: "#d97706") // Darker orange for text
-    }()
-
-    public static let colorError: Color = {
-        Color(hex: "#dc2626") // Red for error states
-    }()
-
-    public static let colorWarning: Color = {
-        Color(hex: "#d97706") // Orange for warning states
-    }()
-
-    public static let colorDestructive: Color = {
-        Color(hex: "#dc2626") // Red for destructive actions
-    }()
-
-    public static let colorForegroundInfo: Color = {
-        Color(hex: "#2563eb") // Darker blue for text
-    }()
-
-    public static let colorForegroundError: Color = {
-        Color(hex: "#dc2626") // Darker red for text
-    }()
-
-    public static let colorForegroundOnBrand: Color = {
-        Color(white: 1.0) // White text on brand colors
-    }()
+    public static var colorForegroundPrimary: Color { color("semantic.color.foreground.primary") }
+    public static var colorForegroundSecondary: Color { color("semantic.color.foreground.secondary") }
+    public static var colorForegroundTertiary: Color { color("semantic.color.foreground.tertiary") }
+    public static var colorForegroundSuccess: Color { color("semantic.color.foreground.success") }
+    public static var colorForegroundWarning: Color { color("semantic.color.foreground.warning") }
+    public static var colorForegroundInfo: Color { color("semantic.color.foreground.info") }
+    public static var colorForegroundError: Color { color("semantic.color.foreground.danger") }
+    public static var colorForegroundOnBrand: Color { color("semantic.color.foreground.onBrand") }
 
     // MARK: - Background Colors (Semantic)
 
-    public static let colorBackgroundPrimary: Color = {
-        Color(white: 1.0) // Approximation for systemBackground
-    }()
-
-    public static let colorBackgroundSecondary: Color = {
-        Color(white: 0.95) // Approximation for secondarySystemBackground
-    }()
-
-    public static let colorBackgroundTertiary: Color = {
-        Color(white: 0.9) // Approximation for tertiarySystemBackground
-    }()
-
-    public static let colorBackgroundElevated: Color = {
-        Color(white: 0.95) // Approximation for systemGroupedBackground
-    }()
+    public static var colorBackgroundPrimary: Color { color("semantic.color.background.primary") }
+    public static var colorBackgroundSecondary: Color { color("semantic.color.background.secondary") }
+    public static var colorBackgroundTertiary: Color { color("semantic.color.background.tertiary") }
+    public static var colorBackgroundElevated: Color { color("semantic.color.background.elevated") }
 
     // MARK: - Interactive States (Semantic)
 
-    public static let colorBackgroundHover: Color = {
-        Color(white: 0.95) // Semantic hover state
-    }()
-
-    public static let colorBackgroundActive: Color = {
-        Color(white: 0.9) // Semantic active state
-    }()
-
-    public static let colorBackgroundHighlight: Color = {
-        Color(white: 0.95).opacity(0.8) // Semantic highlight state
-    }()
+    public static var colorBackgroundHover: Color { color("semantic.color.background.hover") }
+    public static var colorBackgroundActive: Color { color("semantic.color.background.active") }
+    public static var colorBackgroundHighlight: Color { color("semantic.color.background.highlight") }
 
     // MARK: - Disabled States (Semantic)
 
-    public static let colorBackgroundDisabled: Color = {
-        Color(white: 0.95) // Light gray for disabled backgrounds
-    }()
-
-    public static let colorForegroundDisabled: Color = {
-        Color(white: 0.5) // Muted gray for disabled text
-    }()
-
-    public static let colorBorderDisabled: Color = {
-        Color(white: 0.8) // Light gray for disabled borders
-    }()
+    public static var colorBackgroundDisabled: Color { color("semantic.color.background.disabled") }
+    public static var colorForegroundDisabled: Color { color("semantic.color.foreground.disabled") }
+    public static var colorBorderDisabled: Color { color("semantic.color.border.disabled") }
 
     // MARK: - Link Colors (Semantic)
 
-    public static let colorLink: Color = {
-        Color(hex: "#0A65FE") // Brand blue for links
-    }()
-
-    public static let colorLinkHover: Color = {
-        Color(hex: "#0042DC") // Darker blue for hover
-    }()
-
-    public static let colorLinkVisited: Color = {
-        Color(hex: "#7C3AED") // Purple for visited links
-    }()
+    public static var colorLink: Color { color("semantic.color.foreground.link") }
+    public static var colorLinkHover: Color { color("semantic.color.foreground.linkHover") }
+    public static var colorLinkVisited: Color { color("semantic.color.foreground.linkVisited") }
 
     // MARK: - Status Colors (Semantic)
 
-    public static let colorStatusSuccess: Color = {
-        Color(hex: "#10b981") // Green for success
-    }()
+    public static var colorStatusSuccess: Color { color("semantic.color.status.success") }
+    public static var colorStatusWarning: Color { color("semantic.color.status.warning") }
+    public static var colorStatusError: Color { color("semantic.color.status.danger") }
+    public static var colorStatusInfo: Color { color("semantic.color.status.info") }
+    public static var colorInfo: Color { color("semantic.color.status.info") }
 
-    public static let colorSuccess: Color = {
-        Color(hex: "#10b981") // Green for success
-    }()
+    // MARK: - Additional Color Tokens (aliases for backward compatibility)
 
-    public static let colorStatusWarning: Color = {
-        Color(hex: "#f59e0b") // Orange for warning
-    }()
-
-    public static let colorStatusError: Color = {
-        Color(hex: "#ef4444") // Red for error
-    }()
-
-    public static let colorStatusInfo: Color = {
-        Color(hex: "#3b82f6") // Blue for info
-    }()
+    public static var colorSuccess: Color { color("semantic.color.status.success") }
+    public static var colorWarning: Color { color("semantic.color.status.warning") }
+    public static var colorError: Color { color("semantic.color.status.danger") }
+    public static var colorDestructive: Color { color("semantic.color.status.danger") }
 
     // MARK: - Component-Specific Colors
 
-    public static let colorButtonPrimary: Color = {
-        Color(hex: "#0A65FE") // Brand primary for buttons
-    }()
+    public static var colorButtonPrimary: Color { color("semantic.color.background.brand") }
+    public static var colorButtonSecondary: Color { color("semantic.color.background.secondary") }
+    public static var colorInputBackground: Color { color("semantic.color.background.elevated") }
+    public static var colorInputBorder: Color { color("semantic.color.border.subtle") }
+    public static var colorInputBorderFocus: Color { color("semantic.color.border.focus") }
+    public static var colorCardBackground: Color { color("semantic.color.background.elevated") }
+    public static var colorCardBorder: Color { color("semantic.color.border.subtle") }
+    public static var colorBorder: Color { color("semantic.color.border.default") }
+    public static var colorBorderSubtle: Color { color("semantic.color.border.subtle") }
+    public static var colorBadgeBackground: Color { color("semantic.color.background.tertiary") }
+    public static var colorBadgeForeground: Color { color("semantic.color.foreground.primary") }
 
-    public static let colorButtonPrimaryHover: Color = {
-        Color(hex: "#0042DC") // Darker primary for hover
-    }()
+    // MARK: - Navigation Colors (Semantic)
 
-    public static let colorButtonSecondary: Color = {
-        Color(white: 0.2) // Neutral for secondary buttons
-    }()
-
-    public static let colorInputBackground: Color = {
-        Color(white: 0.98) // Light background for inputs
-    }()
-
-    public static let colorInputBorder: Color = {
-        Color(white: 0.8) // Subtle border for inputs
-    }()
-
-    public static let colorInputBorderFocus: Color = {
-        Color(hex: "#0A65FE") // Brand color for focus
-    }()
-
-    public static let colorCardBackground: Color = {
-        Color(white: 1.0) // White background for cards
-    }()
-
-    public static let colorCardBorder: Color = {
-        Color(white: 0.9) // Subtle border for cards
-    }()
-
-    public static let colorBorderSubtle: Color = {
-        Color(white: 0.9) // Subtle border for outlined components
-    }()
-
-    public static let colorBadgeBackground: Color = {
-        Color(white: 0.95) // Light background for badges
-    }()
-
-    public static let colorBadgeForeground: Color = {
-        Color(white: 0.4) // Dark text for badges
-    }()
+    public static var colorNavigationBackground: Color { color("semantic.color.background.secondary") }
+    public static var colorNavigationItem: Color { color("semantic.color.foreground.secondary") }
+    public static var colorNavigationItemSelected: Color { color("semantic.color.background.brand") }
 
     // MARK: - Component-Specific Tokens
 
@@ -292,6 +227,7 @@ public enum DesignToken {
     // MARK: - Border Radius (Core tokens)
 
     public static let cornerRadiusMD: CGFloat = 8
+    public static let cornerRadiusSM: CGFloat = 4
     public static let radiusNone: CGFloat = 0
     public static let radiusXS: CGFloat = 2
     public static let radiusSM: CGFloat = 4
@@ -300,11 +236,11 @@ public enum DesignToken {
     public static let radiusXL: CGFloat = 16
     public static let radiusFull: CGFloat = 9999
 
-    // MARK: - Shadow (Core tokens)
+    // MARK: - Shadow (Core tokens) - Using custom type for now
 
-    public static let shadowSM: DesignTokenShadow = .init(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-    public static let shadowMD: DesignTokenShadow = .init(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
-    public static let shadowLG: DesignTokenShadow = .init(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
+    public static let shadowSM: DesignTokenShadow = DesignTokenShadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+    public static let shadowMD: DesignTokenShadow = DesignTokenShadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+    public static let shadowLG: DesignTokenShadow = DesignTokenShadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
 
     // MARK: - Thumbnail Sizes (Component tokens)
 
@@ -366,10 +302,153 @@ extension Color {
         )
     }
 
+    init(tokenValue: String) {
+        if let components = TokenColorParser.components(from: tokenValue) {
+            self.init(
+                .sRGB,
+                red: components.red,
+                green: components.green,
+                blue: components.blue,
+                opacity: components.alpha
+            )
+            return
+        }
+
+        self = .clear
+    }
+
     // MARK: - Additional Border Colors
 
-    public static let colorBorderSubtle: Color = {
-        Color(white: 0.95) // Very light border for subtle elements
-    }()
+    @MainActor
+    public static var colorBorderSubtle: Color {
+        DesignToken.colorBorderSubtle
+    }
 }
 
+// MARK: - Token Color Parsing Helpers
+
+private enum TokenColorParser {
+    static func components(from tokenValue: String) -> (red: Double, green: Double, blue: Double, alpha: Double)? {
+        let trimmed = tokenValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let lowercased = trimmed.lowercased()
+
+        if (lowercased.hasPrefix("rgba(") || lowercased.hasPrefix("rgb(")),
+           let openParen = trimmed.firstIndex(of: "("),
+           let closeParen = trimmed.lastIndex(of: ")"),
+           openParen < closeParen {
+            let parameters = trimmed[trimmed.index(after: openParen)..<closeParen]
+            let parts = parameters.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            guard parts.count >= 3 else { return nil }
+
+            guard let r = normalizeChannel(parts[0]),
+                  let g = normalizeChannel(parts[1]),
+                  let b = normalizeChannel(parts[2]) else {
+                return nil
+            }
+
+            let alpha: Double
+            if parts.count >= 4 {
+                alpha = normalizeAlpha(parts[3])
+            } else {
+                alpha = 1
+            }
+
+            return (r, g, b, alpha)
+        }
+
+        return componentsFromHex(trimmed)
+    }
+
+    private static func normalizeChannel(_ component: String) -> Double? {
+        let valueString = component.trimmingCharacters(in: .whitespaces)
+        if valueString.hasSuffix("%") {
+            let numericString = String(valueString.dropLast())
+            guard let value = Double(numericString) else { return nil }
+            return clamp(value / 100)
+        }
+
+        guard let value = Double(valueString) else { return nil }
+        if value > 1 {
+            return clamp(value / 255)
+        }
+        return clamp(value)
+    }
+
+    private static func normalizeAlpha(_ component: String) -> Double {
+        let valueString = component.trimmingCharacters(in: .whitespaces)
+        if valueString.hasSuffix("%") {
+            let numericString = String(valueString.dropLast())
+            if let value = Double(numericString) {
+                return clamp(value / 100)
+            }
+            return 1
+        }
+
+        if let value = Double(valueString) {
+            if value > 1 {
+                let divisor: Double = value <= 100 ? 100 : 255
+                return clamp(value / divisor)
+            }
+            return clamp(value)
+        }
+
+        return 1
+    }
+
+    private static func clamp(_ value: Double) -> Double {
+        min(max(value, 0), 1)
+    }
+
+    private static func componentsFromHex(_ value: String) -> (Double, Double, Double, Double)? {
+        let hex = value.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        guard !hex.isEmpty else { return nil }
+
+        var int: UInt64 = 0
+        guard Scanner(string: hex).scanHexInt64(&int) else { return nil }
+
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            let r = Double((int >> 8) & 0xF) / 15
+            let g = Double((int >> 4) & 0xF) / 15
+            let b = Double(int & 0xF) / 15
+            return (r, g, b, 1)
+        case 6: // RGB (24-bit)
+            let r = Double((int >> 16) & 0xFF) / 255
+            let g = Double((int >> 8) & 0xFF) / 255
+            let b = Double(int & 0xFF) / 255
+            return (r, g, b, 1)
+        case 8: // ARGB (32-bit)
+            let a = Double((int >> 24) & 0xFF) / 255
+            let r = Double((int >> 16) & 0xFF) / 255
+            let g = Double((int >> 8) & 0xFF) / 255
+            let b = Double(int & 0xFF) / 255
+            return (r, g, b, a)
+        default:
+            return nil
+        }
+    }
+}
+
+#if os(macOS)
+extension NSColor {
+    convenience init(tokenValue: String) {
+        if let components = TokenColorParser.components(from: tokenValue) {
+            self.init(srgbRed: components.red, green: components.green, blue: components.blue, alpha: components.alpha)
+        } else {
+            self.init(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+        }
+    }
+}
+#elseif canImport(UIKit)
+extension UIColor {
+    convenience init(tokenValue: String) {
+        if let components = TokenColorParser.components(from: tokenValue) {
+            self.init(red: components.red, green: components.green, blue: components.blue, alpha: components.alpha)
+        } else {
+            self.init(red: 1, green: 1, blue: 1, alpha: 1)
+        }
+    }
+}
+#endif

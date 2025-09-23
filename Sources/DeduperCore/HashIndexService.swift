@@ -149,7 +149,13 @@ public final class HashIndexService: @unchecked Sendable {
             // Use BK-tree if available and enabled, or if dataset is large enough
             let shouldUseBKTree = useBKTree || _entries.count >= bkTreeThreshold
             if shouldUseBKTree, let bkTree = _bkTree {
-                return bkTree.search(hash: hash, maxDistance: distance, algorithm: algorithm, excludeFileId: excludeFileId)
+                return searchWithBKTree(
+                    bkTree,
+                    maxDistance: distance,
+                    hash: hash,
+                    algorithm: algorithm,
+                    excludeFileId: excludeFileId
+                )
             } else if shouldUseBKTree && _bkTree == nil {
                 // Dynamically create BK-tree for large dataset
                 _bkTree = BKTree(hashingService: hashingService)
@@ -165,36 +171,25 @@ public final class HashIndexService: @unchecked Sendable {
                     )
                 }
                 logger.info("Dynamically enabled BK-tree for large dataset (\(self._entries.count) entries)")
-                return self._bkTree?.search(hash: hash, maxDistance: distance, algorithm: algorithm, excludeFileId: excludeFileId) ?? []
+                if let bkTree = self._bkTree {
+                    return searchWithBKTree(
+                        bkTree,
+                        maxDistance: distance,
+                        hash: hash,
+                        algorithm: algorithm,
+                        excludeFileId: excludeFileId
+                    )
+                }
+                return []
             }
             
             // Fallback to linear search
-            var matches: [HashMatch] = []
-            
-            for entry in _entries {
-                // Skip if different algorithm
-                guard entry.algorithm == algorithm else { continue }
-                
-                // Skip if this is the excluded file
-                if let excludeId = excludeFileId, entry.fileId == excludeId {
-                    continue
-                }
-                
-                let hammingDistance = hashingService.hammingDistance(hash, entry.hash)
-                if hammingDistance <= distance {
-                    matches.append(HashMatch(
-                        fileId: entry.fileId,
-                        algorithm: entry.algorithm,
-                        hash: entry.hash,
-                        distance: hammingDistance,
-                        width: entry.width,
-                        height: entry.height
-                    ))
-                }
-            }
-            
-            // Sort by distance (closest first)
-            return matches.sorted { $0.distance < $1.distance }
+            return linearScan(
+                maxDistance: distance,
+                hash: hash,
+                algorithm: algorithm,
+                excludeFileId: excludeFileId
+            )
         }
     }
     
@@ -303,6 +298,60 @@ public final class HashIndexService: @unchecked Sendable {
     }
 }
 
+// MARK: - Private helpers
+
+extension HashIndexService {
+    private func searchWithBKTree(
+        _ tree: BKTree,
+        maxDistance: Int,
+        hash: UInt64,
+        algorithm: HashAlgorithm,
+        excludeFileId: UUID?
+    ) -> [HashMatch] {
+        let result = tree.search(hash: hash, maxDistance: maxDistance, algorithm: algorithm, excludeFileId: excludeFileId)
+        let visitedThreshold = max(512, _entries.count / 2)
+        if result.visitedNodeCount > visitedThreshold {
+            logger.debug("BK-tree search visited \(result.visitedNodeCount) nodes (threshold: \(visitedThreshold)); falling back to linear scan")
+            return linearScan(
+                maxDistance: maxDistance,
+                hash: hash,
+                algorithm: algorithm,
+                excludeFileId: excludeFileId
+            )
+        }
+        return result.matches
+    }
+
+    private func linearScan(
+        maxDistance: Int,
+        hash: UInt64,
+        algorithm: HashAlgorithm,
+        excludeFileId: UUID?
+    ) -> [HashMatch] {
+        var matches: [HashMatch] = []
+
+        for entry in _entries {
+            guard entry.algorithm == algorithm else { continue }
+            if let excludeId = excludeFileId, entry.fileId == excludeId { continue }
+
+            let hammingDistance = hashingService.hammingDistance(hash, entry.hash)
+            if hammingDistance <= maxDistance {
+                matches.append(HashMatch(
+                    fileId: entry.fileId,
+                    algorithm: entry.algorithm,
+                    hash: entry.hash,
+                    distance: hammingDistance,
+                    width: entry.width,
+                    height: entry.height
+                ))
+            }
+        }
+
+        matches.sort { $0.distance < $1.distance }
+        return matches
+    }
+}
+
 // MARK: - Supporting Types
 
 /**
@@ -387,6 +436,16 @@ public struct HashIndexStatistics: Sendable {
  * 
  * - Author: @darianrosebrook
  */
+public struct BKTreeSearchResult {
+    public let matches: [HashMatch]
+    public let visitedNodeCount: Int
+
+    public init(matches: [HashMatch], visitedNodeCount: Int) {
+        self.matches = matches
+        self.visitedNodeCount = visitedNodeCount
+    }
+}
+
 public final class BKTree {
     private let hashingService: ImageHashingService
     private var root: BKNode?
@@ -436,14 +495,16 @@ public final class BKTree {
      *   - excludeFileId: Optional file ID to exclude from results
      * - Returns: Array of matching entries sorted by distance
      */
-    public func search(hash: UInt64, maxDistance: Int, algorithm: HashAlgorithm, excludeFileId: UUID? = nil) -> [HashMatch] {
-        guard let root = root else { return [] }
-        
+    public func search(hash: UInt64, maxDistance: Int, algorithm: HashAlgorithm, excludeFileId: UUID? = nil) -> BKTreeSearchResult {
+        guard let root = root else { return BKTreeSearchResult(matches: [], visitedNodeCount: 0) }
+
         var results: [HashMatch] = []
-        search(hash: hash, maxDistance: maxDistance, algorithm: algorithm, excludeFileId: excludeFileId, node: root, results: &results)
-        
+        var visited = 0
+        search(hash: hash, maxDistance: maxDistance, algorithm: algorithm, excludeFileId: excludeFileId, node: root, results: &results, visitedCount: &visited)
+
         // Sort by distance (closest first)
-        return results.sorted { $0.distance < $1.distance }
+        results.sort { $0.distance < $1.distance }
+        return BKTreeSearchResult(matches: results, visitedNodeCount: visited)
     }
     
     /**
@@ -478,9 +539,10 @@ public final class BKTree {
         }
     }
     
-    private func search(hash: UInt64, maxDistance: Int, algorithm: HashAlgorithm, excludeFileId: UUID?, node: BKNode, results: inout [HashMatch]) {
+    private func search(hash: UInt64, maxDistance: Int, algorithm: HashAlgorithm, excludeFileId: UUID?, node: BKNode, results: inout [HashMatch], visitedCount: inout Int) {
+        visitedCount += 1
         let distance = hashingService.hammingDistance(hash, node.entry.hash)
-        
+
         // Add this node if it matches criteria
         if distance <= maxDistance && 
            node.entry.algorithm == algorithm &&
@@ -500,7 +562,7 @@ public final class BKTree {
         // So we need to search distances where |distance - childDistance| <= maxDistance
         for (childDistance, child) in node.children {
             if abs(distance - childDistance) <= maxDistance {
-                search(hash: hash, maxDistance: maxDistance, algorithm: algorithm, excludeFileId: excludeFileId, node: child, results: &results)
+                search(hash: hash, maxDistance: maxDistance, algorithm: algorithm, excludeFileId: excludeFileId, node: child, results: &results, visitedCount: &visitedCount)
             }
         }
     }

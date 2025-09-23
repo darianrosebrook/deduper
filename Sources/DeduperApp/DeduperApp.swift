@@ -63,41 +63,279 @@ public struct MainView: View {
 
     public var body: some View {
         NavigationSplitView {
-            // Sidebar navigation
+            // Sidebar navigation - streamlined for tools and utilities
             SidebarView(selectedScreen: $viewModel.selectedScreen)
         } detail: {
-            // Main content area
-            switch viewModel.selectedScreen {
-            case .onboarding:
-                OnboardingView()
-            case .scanStatus:
-                ScanStatusView()
-            case .groupsList:
-                GroupsListView()
-            case .groupDetail(let group):
-                GroupDetailView(group: group)
-            case .mergePlan:
-                MergePlanView(plan: nil)
-            case .cleanupSummary:
-                CleanupSummaryView()
-            case .settings:
-                SettingsView()
-            case .history:
-                OperationsView()
-            case .logging:
-                LoggingView()
-            case .accessibility:
-                AccessibilityView()
-            case .formats:
-                FormatsView()
-            case .benchmark:
-                BenchmarkView()
-            case .testing:
-                TestingView()
-            }
+            // Main content area - unified workflow
+            MainWorkflowView(selectedScreen: $viewModel.selectedScreen)
         }
         .frame(minWidth: 1000, minHeight: 600)
         .background(DesignToken.colorBackgroundPrimary)
+    }
+}
+
+/**
+ MainWorkflowView provides the unified main workflow experience.
+ - Shows folder selection and scanning in the primary area
+ - Integrates results display without separate navigation
+ - Design System: Application assembly with integrated workflow state.
+ */
+public struct MainWorkflowView: View {
+    @Binding var selectedScreen: MainViewModel.Screen
+    @StateObject private var folderViewModel = FolderSelectionViewModel()
+    @State private var selectedKeepers: [UUID: UUID] = [:] // groupId -> keeperFileId
+    @State private var showMergePlan = false
+    @State private var selectedGroupForMerge: DuplicateGroupResult?
+    @State private var selectedKeeperForMerge: UUID?
+
+    public var body: some View {
+        VStack {
+            // Main workflow content
+            FolderSelectionView(viewModel: folderViewModel)
+
+            // Show results panel when available
+            if folderViewModel.hasResults && !folderViewModel.isScanning {
+                Divider()
+
+                VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
+                    HStack {
+                        Text("Duplicate Groups")
+                            .font(DesignToken.fontFamilyHeading)
+                        Spacer()
+                        Button("View All", action: { selectedScreen = .groupsList })
+                            .buttonStyle(.bordered)
+                    }
+
+                    // Show first few groups as preview
+                    if !folderViewModel.duplicateGroups.isEmpty {
+                        ScrollView {
+                            LazyVStack(spacing: DesignToken.spacingSM) {
+                                ForEach(folderViewModel.duplicateGroups.prefix(5), id: \.groupId) { group in
+                                    GroupPreviewCard(
+                                        group: group,
+                                        onShowInFinder: folderViewModel.showGroupInFinder,
+                                        onSelectKeeper: folderViewModel.selectKeeper,
+                                        onShowMergePlan: { group in
+                                            // Use existing keeper selection or first file as default
+                                            let keeperId = group.keeperSuggestion ?? group.members.first?.fileId ?? group.members[0].fileId
+                                            selectedGroupForMerge = group
+                                            selectedKeeperForMerge = keeperId
+                                            showMergePlan = true
+                                        },
+                                        selectedKeeperId: group.keeperSuggestion
+                                    )
+                                        .onTapGesture {
+                                            selectedScreen = .groupDetail(group: group)
+                                        }
+                                }
+
+                                if folderViewModel.duplicateGroups.count > 5 {
+                                    Button("Show all \(folderViewModel.duplicateGroups.count) groups") {
+                                        selectedScreen = .groupsList
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundColor(DesignToken.colorStatusInfo)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .padding(.vertical, DesignToken.spacingSM)
+                                }
+                            }
+                        }
+                        .frame(height: 400)
+                    }
+                }
+                .padding(DesignToken.spacingMD)
+            }
+        }
+        .background(DesignToken.colorBackgroundPrimary)
+        .sheet(isPresented: $showMergePlan) {
+            if let group = selectedGroupForMerge, let keeperId = selectedKeeperForMerge {
+                MergePlanSheet(
+                    isPresented: $showMergePlan,
+                    group: group,
+                    keeperFileId: keeperId
+                )
+            }
+        }
+        // Keyboard shortcuts for main workflow
+        .onKeyPress(.return) {
+            if let group = selectedGroupForMerge, let keeperId = selectedKeeperForMerge {
+                showMergePlan = true
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress("r", modifiers: .command) {
+            if !folderViewModel.isScanning {
+                folderViewModel.rescanForDuplicates()
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.delete, modifiers: .command) {
+            if let group = selectedGroupForMerge, let keeperId = selectedKeeperForMerge {
+                showMergePlan = true
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.escape) {
+            if showMergePlan {
+                showMergePlan = false
+                return .handled
+            }
+            return .ignored
+        }
+    }
+}
+
+/**
+ GroupPreviewCard shows a compact preview of a duplicate group.
+ - Design System: Atomic component for group previews.
+ */
+public struct GroupPreviewCard: View {
+    let group: DuplicateGroupResult
+    let onShowInFinder: (DuplicateGroupResult) -> Void
+    let onSelectKeeper: (DuplicateGroupResult, UUID?) -> Void
+    let onShowMergePlan: (DuplicateGroupResult) -> Void
+    let selectedKeeperId: UUID?
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+            // Header with group info and actions
+            HStack(spacing: DesignToken.spacingMD) {
+                VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                    Text("\(group.members.count) similar items")
+                        .font(DesignToken.fontFamilyBody)
+                    Text("Confidence: \(Int(group.confidence * 100))%")
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                }
+
+                Spacer()
+
+                HStack(spacing: DesignToken.spacingXS) {
+                    Button("Show in Finder", systemImage: "folder") {
+                        onShowInFinder(group)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button("Merge", systemImage: "arrow.triangle.merge") {
+                        onShowMergePlan(group)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+            }
+
+            // File preview grid (show up to 4 files)
+            if !group.members.isEmpty {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DesignToken.spacingXS), count: min(4, group.members.count)), spacing: DesignToken.spacingXS) {
+                    ForEach(group.members.prefix(4), id: \.fileId) { member in
+                        FilePreviewItem(
+                            member: member,
+                            isSelectedAsKeeper: selectedKeeperId == member.fileId,
+                            group: group,
+                            onSelectKeeper: onSelectKeeper
+                        )
+                    }
+                }
+                .frame(height: 60)
+            }
+
+            // Show "View All" if there are more than 4 files
+            if group.members.count > 4 {
+                HStack {
+                    Spacer()
+                    Text("\(group.members.count - 4) more files...")
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                }
+            }
+        }
+        .padding(DesignToken.spacingSM)
+        .background(DesignToken.colorBackgroundSecondary)
+        .cornerRadius(DesignToken.cornerRadiusMD)
+        .accessibilityElement(children: .combine)
+        // Keyboard shortcuts for group preview card
+        .onKeyPress(" ") {
+            // Select first unselected file as keeper
+            if selectedKeeperId == nil, let firstFile = group.members.first {
+                onSelectKeeper(group, firstFile.fileId)
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.tab) {
+            // Navigate to next group or show merge plan
+            onShowMergePlan(group)
+            return .handled
+        }
+        .onKeyPress(.return) {
+            onShowMergePlan(group)
+            return .handled
+        }
+    }
+}
+
+/**
+ FilePreviewItem shows a single file in a duplicate group with keeper selection.
+ - Design System: Atomic component for file previews.
+ */
+public struct FilePreviewItem: View {
+    let member: DuplicateGroupMember
+    let isSelectedAsKeeper: Bool
+    let group: DuplicateGroupResult
+    let onSelectKeeper: (DuplicateGroupResult, UUID?) -> Void
+
+    public var body: some View {
+        ZStack {
+            // File preview
+            Image(systemName: "photo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(DesignToken.colorBackgroundTertiary)
+                .cornerRadius(DesignToken.cornerRadiusXS)
+
+            // Keeper indicator overlay
+            if isSelectedAsKeeper {
+                ZStack {
+                    Color.green.opacity(0.8)
+                        .cornerRadius(DesignToken.cornerRadiusXS)
+
+                    Image(systemName: "star.fill")
+                        .foregroundColor(.white)
+                        .font(.system(size: 12, weight: .bold))
+                }
+            }
+
+            // Selection button (invisible overlay)
+            Button {
+                onSelectKeeper(group, member.fileId)
+            } label: {
+                Color.clear
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(height: 50)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignToken.cornerRadiusXS)
+                .stroke(isSelectedAsKeeper ? DesignToken.colorStatusSuccess : Color.clear, lineWidth: 2)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("File preview, confidence: \(Int(member.confidence * 100))%")
+        .accessibilityHint(isSelectedAsKeeper ? "Selected as keeper" : "Tap to select as keeper")
+        // Keyboard shortcuts for file selection
+        .onKeyPress(" ") {
+            onSelectKeeper(group, member.fileId)
+            return .handled
+        }
+        .onKeyPress(.return) {
+            onSelectKeeper(group, member.fileId)
+            return .handled
+        }
     }
 }
 
@@ -111,42 +349,100 @@ public struct SidebarView: View {
 
     public var body: some View {
         List(selection: $selectedScreen) {
-            Section("Scan") {
-                Label("Onboarding", systemImage: "star.circle")
-                    .tag(MainViewModel.Screen.onboarding)
-                Label("Scan Status", systemImage: "magnifyingglass")
-                    .tag(MainViewModel.Screen.scanStatus)
+            Section("Main") {
+                NavigationItemView(
+                    title: "Dashboard",
+                    icon: "house",
+                    screen: .onboarding,
+                    selectedScreen: $selectedScreen
+                )
+                NavigationItemView(
+                    title: "Duplicate Groups",
+                    icon: "square.stack.3d.up",
+                    screen: .groupsList,
+                    selectedScreen: $selectedScreen
+                )
             }
 
-            Section("Review") {
-                Label("Groups", systemImage: "square.stack.3d.up")
-                    .tag(MainViewModel.Screen.groupsList)
-                Label("Logs", systemImage: "terminal")
-                    .tag(MainViewModel.Screen.logging)
-                Label("Settings", systemImage: "gear")
-                    .tag(MainViewModel.Screen.settings)
+            Section("Tools") {
+                NavigationItemView(
+                    title: "Settings",
+                    icon: "gear",
+                    screen: .settings,
+                    selectedScreen: $selectedScreen
+                )
+                NavigationItemView(
+                    title: "History",
+                    icon: "clock.arrow.circlepath",
+                    screen: .history,
+                    selectedScreen: $selectedScreen
+                )
+                NavigationItemView(
+                    title: "Logs",
+                    icon: "terminal",
+                    screen: .logging,
+                    selectedScreen: $selectedScreen
+                )
             }
 
-            Section("Operations") {
-                Label("Operations", systemImage: "clock.arrow.circlepath")
-                    .tag(MainViewModel.Screen.history)
-                Label("Logs", systemImage: "terminal")
-                    .tag(MainViewModel.Screen.logging)
-            }
-
-            Section("Quality Assurance") {
-                Label("Accessibility", systemImage: "accessibility")
-                    .tag(MainViewModel.Screen.accessibility)
-                Label("File Formats", systemImage: "doc.text.magnifyingglass")
-                    .tag(MainViewModel.Screen.formats)
-                Label("Benchmarking", systemImage: "speedometer")
-                    .tag(MainViewModel.Screen.benchmark)
-                Label("Testing", systemImage: "checkmark.circle")
-                    .tag(MainViewModel.Screen.testing)
+            Section("Advanced") {
+                NavigationItemView(
+                    title: "Accessibility",
+                    icon: "accessibility",
+                    screen: .accessibility,
+                    selectedScreen: $selectedScreen
+                )
+                NavigationItemView(
+                    title: "File Formats",
+                    icon: "doc.text.magnifyingglass",
+                    screen: .formats,
+                    selectedScreen: $selectedScreen
+                )
+                NavigationItemView(
+                    title: "Benchmarking",
+                    icon: "speedometer",
+                    screen: .benchmark,
+                    selectedScreen: $selectedScreen
+                )
+                NavigationItemView(
+                    title: "Testing",
+                    icon: "checkmark.circle",
+                    screen: .testing,
+                    selectedScreen: $selectedScreen
+                )
             }
         }
         .listStyle(.sidebar)
-        .background(DesignToken.colorBackgroundSecondary)
+        .background(DesignToken.colorNavigationBackground)
+        .scrollContentBackground(.hidden)
+    }
+}
+
+/**
+ NavigationItemView provides consistent styling for sidebar navigation items.
+ - Ensures proper contrast and accessibility.
+ - Design System: Atomic component for navigation items.
+ */
+public struct NavigationItemView: View {
+    let title: String
+    let icon: String
+    let screen: MainViewModel.Screen
+    @Binding var selectedScreen: MainViewModel.Screen
+    
+    private var isSelected: Bool {
+        selectedScreen == screen
+    }
+    
+    public var body: some View {
+        Label(title, systemImage: icon)
+            .tag(screen)
+            .foregroundColor(isSelected ? .white : DesignToken.colorNavigationItem)
+            .background(
+                RoundedRectangle(cornerRadius: DesignToken.radiusSM)
+                    .fill(isSelected ? DesignToken.colorNavigationItemSelected : Color.clear)
+                    .padding(.horizontal, DesignToken.spacingXS)
+            )
+            .contentShape(Rectangle())
     }
 }
 
@@ -230,7 +526,19 @@ public class MainViewModel: ObservableObject {
 
     @Published public var selectedScreen: Screen = .onboarding
 
-    public init() {}
+    public init() {
+        // Listen for navigation notifications
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleNavigateToScanStatus),
+            name: .init("NavigateToScanStatus"),
+            object: nil
+        )
+    }
+
+    @objc private func handleNavigateToScanStatus() {
+        selectedScreen = .scanStatus
+    }
 }
 
 // MARK: - Preview

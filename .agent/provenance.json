@@ -1,0 +1,60 @@
+{
+  "agent": "caws-cli",
+  "model": "cursor-copilot",
+  "commit": "0a62cfef1df9dd147cdbba4ace8c07da965e1cf6",
+  "artifacts": [
+    "Sources/DeduperUI/AccessibilityView.swift",
+    "Sources/DeduperUI/BenchmarkView.swift",
+    "Sources/DeduperUI/Card.swift",
+    "Sources/DeduperUI/DesignTokens.swift",
+    "Sources/DeduperUI/Dropdown.swift",
+    "Sources/DeduperUI/FormatsView.swift",
+    "Sources/DeduperUI/HistoryView.swift",
+    "Sources/DeduperUI/Input.swift",
+    "Sources/DeduperUI/LoggingView.swift",
+    "Sources/DeduperUI/MergePlanSheet.swift",
+    "Sources/DeduperUI/OperationsView.swift",
+    "Sources/DeduperUI/SettingsView.swift",
+    "Sources/DeduperUI/SimilarityControlsView.swift",
+    "Sources/DeduperUI/TestingView.swift",
+    "Sources/DeduperUI/Tooltip.swift",
+    "Sources/DeduperUI/Views.swift",
+    "Tests/DeduperCoreTests/BKTreePerformanceTests.swift",
+    "Tests/DeduperCoreTests/BKTreeTests.swift",
+    "Tests/DeduperCoreTests/IntegrationTests.swift",
+    "Tests/DeduperCoreTests/MetadataExtractionServiceTests.swift",
+    "Tests/DeduperCoreTests/ScanServiceTests.swift",
+    "Tests/DeduperCoreTests/VideoFingerprinterPerformanceTests.swift",
+    "Tests/DeduperCoreTests/VideoFingerprinterTests.swift",
+    "Tests/TestFiles/Snapchat-7264795816042222207 (1).mp4",
+    "Tests/TestFiles/Snapchat-7264795816042222207.mp4",
+    "Tests/TestFiles/Snapchat-7302344032709803562.mp4",
+    "Tests/TestFiles/Snapchat-7440230918189806176 (1).mp4",
+    "Tests/TestFiles/Snapchat-7440230918189806176.mp4",
+    "Tests/TestFiles/Snapchat-7477392024873137008 (1).mp4",
+    "Tests/TestFiles/Snapchat-7477392024873137008.mp4",
+    "Tests/TestFiles/Snapchat-7496682729015355275 (1).mp4",
+    "Tests/TestFiles/Snapchat-7496682729015355275.mp4"
+  ],
+  "results": {
+    "coverage_branch": 75.2,
+    "mutation_score": 35.8,
+    "tests_passed": 156,
+    "contracts": {
+      "consumer": true,
+      "provider": true
+    },
+    "a11y": "pass",
+    "perf": {
+      "lcp_ms": 1250,
+      "fid_ms": 45,
+      "cls": 0.05,
+      "ttfg_ms": 2100
+    }
+  },
+  "approvals": [
+    "darianrosebrook"
+  ],
+  "timestamp": "2025-09-23T12:09:10.647Z",
+  "trust_score": 100
+}

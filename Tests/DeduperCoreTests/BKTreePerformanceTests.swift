@@ -57,7 +57,7 @@ import Foundation
         let bkTreeStartTime = Date()
         var bkTreeResults: [[HashMatch]] = []
         for queryHash in queryHashes {
-            let matches = bkTree.search(hash: queryHash, maxDistance: maxDistance, algorithm: .dHash)
+            let matches = bkTree.search(hash: queryHash, maxDistance: maxDistance, algorithm: .dHash).matches
             bkTreeResults.append(matches)
         }
         let bkTreeDuration = Date().timeIntervalSince(bkTreeStartTime)
@@ -141,7 +141,7 @@ import Foundation
         var totalMatches = 0
         
         for queryHash in queryHashes {
-            let matches = bkTree.search(hash: queryHash, maxDistance: 3, algorithm: .dHash)
+            let matches = bkTree.search(hash: queryHash, maxDistance: 3, algorithm: .dHash).matches
             totalMatches += matches.count
         }
         

@@ -659,6 +659,224 @@ public final class MergeService: @unchecked Sendable {
         logger.warning("Cleaning up failed transaction \(id)")
         // Implementation would depend on persistence layer
     }
+
+    // MARK: - File Operations
+
+    /**
+     * Executes basic file operations for duplicate removal without metadata merging.
+     * This provides the core functionality for safe file operations with transaction support.
+     */
+    public func executeFileMerge(
+        groupId: UUID,
+        keeperId: UUID,
+        dryRun: Bool = false
+    ) async throws -> MergeResult {
+        let group = try await fetchGroup(id: groupId)
+        guard group.members.contains(where: { $0.fileId == keeperId }) else {
+            throw MergeError.keeperNotFound(keeperId)
+        }
+
+        let transactionId = UUID()
+
+        do {
+            if dryRun {
+                logger.info("Dry run mode: file merge planned but not executed")
+                return MergeResult(
+                    groupId: groupId,
+                    keeperId: keeperId,
+                    removedFileIds: group.members.map { $0.fileId }.filter { $0 != keeperId },
+                    mergedFields: [],
+                    wasDryRun: true,
+                    transactionId: transactionId
+                )
+            }
+
+            // Execute file operations
+            var removedFileIds: [UUID] = []
+            for member in group.members where member.fileId != keeperId {
+                try await moveFileToTrash(member.fileId)
+                removedFileIds.append(member.fileId)
+            }
+
+            // Record transaction for potential undo
+            if config.enableUndo {
+                try await recordTransaction(
+                    id: transactionId,
+                    groupId: groupId,
+                    keeperId: keeperId,
+                    removedFileIds: removedFileIds,
+                    mergedFields: [],
+                    plan: createBasicMergePlan(for: group, keeperId: keeperId)
+                )
+            }
+
+            return MergeResult(
+                groupId: groupId,
+                keeperId: keeperId,
+                removedFileIds: removedFileIds,
+                mergedFields: [],
+                wasDryRun: false,
+                transactionId: transactionId
+            )
+        } catch {
+            if config.enableUndo {
+                try? await cleanupFailedTransaction(id: transactionId)
+            }
+            throw error
+        }
+    }
+
+    /**
+     * Moves a file to trash safely.
+     */
+    private func moveFileToTrash(_ fileId: UUID) async throws {
+        guard let url = await persistenceController.resolveFileURL(id: fileId) else {
+            throw MergeError.keeperNotFound(fileId)
+        }
+
+        // Verify file exists and is accessible
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw MergeError.keeperNotFound(fileId)
+        }
+
+        // Move to trash
+        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        logger.info("Moved file to trash: \(url.lastPathComponent)")
+    }
+
+    /**
+     * Creates a basic merge plan for file operations only.
+     */
+    private func createBasicMergePlan(for group: DuplicateGroupResult, keeperId: UUID) -> MergePlan {
+        // Load minimal metadata for keeper
+        guard let keeperURL = persistenceController.resolveFileURL(id: keeperId),
+              let keeperMetadata = metadataService.readFor(url: keeperURL, mediaType: group.mediaType) else {
+            // Return minimal plan if metadata unavailable
+            return MergePlan(
+                groupId: group.groupId,
+                keeperId: keeperId,
+                keeperMetadata: MediaMetadata(),
+                mergedMetadata: MediaMetadata(),
+                exifWrites: [:],
+                trashList: group.members.map { $0.fileId }.filter { $0 != keeperId },
+                fieldChanges: []
+            )
+        }
+
+        return MergePlan(
+            groupId: group.groupId,
+            keeperId: keeperId,
+            keeperMetadata: keeperMetadata,
+            mergedMetadata: keeperMetadata, // No merging for basic file operations
+            exifWrites: [:],
+            trashList: group.members.map { $0.fileId }.filter { $0 != keeperId },
+            fieldChanges: []
+        )
+    }
+
+    /**
+     * Undoes a file merge operation by restoring files from trash.
+     */
+    public func undoFileMerge(transactionId: UUID) async throws -> UndoResult {
+        guard config.enableUndo else {
+            throw MergeError.undoNotAvailable
+        }
+
+        // Fetch transaction
+        guard let transaction = try await getTransaction(id: transactionId) else {
+            throw MergeError.transactionNotFound(transactionId)
+        }
+
+        var restoredFileIds: [UUID] = []
+
+        // Restore files from trash
+        for fileId in transaction.removedFileIds {
+            do {
+                guard let url = await persistenceController.resolveFileURL(id: fileId) else {
+                    logger.warning("Could not resolve URL for file \(fileId) during undo")
+                    continue
+                }
+
+                // Find file in trash and restore
+                let restored = try await restoreFileFromTrash(url)
+                restoredFileIds.append(fileId)
+                logger.info("Restored file from trash: \(url.lastPathComponent)")
+            } catch {
+                logger.error("Failed to restore file \(fileId): \(error.localizedDescription)")
+            }
+        }
+
+        // Mark transaction as undone
+        try await markTransactionUndone(id: transactionId)
+
+        return UndoResult(
+            transactionId: transactionId,
+            restoredFileIds: restoredFileIds,
+            revertedFields: [], // No metadata to revert for file-only operations
+            success: !restoredFileIds.isEmpty
+        )
+    }
+
+    /**
+     * Restores a file from trash.
+     */
+    private func restoreFileFromTrash(_ originalURL: URL) async throws -> URL {
+        let trashURL = try FileManager.default.url(
+            for: .trashDirectory,
+            in: .userDomainMask,
+            appropriateFor: originalURL,
+            create: false
+        )
+
+        let fileName = originalURL.lastPathComponent
+        let trashedFileURL = trashURL.appendingPathComponent(fileName)
+
+        guard FileManager.default.fileExists(atPath: trashedFileURL.path) else {
+            throw MergeError.fileNotInTrash(fileName)
+        }
+
+        // Move back from trash
+        try FileManager.default.moveItem(at: trashedFileURL, to: originalURL)
+        return originalURL
+    }
+
+    /**
+     * Gets a specific transaction by ID.
+     */
+    private func getTransaction(id: UUID) async throws -> MergeTransactionRecord? {
+        try await persistenceController.performBackground { context in
+            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "MergeTransaction")
+            request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+            request.fetchLimit = 1
+
+            let records = try context.fetch(request)
+            guard let record = records.first,
+                  let payload = record.value(forKey: "payload") as? Data,
+                  let transaction = try? JSONDecoder().decode(MergeTransactionRecord.self, from: payload) else {
+                return nil
+            }
+
+            return transaction
+        }
+    }
+
+    /**
+     * Marks a transaction as undone.
+     */
+    private func markTransactionUndone(id: UUID) async throws {
+        try await persistenceController.performBackground { context in
+            let request: NSFetchRequest<NSManagedObject> = NSFetchRequest(entityName: "MergeTransaction")
+            request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+            request.fetchLimit = 1
+
+            guard let record = try context.fetch(request).first else {
+                throw MergeError.transactionNotFound(id)
+            }
+
+            record.setValue(Date(), forKey: "undoneAt")
+            try context.save()
+        }
+    }
 }
 
 // MARK: - Extensions

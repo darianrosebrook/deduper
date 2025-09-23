@@ -29,18 +29,18 @@ import Foundation
         #expect(bkTree.count() == 3)
         
         // Search for exact matches
-        let exactMatches = bkTree.search(hash: hash1, maxDistance: 0, algorithm: .dHash)
+        let exactMatches = bkTree.search(hash: hash1, maxDistance: 0, algorithm: .dHash).matches
         #expect(exactMatches.count == 1)
         #expect(exactMatches.first?.fileId == fileId1)
         
         // Search for near matches (distance <= 1)
-        let nearMatches = bkTree.search(hash: hash1, maxDistance: 1, algorithm: .dHash)
+        let nearMatches = bkTree.search(hash: hash1, maxDistance: 1, algorithm: .dHash).matches
         #expect(nearMatches.count == 2) // hash1 and hash2
         #expect(nearMatches.first?.distance == 0) // hash1 (exact match)
         #expect(nearMatches.last?.distance == 1) // hash2
         
         // Search for far matches (distance <= 20)
-        let farMatches = bkTree.search(hash: hash1, maxDistance: 20, algorithm: .dHash)
+        let farMatches = bkTree.search(hash: hash1, maxDistance: 20, algorithm: .dHash).matches
         #expect(farMatches.count == 3) // all hashes
     }
     
@@ -58,13 +58,13 @@ import Foundation
         bkTree.insert(fileId: fileId2, hash: hash, algorithm: .pHash, width: 100, height: 100, computedAt: Date())
         
         // Search for dHash only
-        let dHashMatches = bkTree.search(hash: hash, maxDistance: 0, algorithm: .dHash)
+        let dHashMatches = bkTree.search(hash: hash, maxDistance: 0, algorithm: .dHash).matches
         #expect(dHashMatches.count == 1)
         #expect(dHashMatches.first?.algorithm == .dHash)
         #expect(dHashMatches.first?.fileId == fileId1)
         
         // Search for pHash only
-        let pHashMatches = bkTree.search(hash: hash, maxDistance: 0, algorithm: .pHash)
+        let pHashMatches = bkTree.search(hash: hash, maxDistance: 0, algorithm: .pHash).matches
         #expect(pHashMatches.count == 1)
         #expect(pHashMatches.first?.algorithm == .pHash)
         #expect(pHashMatches.first?.fileId == fileId2)
@@ -84,11 +84,11 @@ import Foundation
         bkTree.insert(fileId: fileId2, hash: hash, algorithm: .dHash, width: 100, height: 100, computedAt: Date())
         
         // Search without exclusion - should find both
-        let allMatches = bkTree.search(hash: hash, maxDistance: 0, algorithm: .dHash)
+        let allMatches = bkTree.search(hash: hash, maxDistance: 0, algorithm: .dHash).matches
         #expect(allMatches.count == 2)
         
         // Search with exclusion - should find only one
-        let filteredMatches = bkTree.search(hash: hash, maxDistance: 0, algorithm: .dHash, excludeFileId: fileId1)
+        let filteredMatches = bkTree.search(hash: hash, maxDistance: 0, algorithm: .dHash, excludeFileId: fileId1).matches
         #expect(filteredMatches.count == 1)
         #expect(filteredMatches.first?.fileId == fileId2)
     }
@@ -100,7 +100,7 @@ import Foundation
         
         #expect(bkTree.count() == 0)
         
-        let results = bkTree.search(hash: 0x123456789ABCDEF0, maxDistance: 5, algorithm: .dHash)
+        let results = bkTree.search(hash: 0x123456789ABCDEF0, maxDistance: 5, algorithm: .dHash).matches
         #expect(results.isEmpty)
     }
     
@@ -119,7 +119,7 @@ import Foundation
         bkTree.clear()
         #expect(bkTree.count() == 0)
         
-        let results = bkTree.search(hash: 0x123456789ABCDEF0, maxDistance: 5, algorithm: .dHash)
+        let results = bkTree.search(hash: 0x123456789ABCDEF0, maxDistance: 5, algorithm: .dHash).matches
         #expect(results.isEmpty)
     }
     
@@ -143,7 +143,7 @@ import Foundation
         bkTree.insert(fileId: fileIds[3], hash: hash4, algorithm: .dHash, width: 100, height: 100, computedAt: Date())
         
         // Search with maxDistance = 2
-        let results = bkTree.search(hash: baseHash, maxDistance: 2, algorithm: .dHash)
+        let results = bkTree.search(hash: baseHash, maxDistance: 2, algorithm: .dHash).matches
         
         // Should find hash1 (distance 1) and hash2 (distance 2), but not hash3 (distance 4) or hash4 (distance 16)
         #expect(results.count == 2)

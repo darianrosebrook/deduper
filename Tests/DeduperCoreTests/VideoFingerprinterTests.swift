@@ -13,11 +13,14 @@ import Foundation
         #expect(FileManager.default.fileExists(atPath: url.path), "Missing fixture: \(name)")
         return url
     }
+
+    private let shortClip = "Snapchat-7264795816042222207.mp4"
+    private let alternateClip = "Snapchat-7477392024873137008.mp4"
     
     @Test func testShortClipProducesTwoFrameHashes() {
         let config = VideoFingerprintConfig(middleSampleMinimumDuration: 120.0, endSampleOffset: 1.0, generatorMaxDimension: 720, preferredTimescale: 600)
         let fingerprinter = VideoFingerprinter(config: config, imageHasher: ImageHashingService())
-        let signature = fingerprinter.fingerprint(url: fixtureURL("finalVideo (1).mp4"))
+        let signature = fingerprinter.fingerprint(url: fixtureURL(shortClip))
         #expect(signature != nil)
         if let sig = signature {
             #expect(sig.durationSec < config.middleSampleMinimumDuration)
@@ -27,7 +30,7 @@ import Foundation
     
     @Test func testSameVideoComparesAsDuplicate() {
         let fingerprinter = VideoFingerprinter(imageHasher: ImageHashingService())
-        let url = fixtureURL("finalVideo (1).mp4")
+        let url = fixtureURL(shortClip)
         let signature = fingerprinter.fingerprint(url: url)
         #expect(signature != nil)
         if let sig = signature {
@@ -40,8 +43,8 @@ import Foundation
     
     @Test func testDifferentVideosProduceDifferentVerdict() {
         let fingerprinter = VideoFingerprinter(imageHasher: ImageHashingService())
-        let urlA = fixtureURL("finalVideo (1).mp4")
-        let urlB = fixtureURL("Snapchat-7477392024873137008.mp4")
+        let urlA = fixtureURL(shortClip)
+        let urlB = fixtureURL(alternateClip)
         let sigA = fingerprinter.fingerprint(url: urlA)
         let sigB = fingerprinter.fingerprint(url: urlB)
         #expect(sigA != nil)
@@ -87,5 +90,28 @@ import Foundation
         #expect(stats.failed >= 0)
         #expect(stats.failureRate >= 0.0)
         #expect(stats.failureRate <= 1.0)
+    }
+
+    @Test func testFingerprintCachingAvoidsRework() {
+        let fingerprinter = VideoFingerprinter()
+        fingerprinter.resetErrorTracking()
+
+        let url = fixtureURL(shortClip)
+        guard let firstSignature = fingerprinter.fingerprint(url: url) else {
+            Issue.record("Failed to fingerprint baseline clip")
+            return
+        }
+
+        let statsAfterFirst = fingerprinter.errorStatistics
+        #expect(statsAfterFirst.attempted > 0)
+
+        guard let secondSignature = fingerprinter.fingerprint(url: url) else {
+            Issue.record("Failed to re-fingerprint cached clip")
+            return
+        }
+
+        let statsAfterSecond = fingerprinter.errorStatistics
+        #expect(secondSignature == firstSignature)
+        #expect(statsAfterSecond.attempted == statsAfterFirst.attempted, "Cache hit should not attempt additional frames")
     }
 }

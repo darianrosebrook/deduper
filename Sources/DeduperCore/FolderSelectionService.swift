@@ -210,11 +210,17 @@ public struct FolderValidationResult {
     public let isValid: Bool
     public let issues: [FolderValidationIssue]
     public let recommendations: [String]
-    
+
+    public init(isValid: Bool, issues: [FolderValidationIssue], recommendations: [String]) {
+        self.isValid = isValid
+        self.issues = issues
+        self.recommendations = recommendations
+    }
+
     public var hasIssues: Bool {
         return !issues.isEmpty
     }
-    
+
     public var hasRecommendations: Bool {
         return !recommendations.isEmpty
     }

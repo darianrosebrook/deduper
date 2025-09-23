@@ -3,6 +3,7 @@ import DeduperCore
 import OSLog
 import Foundation
 import AppKit
+import Combine
 
 // Import ServiceManager directly for UI access
 @MainActor
@@ -22,13 +23,691 @@ extension DeduperCore {
 // Types are now properly exported from CoreTypes.swift
 // No need for duplicate typealias declarations
 
-// MARK: - Onboarding View
+// MARK: - Consolidated Folder Selection & Scan View
+
+/**
+FolderSelectionView provides an integrated experience for folder selection and scanning.
+- Combines folder selection with immediate scanning feedback
+- Shows real-time progress without navigating away
+- Allows users to see results as they scan
+- Design System: Application assembly with integrated state management
+*/
+public struct FolderSelectionView: View {
+    @StateObject private var viewModel: FolderSelectionViewModel
+
+    public init(viewModel: FolderSelectionViewModel? = nil) {
+        if let viewModel = viewModel {
+            self._viewModel = StateObject(wrappedValue: viewModel)
+        } else {
+            self._viewModel = StateObject(wrappedValue: FolderSelectionViewModel())
+        }
+    }
+
+    public var body: some View {
+        VStack(spacing: DesignToken.spacingLG) {
+            // Header
+            VStack(spacing: DesignToken.spacingMD) {
+                Text("Find Duplicates")
+                    .font(DesignToken.fontFamilyTitle)
+
+                Text("Select folders to scan for duplicate photos and videos.")
+                    .font(DesignToken.fontFamilyBody)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            // Recovery Decision Section (shown if there's a recovery opportunity)
+            if let recoveryDecision = viewModel.recoveryDecision {
+                RecoveryDecisionView(decision: recoveryDecision) { action in
+                    Task {
+                        await viewModel.handleRecoveryDecision(action)
+                    }
+                }
+            }
+
+            // Folder Selection and Scan Controls Section
+            VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
+                HStack {
+                    Text("Folders to Scan:")
+                        .font(DesignToken.fontFamilyHeading)
+
+                    Spacer()
+
+                    Button("Add Folder", action: viewModel.addFolder)
+                        .buttonStyle(.bordered)
+                }
+
+                // Selected folders list
+                if viewModel.selectedFolders.isEmpty {
+                    VStack(spacing: DesignToken.spacingSM) {
+                        Text("No folders selected")
+                            .font(DesignToken.fontFamilyCaption)
+                            .foregroundStyle(DesignToken.colorForegroundSecondary)
+                        Text("Choose folders containing photos and videos to scan for duplicates.")
+                            .font(DesignToken.fontFamilyCaption)
+                            .foregroundStyle(DesignToken.colorForegroundSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(DesignToken.spacingLG)
+                    .background(DesignToken.colorBackgroundSecondary)
+                    .cornerRadius(DesignToken.cornerRadiusMD)
+                } else {
+                    VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                        ForEach(viewModel.selectedFolders, id: \.self) { folder in
+                            FolderRowView(folder: folder, viewModel: viewModel)
+                        }
+                    }
+                    .padding(DesignToken.spacingMD)
+                    .background(DesignToken.colorBackgroundSecondary)
+                    .cornerRadius(DesignToken.cornerRadiusMD)
+                }
+
+                // Scan Controls - Always visible when folders are selected
+                if !viewModel.selectedFolders.isEmpty {
+                    VStack(spacing: DesignToken.spacingSM) {
+                        HStack(spacing: DesignToken.spacingSM) {
+                            if viewModel.isScanning {
+                                Button("Stop Scan", action: viewModel.stopScanning)
+                                    .buttonStyle(.borderedProminent)
+                                    .foregroundColor(.red)
+                                    .keyboardShortcut(.escape, modifiers: [])
+                            } else {
+                                Button("Start Scan", action: viewModel.startScanning)
+                                    .buttonStyle(.borderedProminent)
+                                    .keyboardShortcut(.return, modifiers: [])
+
+                                Button("Rescan", action: viewModel.rescanForDuplicates)
+                                    .buttonStyle(.bordered)
+                                    .keyboardShortcut("r", modifiers: .command)
+                            }
+
+                            Spacer()
+
+                            if viewModel.isScanning {
+                                HStack(spacing: DesignToken.spacingSM) {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                    Text(viewModel.scanStatusText)
+                                        .font(DesignToken.fontFamilyCaption)
+                                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                                }
+                            } else {
+                                Text("\(viewModel.selectedFolders.count) folder(s) selected")
+                                    .font(DesignToken.fontFamilyCaption)
+                                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                            }
+                        }
+
+                        // Show existing results if available
+                        if viewModel.hasResults && !viewModel.isScanning {
+                            HStack(spacing: DesignToken.spacingSM) {
+                                Text("Found \(viewModel.duplicateGroups.count) duplicate groups")
+                                    .font(DesignToken.fontFamilyCaption)
+                                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+
+                                Button("Review Results", action: viewModel.showResults)
+                                    .buttonStyle(.bordered)
+                                    .keyboardShortcut(.return, modifiers: [])
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            // Scan Progress Section (show when scanning)
+            if viewModel.isScanning {
+                VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
+                    HStack {
+                        Text("Scan Progress:")
+                            .font(DesignToken.fontFamilyHeading)
+
+                        Spacer()
+
+                        Button("Cancel", action: viewModel.stopScanning)
+                            .buttonStyle(.bordered)
+                            .foregroundColor(.red)
+                    }
+
+                    VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                        if viewModel.hasStartedScan {
+                            ProgressView(value: viewModel.progress, total: 1.0)
+                                .progressViewStyle(.linear)
+                                .frame(height: 6)
+                        } else {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .controlSize(.regular)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        }
+
+                        if let currentFolder = viewModel.currentScanningFolder {
+                            Text("Scanning \(currentFolder.lastPathComponent)...")
+                                .font(DesignToken.fontFamilyCaption)
+                                .foregroundStyle(DesignToken.colorForegroundSecondary)
+                        }
+
+                        Text("\(viewModel.processedItems) items processed")
+                            .font(DesignToken.fontFamilyCaption)
+                            .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    }
+                    .padding(DesignToken.spacingMD)
+                    .background(DesignToken.colorBackgroundSecondary)
+                    .cornerRadius(DesignToken.cornerRadiusMD)
+                }
+            }
+
+            // Results Section (show when complete)
+            if viewModel.hasResults {
+                VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
+                    VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(DesignToken.colorSuccess)
+                            Text("Scan Complete")
+                                .font(DesignToken.fontFamilyBody)
+                                .foregroundStyle(DesignToken.colorSuccess)
+                            Spacer()
+                            Text("\(viewModel.duplicateGroups.count) duplicate groups found")
+                                .font(DesignToken.fontFamilyCaption)
+                                .foregroundStyle(DesignToken.colorForegroundSecondary)
+                        }
+
+                        if viewModel.duplicateGroups.count > 0 {
+                            Button("Review Duplicates", action: viewModel.showResults)
+                                .buttonStyle(.borderedProminent)
+                        } else {
+                            Text("No duplicates found!")
+                                .font(DesignToken.fontFamilyCaption)
+                                .foregroundStyle(DesignToken.colorForegroundSecondary)
+                        }
+                    }
+                    .padding(DesignToken.spacingMD)
+                    .background(DesignToken.colorBackgroundSecondary)
+                    .cornerRadius(DesignToken.cornerRadiusMD)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(DesignToken.spacingXXXL)
+        .background(DesignToken.colorBackgroundPrimary)
+        // Keyboard shortcuts for folder selection
+        .onKeyPress(.return) {
+            if !viewModel.selectedFolders.isEmpty && !viewModel.isScanning {
+                viewModel.startScanning()
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.escape) {
+            if viewModel.isScanning {
+                viewModel.stopScanning()
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress("r", modifiers: .command) {
+            if !viewModel.isScanning {
+                viewModel.rescanForDuplicates()
+                return .handled
+            }
+            return .ignored
+        }
+    }
+}
+
+struct SessionStatusSummaryView: View {
+    let session: ScanSession
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                Text(session.statusDisplayTitle)
+                    .font(DesignToken.fontFamilyHeading)
+                Text(summarySubtitle)
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+            }
+            Spacer()
+            SignalBadge(
+                label: "\(session.metrics.itemsProcessed) items",
+                systemImage: badgeSystemImage,
+                role: badgeRole
+            )
+        }
+        .padding(DesignToken.spacingMD)
+        .frame(maxWidth: .infinity)
+        .background(DesignToken.colorBackgroundSecondary)
+        .cornerRadius(DesignToken.cornerRadiusMD)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var summarySubtitle: String {
+        switch session.status {
+        case .scanning:
+            return "Scanning • Phase: \(session.phase.rawValue.capitalized)"
+        case .awaitingReview:
+            return "Ready to review \(session.duplicateSummaries.count) groups"
+        case .completed:
+            return "Completed in \(formattedDuration)"
+        case .failed:
+            return "Encountered \(session.metrics.errors) issues"
+        case .cancelled:
+            return "Cancelled • Partial results saved"
+        case .idle, .cleaning:
+            return "Preparing session"
+        }
+    }
+
+    private var badgeRole: SignalBadge.Role? {
+        switch session.status {
+        case .scanning: return .info
+        case .awaitingReview, .completed: return .success
+        case .failed: return .warning
+        case .cancelled: return .warning
+        case .idle, .cleaning: return nil
+        }
+    }
+
+    private var badgeSystemImage: String? {
+        switch session.status {
+        case .scanning: return "arrow.triangle.2.circlepath"
+        case .awaitingReview: return "exclamationmark.bubble"
+        case .completed: return "checkmark.circle.fill"
+        case .failed: return "exclamationmark.triangle.fill"
+        case .cancelled: return "xmark.circle.fill"
+        case .idle, .cleaning: return nil
+        }
+    }
+
+    private var formattedDuration: String {
+        let duration = session.metrics.duration
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = duration > 3600 ? [.hour, .minute] : [.minute, .second]
+        formatter.unitsStyle = .short
+        return formatter.string(from: duration) ?? "--"
+    }
+}
+
+/**
+EnhancedScanTimelineView displays detailed progress through scan phases.
+- Shows current phase with visual indicators
+- Displays phase completion status and timing
+- Provides detailed feedback about scan progress
+- Design System: Compound component with state management
+*/
+public struct EnhancedScanTimelineView: View {
+    let session: ScanSession
+
+    private let phases: [SessionPhase] = [.preparing, .indexing, .hashing, .grouping, .reviewing]
+
+    public init(session: ScanSession) {
+        self.session = session
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+            HStack {
+                Image(systemName: "clock.fill")
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    .font(.system(size: 14))
+                Text("Scan Progress")
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                Spacer()
+                Text(currentPhaseInfo)
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+            }
+
+            // Phase timeline
+            VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                ForEach(phases, id: \.self) { phase in
+                    TimelinePhaseRow(
+                        phase: phase,
+                        isCurrent: phase == session.phase,
+                        isCompleted: isPhaseCompleted(phase),
+                        metrics: phaseMetrics(for: phase)
+                    )
+                }
+            }
+            .padding(DesignToken.spacingSM)
+            .background(DesignToken.colorBackgroundPrimary)
+            .cornerRadius(DesignToken.cornerRadiusSM)
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignToken.cornerRadiusSM)
+                    .stroke(DesignToken.colorBorder, lineWidth: 1)
+            )
+        }
+    }
+
+    private var currentPhaseInfo: String {
+        switch session.phase {
+        case .preparing:
+            return "Initializing..."
+        case .indexing:
+            return "Reading files..."
+        case .hashing:
+            return "Analyzing content..."
+        case .grouping:
+            return "Finding duplicates..."
+        case .reviewing:
+            return "Complete"
+        case .cleaning:
+            return "Processing cleanup..."
+        case .completed:
+            return "Finished"
+        case .failed:
+            return "Error occurred"
+        }
+    }
+
+    private func isPhaseCompleted(_ phase: SessionPhase) -> Bool {
+        phases.firstIndex(of: phase)! < phases.firstIndex(of: session.phase)!
+    }
+
+    private func phaseMetrics(for phase: SessionPhase) -> PhaseMetrics? {
+        // In a real implementation, this would come from session metrics
+        // For now, we'll use mock data based on current phase
+        if phase == session.phase {
+            return PhaseMetrics(
+                itemsProcessed: session.metrics.itemsProcessed,
+                isCompleted: false,
+                duration: session.metrics.duration
+            )
+        } else if isPhaseCompleted(phase) {
+            return PhaseMetrics(
+                itemsProcessed: session.metrics.itemsProcessed,
+                isCompleted: true,
+                duration: 0.0
+            )
+        }
+        return nil
+    }
+}
+
+/**
+TimelinePhaseRow represents a single phase in the scan timeline.
+- Visual indicator for current/active phase
+- Progress bar for active phase
+- Completion checkmark for finished phases
+- Design System: Atomic component with state variants
+*/
+public struct TimelinePhaseRow: View {
+    let phase: SessionPhase
+    let isCurrent: Bool
+    let isCompleted: Bool
+    let metrics: PhaseMetrics?
+
+    public var body: some View {
+        HStack(alignment: .top, spacing: DesignToken.spacingMD) {
+            // Phase indicator
+            ZStack {
+                Circle()
+                    .fill(backgroundColor)
+                    .frame(width: 24, height: 24)
+
+                if isCompleted {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(DesignToken.colorSuccess)
+                        .font(.system(size: 12, weight: .bold))
+                } else {
+                    Image(systemName: phase.iconName)
+                        .foregroundStyle(iconColor)
+                        .font(.system(size: 12))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                // Phase name
+                Text(phase.displayName)
+                    .font(DesignToken.fontFamilyBody)
+                    .foregroundStyle(textColor)
+
+                // Phase details
+                if let metrics = metrics {
+                    if isCompleted {
+                        HStack(spacing: DesignToken.spacingSM) {
+                            Text("\(metrics.itemsProcessed) items")
+                                .font(DesignToken.fontFamilyCaption)
+                                .foregroundStyle(DesignToken.colorForegroundSecondary)
+
+                            if metrics.duration > 0 {
+                                Text("• \(formattedDuration(metrics.duration))")
+                                    .font(DesignToken.fontFamilyCaption)
+                                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                            }
+                        }
+                    } else if isCurrent {
+                        Text("Processing \(metrics.itemsProcessed) items...")
+                            .font(DesignToken.fontFamilyCaption)
+                            .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    }
+                } else if isCurrent {
+                    Text("Waiting...")
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                }
+            }
+
+            Spacer()
+
+            // Status indicator
+            if isCurrent {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .padding(DesignToken.spacingXS)
+        .background(isCurrent ? DesignToken.colorBackgroundHighlight : DesignToken.colorBackgroundPrimary)
+        .cornerRadius(DesignToken.cornerRadiusSM)
+    }
+
+    private var backgroundColor: Color {
+        if isCompleted {
+            return DesignToken.colorSuccess.opacity(0.1)
+        } else if isCurrent {
+            return DesignToken.colorInfo.opacity(0.1)
+        }
+        return DesignToken.colorBackgroundPrimary
+    }
+
+    private var iconColor: Color {
+        if isCompleted {
+            return DesignToken.colorSuccess
+        } else if isCurrent {
+            return DesignToken.colorInfo
+        }
+        return DesignToken.colorForegroundSecondary
+    }
+
+    private var textColor: Color {
+        if isCurrent {
+            return DesignToken.colorForegroundPrimary
+        }
+        return DesignToken.colorForegroundSecondary
+    }
+
+    private func formattedDuration(_ duration: TimeInterval) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.minute, .second]
+        formatter.unitsStyle = .short
+        return formatter.string(from: duration) ?? "0s"
+    }
+}
+
+public struct PhaseMetrics {
+    let itemsProcessed: Int
+    let isCompleted: Bool
+    let duration: TimeInterval
+}
+
+extension SessionPhase {
+    var iconName: String {
+        switch self {
+        case .preparing: return "gear"
+        case .indexing: return "folder"
+        case .hashing: return "cpu"
+        case .grouping: return "square.stack.3d.up"
+        case .reviewing: return "checkmark.circle"
+        case .cleaning: return "trash"
+        case .completed: return "checkmark.circle.fill"
+        case .failed: return "exclamationmark.triangle"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .preparing: return "Preparing"
+        case .indexing: return "Indexing Files"
+        case .hashing: return "Analyzing Content"
+        case .grouping: return "Finding Duplicates"
+        case .reviewing: return "Review Ready"
+        case .cleaning: return "Cleaning Up"
+        case .completed: return "Complete"
+        case .failed: return "Failed"
+        }
+    }
+}
+
+/**
+RecoveryDecisionView presents recovery options when interrupted sessions are found.
+- Shows recovery decision with clear messaging
+- Provides actionable buttons for different recovery strategies
+- Design System: Compound component with state management
+*/
+public struct RecoveryDecisionView: View {
+    let decision: RecoveryDecision
+    let onAction: (RecoveryDecision.RecoveryStrategy) -> Void
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(DesignToken.colorStatusWarning)
+                    .font(.system(size: 20))
+
+                Text(decision.title)
+                    .font(DesignToken.fontFamilyHeading)
+                    .foregroundStyle(DesignToken.colorStatusWarning)
+
+                Spacer()
+            }
+
+            Text(decision.message)
+                .font(DesignToken.fontFamilyBody)
+                .foregroundStyle(DesignToken.colorForegroundSecondary)
+                .multilineTextAlignment(.leading)
+
+            // Action buttons
+            VStack(spacing: DesignToken.spacingSM) {
+                Button(decision.primaryActionTitle, action: {
+                    onAction(decision.strategy)
+                })
+                .buttonStyle(.borderedProminent)
+                .frame(maxWidth: .infinity)
+
+                if decision.strategy == .startFresh {
+                    Button("Keep Previous Results", action: {
+                        onAction(.startFresh)
+                    })
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                } else if decision.strategy == .mergeSessions {
+                    Button("Start Fresh Instead", action: {
+                        onAction(.startFresh)
+                    })
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+
+            Text("This decision can be changed later in Settings > Sessions")
+                .font(DesignToken.fontFamilyCaption)
+                .foregroundStyle(DesignToken.colorForegroundSecondary)
+        }
+        .padding(DesignToken.spacingMD)
+        .background(DesignToken.colorBackgroundSecondary)
+        .cornerRadius(DesignToken.cornerRadiusMD)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+
+private extension ScanSession {
+    var statusDisplayTitle: String {
+        switch status {
+        case .scanning: return "Scan in progress"
+        case .awaitingReview: return "Review required"
+        case .completed: return "Scan completed"
+        case .failed: return "Scan failed"
+        case .cancelled: return "Scan cancelled"
+        case .idle: return "Session ready"
+        case .cleaning: return "Cleaning in progress"
+        }
+    }
+}
+
+// MARK: - Folder Row View
+
+/**
+FolderRowView displays individual folder information with scan status.
+- Shows folder name and path
+- Displays scan status for that folder
+- Allows removal of folders
+- Design System: Atomic component for folder management
+*/
+public struct FolderRowView: View {
+    public let folder: URL
+    public let viewModel: FolderSelectionViewModel
+
+    public var body: some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text(folder.lastPathComponent)
+                    .font(DesignToken.fontFamilyBody)
+                Text(folder.path)
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer()
+
+            if viewModel.folderScanStatus[folder] == .scanning {
+                ProgressView()
+                    .controlSize(.small)
+            } else if viewModel.folderScanStatus[folder] == .completed {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(DesignToken.colorSuccess)
+            } else if viewModel.folderScanStatus[folder] == .error {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(DesignToken.colorError)
+            }
+
+            SwiftUI.Button(action: { viewModel.removeFolder(folder) }) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(DesignToken.spacingSM)
+        .background(DesignToken.colorBackgroundPrimary)
+        .cornerRadius(DesignToken.cornerRadiusSM)
+    }
+}
+
+// MARK: - Onboarding View (Legacy - kept for compatibility)
 
 /**
  OnboardingView guides users through initial setup and permissions.
  - Requests folder access and explains privacy.
  - Allows configuration of scan settings.
  - Design System: Application assembly with composer-level complexity.
+- DEPRECATED: Use FolderSelectionView instead for new implementations
  */
 public struct OnboardingView: View {
     @StateObject private var viewModel = OnboardingViewModel()
@@ -113,6 +792,7 @@ public struct OnboardingView: View {
 @MainActor
 public class OnboardingViewModel: ObservableObject {
     private let folderSelectionService = ServiceManager.shared.folderSelection
+    private let permissionsService = ServiceManager.shared.permissionsService
 
     @Published public var selectedFolders: [URL] = []
     @Published public var isValidating = false
@@ -123,23 +803,443 @@ public class OnboardingViewModel: ObservableObject {
         let folders = folderSelectionService.pickFolders()
         selectedFolders = folders
 
-        // Validate the selected folders
+        // Request permissions for the selected folders
         if !folders.isEmpty {
-            validateSelectedFolders(folders)
+            requestPermissionsForFolders(folders)
         }
     }
 
-    private func validateSelectedFolders(_ folders: [URL]) {
+    private func requestPermissionsForFolders(_ folders: [URL]) {
         isValidating = true
 
         Task {
-            let result = folderSelectionService.validateFolders(folders)
+            print("DEBUG: OnboardingViewModel - Requesting permissions for \(folders.count) folders")
+            let result = await permissionsService.requestPermissions(for: folders)
 
             await MainActor.run {
-                self.validationResult = result
                 self.isValidating = false
+                print("DEBUG: OnboardingViewModel - Permissions request completed: \(result.granted.count) granted, \(result.denied.count) denied")
+
+                if result.hasPermissions {
+                    print("DEBUG: OnboardingViewModel - Permissions granted, ready to scan!")
+                    self.validationResult = FolderValidationResult(isValid: true, issues: [], recommendations: [])
+
+                    // Automatically navigate to scan status if permissions are granted
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        NotificationCenter.default.post(
+                            name: .init("NavigateToScanStatus"),
+                            object: nil
+                        )
+                    }
+                } else {
+                    print("DEBUG: OnboardingViewModel - No permissions granted")
+                    // Create validation issues for denied folders
+                    let issues = result.denied.map { FolderValidationIssue.insufficientPermissions($0) }
+                    let recommendations = result.errors.isEmpty ? [] : ["Some folders couldn't be accessed. Please check permissions."]
+                    self.validationResult = FolderValidationResult(isValid: false, issues: issues, recommendations: recommendations)
+                }
             }
         }
+    }
+}
+
+// MARK: - Folder Selection View Model
+
+/**
+FolderSelectionViewModel manages folder selection and integrated scanning.
+- Handles folder selection, removal, and permissions
+- Manages scanning process and progress updates
+- Provides real-time feedback on scan status
+- Design System: Application assembly with integrated state management
+*/
+@MainActor
+public class FolderSelectionViewModel: ObservableObject {
+    private let folderSelectionService = ServiceManager.shared.folderSelection
+    private let permissionsService = ServiceManager.shared.permissionsService
+    private let sessionStore = ServiceManager.shared.sessionStore
+    private let duplicateEngine = ServiceManager.shared.duplicateEngine
+    private let similaritySettingsStore = SimilaritySettingsStore.shared
+    private let logger = Logger(subsystem: "com.deduper", category: "folder-selection")
+    private var cancellables: Set<AnyCancellable> = []
+
+    // Folder management
+    @Published public var selectedFolders: [URL] = []
+    @Published public var folderScanStatus: [URL: ScanStatus] = [:]
+
+    // Scanning state
+    @Published public var isScanning = false
+    @Published public var isLoading = false
+    @Published public var hasStartedScan = false
+    @Published public var progress: Double = 0.0
+    @Published public var processedItems: Int = 0
+    @Published public var currentScanningFolder: URL?
+    @Published public var scanStatusText = "Ready to scan"
+
+    // Results
+    @Published public var hasResults = false
+    @Published public var duplicateGroups: [DuplicateGroupResult] = []
+    @Published public var activeSession: ScanSession?
+
+    // Recovery state
+    @Published public var recoveryDecision: RecoveryDecision?
+
+    // Error handling
+    @Published public var error: String?
+
+    private var scanTask: Task<Void, Never>?
+
+    public enum ScanStatus {
+        case idle
+        case scanning
+        case completed
+        case error
+    }
+
+    public init() {
+        sessionStore.$activeSession
+            .receive(on: RunLoop.main)
+            .sink { [weak self] session in
+                self?.activeSession = session
+                self?.synchronizeWithSession(session)
+            }
+            .store(in: &cancellables)
+
+        sessionStore.$recoveryDecision
+            .receive(on: RunLoop.main)
+            .sink { [weak self] decision in
+                self?.recoveryDecision = decision
+            }
+            .store(in: &cancellables)
+
+        Task { [sessionStore] in
+            await sessionStore.restoreMostRecentSession()
+        }
+    }
+
+    public func handleRecoveryDecision(_ action: RecoveryDecision.RecoveryStrategy) async {
+        guard let recoveryDecision = recoveryDecision else { return }
+        await sessionStore.handleRecoveryDecision(recoveryDecision, action: action)
+    }
+
+    public func dismissRecoveryDecision() {
+        sessionStore.dismissRecoveryDecision()
+    }
+
+    public func addFolder() {
+        let folders = folderSelectionService.pickFolders()
+        selectedFolders.append(contentsOf: folders)
+
+        // Request permissions for new folders
+        if !folders.isEmpty {
+            requestPermissionsForFolders(folders)
+        }
+    }
+
+    public func removeFolder(_ folder: URL) {
+        selectedFolders.removeAll { $0 == folder }
+        folderScanStatus[folder] = nil
+        currentScanningFolder = nil
+
+        // If no folders left, reset scan state
+        if selectedFolders.isEmpty {
+            resetScanState()
+        }
+    }
+
+    private func requestPermissionsForFolders(_ folders: [URL]) {
+        Task {
+            logger.info("Requesting permissions for \(folders.count) folders")
+            let result = await permissionsService.requestPermissions(for: folders)
+
+            await MainActor.run {
+                if result.hasPermissions {
+                    logger.info("Permissions granted, ready to scan")
+                    // Don't automatically start scanning - let user control it
+                    scanStatusText = "Ready to scan \(selectedFolders.count) folder(s)"
+                } else {
+                    logger.warning("No permissions granted for some folders")
+                    // Mark folders with issues
+                    for folder in result.denied {
+                        folderScanStatus[folder] = .error
+                    }
+                }
+            }
+        }
+    }
+
+    private func synchronizeWithSession(_ session: ScanSession?) {
+        guard let session else { return }
+        processedItems = session.metrics.itemsProcessed
+        hasStartedScan = session.metrics.itemsProcessed > 0 || session.status.isActive
+
+        switch session.status {
+        case .scanning:
+            isScanning = true
+            scanStatusText = "Scanning..."
+        case .awaitingReview, .completed:
+            isScanning = false
+            hasResults = true
+            scanStatusText = "Scan complete"
+        case .failed:
+            isScanning = false
+            scanStatusText = "Scan failed"
+        case .cancelled:
+            isScanning = false
+            scanStatusText = "Scan cancelled"
+        case .idle, .cleaning:
+            break
+        }
+    }
+
+    public func startScanning() {
+        guard !selectedFolders.isEmpty else {
+            logger.warning("No folders selected for scanning")
+            return
+        }
+
+        // Reset previous results
+        duplicateGroups = []
+        hasResults = false
+
+        // Update folder statuses
+        for folder in selectedFolders {
+            folderScanStatus[folder] = .scanning
+        }
+
+        isScanning = true
+        scanStatusText = "Starting scan..."
+        hasStartedScan = true
+
+        // Start the scan via the session store so state persists across navigation.
+        scanTask = Task { [weak self] in
+            guard let self else { return }
+            let stream = await self.sessionStore.startSession(urls: self.selectedFolders)
+
+            var eventCount = 0
+            for await event in stream {
+                eventCount += 1
+
+                if Task.isCancelled {
+                    logger.info("Scan task cancelled after \(eventCount) events")
+                    break
+                }
+
+                await MainActor.run {
+                    self.handleScanEvent(event)
+                }
+            }
+
+            await MainActor.run {
+                self.completeScanning()
+            }
+        }
+    }
+
+    public func stopScanning() {
+        scanTask?.cancel()
+        scanTask = nil
+        isScanning = false
+        scanStatusText = "Scan stopped"
+
+        Task { [sessionStore] in
+            await sessionStore.cancelActiveSession()
+        }
+
+        // Mark remaining folders as error
+        for folder in selectedFolders {
+            if folderScanStatus[folder] == .scanning {
+                folderScanStatus[folder] = .error
+            }
+        }
+    }
+
+    public func rescanForDuplicates() {
+        guard !self.selectedFolders.isEmpty else {
+            logger.warning("No folders selected for rescanning")
+            return
+        }
+
+        self.isLoading = true
+        self.error = nil
+
+        Task {
+            do {
+                let settings = await self.similaritySettingsStore.current()
+                let loadedGroups = try await self.duplicateEngine.findDuplicates()
+
+                await MainActor.run {
+                    self.duplicateGroups = loadedGroups
+                    self.hasResults = true
+                    self.isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.error = error.localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+
+    public func showFileInFinder(_ fileId: UUID) {
+        Task {
+            do {
+                let file = try await self.persistenceController.fetchFile(id: fileId)
+                guard let path = file.value(forKey: "path") as? String else {
+                    logger.warning("File path not found for fileId: \(fileId)")
+                    return
+                }
+
+                let fileURL = URL(fileURLWithPath: path)
+
+                await MainActor.run {
+                    NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+                }
+            } catch {
+                logger.error("Failed to show file in Finder: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.error = "Failed to show file in Finder: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    public func showGroupInFinder(_ group: DuplicateGroupResult) {
+        Task {
+            do {
+                var fileURLs: [URL] = []
+
+                // Fetch file paths for all members in the group
+                for member in group.members {
+                    if let file = try await self.persistenceController.fetchFile(id: member.fileId) {
+                        if let path = file.value(forKey: "path") as? String {
+                            let fileURL = URL(fileURLWithPath: path)
+                            fileURLs.append(fileURL)
+                        }
+                    }
+                }
+
+                await MainActor.run {
+                    if fileURLs.count == 1 {
+                        NSWorkspace.shared.activateFileViewerSelecting(fileURLs)
+                    } else if fileURLs.count > 1 {
+                        NSWorkspace.shared.activateFileViewerSelecting(fileURLs)
+                    }
+                }
+            } catch {
+                logger.error("Failed to show group in Finder: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.error = "Failed to show group in Finder: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    public func selectKeeper(for group: DuplicateGroupResult, keeperFileId: UUID?) {
+        Task {
+            do {
+                // Update the group in persistence with the new keeper selection
+                try await self.persistenceController.updateGroupKeeper(groupId: group.groupId, keeperFileId: keeperFileId)
+
+                await MainActor.run {
+                    // Update local state
+                    // Note: In a real implementation, you'd want to reload the group from persistence
+                    // or update the in-memory group object
+                    print("Selected keeper \(keeperFileId ?? UUID()) for group \(group.groupId)")
+                }
+            } catch {
+                logger.error("Failed to select keeper: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.error = "Failed to select keeper: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func handleScanEvent(_ event: ScanEvent) {
+        switch event {
+        case .started(let url):
+            logger.info("Scan started for folder: \(url.lastPathComponent)")
+            currentScanningFolder = url
+            scanStatusText = "Scanning \(url.lastPathComponent)..."
+
+        case .progress(let count):
+            processedItems = count
+            progress = max(progress, estimatedProgress(for: count))
+
+        case .item:
+            processedItems += 1
+            progress = max(progress, estimatedProgress(for: processedItems))
+
+        case .skipped(let url, let reason):
+            logger.debug("Skipped \(url.path, privacy: .public): \(reason, privacy: .public)")
+
+        case .error(let path, let message):
+            logger.error("Scan error for \(path): \(message, privacy: .public)")
+            if let folder = selectedFolders.first(where: { path.hasPrefix($0.path) }) {
+                folderScanStatus[folder] = .error
+            }
+
+        case .finished(let metrics):
+            logger.info("Scan finished: \(metrics.mediaFiles) media files found")
+            progress = 1.0
+            scanStatusText = "Scan complete (\(metrics.mediaFiles) media files)"
+        }
+    }
+
+    private func completeScanning() {
+        isScanning = false
+        scanStatusText = "Scan complete"
+
+        // Mark all folders as completed
+        for folder in selectedFolders {
+            if folderScanStatus[folder] == .scanning {
+                folderScanStatus[folder] = .completed
+            }
+        }
+
+        // Load duplicate groups
+        Task {
+            do {
+                let groups = try await duplicateEngine.findDuplicates()
+                await MainActor.run {
+                    self.duplicateGroups = groups
+                    self.hasResults = true
+                    logger.info("Found \(groups.count) duplicate groups")
+                }
+            } catch {
+                await MainActor.run {
+                    self.logger.error("Failed to load duplicate groups: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func resetScanState() {
+        scanTask?.cancel()
+        scanTask = nil
+        isScanning = false
+        hasStartedScan = false
+        progress = 0.0
+        processedItems = 0
+        currentScanningFolder = nil
+        scanStatusText = "Ready to scan"
+        hasResults = false
+        duplicateGroups = []
+        folderScanStatus = [:]
+    }
+
+    public func showResults() {
+        // Navigate to groups list
+        NotificationCenter.default.post(
+            name: .init("NavigateToGroupsList"),
+            object: nil
+        )
+    }
+
+    private func estimatedProgress(for count: Int) -> Double {
+        let estimate = 1.0 - exp(-Double(max(count, 1)) / 400.0)
+        return min(0.95, estimate)
     }
 }
 
@@ -161,20 +1261,53 @@ public struct ScanStatusView: View {
             Text("Scanning for Duplicates")
                 .font(DesignToken.fontFamilyTitle)
 
-            ProgressView(value: viewModel.progress, total: 1.0)
-                .progressViewStyle(.linear)
-                .frame(width: 300)
+            // Show progress bar only when scan has started
+            if viewModel.hasStartedScan {
+                ProgressView(value: viewModel.progress, total: 1.0)
+                    .progressViewStyle(.linear)
+                    .frame(width: 300)
+            } else {
+                // Show indeterminate progress when initializing
+                if viewModel.isScanning {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.large)
+                } else {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.large)
+                        .opacity(0) // Hidden when not scanning
+                }
+            }
 
-            Text(viewModel.statusText)
-                .font(DesignToken.fontFamilyBody)
-                .foregroundStyle(DesignToken.colorForegroundSecondary)
+            VStack(spacing: DesignToken.spacingXS) {
+                Text(viewModel.statusText)
+                    .font(DesignToken.fontFamilyBody)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+
+                // Show additional status when scanning
+                if viewModel.isScanning && viewModel.hasStartedScan {
+                    Text("Scanning... (\(viewModel.processedItems) items processed)")
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                }
+            }
 
             HStack {
-                Button(viewModel.controlButtonTitle, variant: .secondary, size: .medium) {
+                Button(viewModel.controlButtonTitle,
+                       variant: .primary,
+                       size: .medium,
+                       loading: viewModel.isScanning && !viewModel.hasStartedScan) {
+                    print("Control button tapped - title: \(viewModel.controlButtonTitle)")
+                    // Provide immediate feedback
+                    if !viewModel.hasStartedScan {
+                        viewModel.statusText = "Starting scan..."
+                    }
                     viewModel.pause()
                 }
 
-                Button("Cancel", variant: .secondary, size: .medium) {
+                Button("Cancel") {
+                    print("Cancel button tapped")
                     viewModel.cancel()
                 }
                 .disabled(!viewModel.canCancel)
@@ -208,8 +1341,8 @@ public final class ScanStatusViewModel: ObservableObject {
 
     private var scanTask: Task<Void, Never>?
     private var monitoredURLs: [URL] = []
-    private var processedItems: Int = 0
-    private var hasStartedScan = false
+    @Published public var processedItems: Int = 0
+    @Published public var hasStartedScan = false
 
     public var controlButtonTitle: String {
         if !hasStartedScan { return "Start" }
@@ -221,30 +1354,63 @@ public final class ScanStatusViewModel: ObservableObject {
     }
 
     public func beginScanningIfNeeded() {
-        guard !hasStartedScan else { return }
-        monitoredURLs = permissionsService.folderPermissions
-            .filter { $0.status == .granted }
-            .map { $0.url }
-
-        guard !monitoredURLs.isEmpty else {
-            statusText = "Select folders in Onboarding to begin scanning."
+        print("DEBUG: beginScanningIfNeeded() - Starting")
+        guard !hasStartedScan else {
+            logger.info("Scan already started, ignoring request")
+            print("DEBUG: beginScanningIfNeeded() - Scan already started, returning")
             return
         }
 
+        logger.info("Starting scan - checking permissions")
+        print("DEBUG: beginScanningIfNeeded() - Checking permissions")
+
+        let allPermissions = permissionsService.folderPermissions
+        print("DEBUG: beginScanningIfNeeded() - Found \(allPermissions.count) total permissions")
+
+        monitoredURLs = allPermissions
+            .filter { $0.status == .granted }
+            .map { $0.url }
+
+        logger.info("Found \(self.monitoredURLs.count) granted folders")
+        print("DEBUG: beginScanningIfNeeded() - Found \(self.monitoredURLs.count) granted folders")
+
+        guard !self.monitoredURLs.isEmpty else {
+            logger.warning("No folders with granted permissions")
+            print("DEBUG: beginScanningIfNeeded() - No granted folders, setting error message")
+            statusText = "No folders selected. Please select folders in Onboarding to begin scanning."
+            isScanning = false // Reset scanning state if no folders
+            print("DEBUG: beginScanningIfNeeded() - Completed with no folders")
+            return
+        }
+
+        logger.info("Starting scan for folders: \(self.monitoredURLs.map { $0.lastPathComponent })")
+        print("DEBUG: beginScanningIfNeeded() - Starting scan for \(self.monitoredURLs.count) folders")
+        statusText = "Preparing to scan \(monitoredURLs.count) folder(s)..."
+        print("DEBUG: beginScanningIfNeeded() - Calling resumeScan")
         resumeScan(resetProgress: true)
+        print("DEBUG: beginScanningIfNeeded() - resumeScan completed")
     }
 
     public func pause() {
-        guard hasStartedScan else {
+        logger.info("Pause button pressed - hasStartedScan: \(self.hasStartedScan), isPaused: \(self.isPaused)")
+
+        guard self.hasStartedScan else {
+            logger.info("No active scan, starting scan")
+            print("DEBUG: pause() - No active scan, calling beginScanningIfNeeded()")
+            // Provide immediate feedback that we're starting
+            isScanning = true
             beginScanningIfNeeded()
+            print("DEBUG: pause() - beginScanningIfNeeded() completed")
             return
         }
 
         if isPaused {
+            logger.info("Scan is paused, resuming")
             resumeScan(resetProgress: false)
             return
         }
 
+        logger.info("Pausing active scan")
         isPaused = true
         isScanning = false
         statusText = "Scan paused"
@@ -264,11 +1430,16 @@ public final class ScanStatusViewModel: ObservableObject {
     }
 
     private func resumeScan(resetProgress: Bool) {
+        print("DEBUG: resumeScan() - Starting")
         guard !monitoredURLs.isEmpty else {
+            logger.warning("No monitored URLs available for scanning")
+            print("DEBUG: resumeScan() - No monitored URLs, returning")
             statusText = "No folders available to scan."
+            isScanning = false
             return
         }
 
+        print("DEBUG: resumeScan() - Starting scan setup")
         if resetProgress {
             progress = 0.0
             processedItems = 0
@@ -280,18 +1451,44 @@ public final class ScanStatusViewModel: ObservableObject {
         statusText = "Scanning \(monitoredURLs.count) folder(s)..."
         lastError = nil
 
+        logger.info("Starting scan task for \(self.monitoredURLs.count) folders")
+        print("DEBUG: resumeScan() - About to create scan task")
+
         stopCurrentScan()
 
         scanTask = Task { [weak self] in
-            guard let self else { return }
+            guard let self else {
+                print("Scan task lost self reference")
+                return
+            }
+
+            logger.info("Creating scan stream for \(self.monitoredURLs.map { $0.lastPathComponent })")
+            print("DEBUG: resumeScan() - Creating scan stream")
             let stream = await self.orchestrator.startContinuousScan(urls: self.monitoredURLs)
+            logger.info("Scan stream created, starting to consume events")
+            print("DEBUG: resumeScan() - Scan stream created, starting to consume events")
+
+            var eventCount = 0
             for await event in stream {
-                if Task.isCancelled { break }
+                eventCount += 1
+                logger.debug("Received scan event #\(eventCount): \(String(describing: event))")
+                print("DEBUG: resumeScan() - Received scan event #\(eventCount)")
+
+                if Task.isCancelled {
+                    logger.info("Scan task cancelled after \(eventCount) events")
+                    print("DEBUG: resumeScan() - Scan task cancelled")
+                    break
+                }
+
                 await MainActor.run {
                     self.handle(event: event)
                 }
             }
+
+            logger.info("Scan task completed after processing \(eventCount) events")
+            print("DEBUG: resumeScan() - Scan task completed")
         }
+        print("DEBUG: resumeScan() - Completed")
     }
 
     private func stopCurrentScan() {
@@ -302,10 +1499,14 @@ public final class ScanStatusViewModel: ObservableObject {
 
     @MainActor
     private func handle(event: ScanEvent) {
+        logger.debug("Handling scan event: \(String(describing: event))")
+
         switch event {
         case .started(let url):
+            logger.info("Scan started for folder: \(url.lastPathComponent)")
             statusText = "Scanning \(url.lastPathComponent)"
         case .progress(let count):
+            logger.debug("Scan progress: \(count) items processed")
             processedItems = count
             progress = max(progress, estimatedProgress(for: count))
         case .item:
@@ -314,9 +1515,10 @@ public final class ScanStatusViewModel: ObservableObject {
         case .skipped(let url, let reason):
             logger.debug("Skipped \(url.path, privacy: .public): \(reason, privacy: .public)")
         case .error(let path, let message):
+            logger.error("Scan error for \(path): \(message, privacy: .public)")
             lastError = "Error scanning \(path): \(message)"
-            logger.error("Scan error: \(message, privacy: .public)")
         case .finished(let metrics):
+            logger.info("Scan finished: \(metrics.mediaFiles) media files found")
             progress = 1.0
             statusText = "Initial scan complete (\(metrics.mediaFiles) media files)"
             isScanning = true
@@ -423,6 +1625,10 @@ private var groupsList: some View {
                             Button("Merge Group") {
                                 viewModel.mergeGroup(group)
                             }
+                            Button("Preview Merge") {
+                                // TODO: Show merge plan sheet from GroupsListView
+                                print("Preview merge for group: \(group.groupId)")
+                            }
                             Divider()
                             Button("Show in Finder") {
                                 viewModel.showInFinder(group)
@@ -470,6 +1676,21 @@ private extension View {
                 .onKeyPress(" ") {
                     guard let current = selectedGroup.wrappedValue else { return .ignored }
                     viewModel.setKeeper(for: current)
+                    return .handled
+                }
+                .onKeyPress(.return) {
+                    guard let current = selectedGroup.wrappedValue else { return .ignored }
+                    // TODO: Show merge plan sheet from GroupsListView
+                    print("Show merge plan for group: \(current.groupId)")
+                    return .handled
+                }
+                .onKeyPress(.delete, modifiers: .command) {
+                    guard let current = selectedGroup.wrappedValue else { return .ignored }
+                    viewModel.mergeGroup(current)
+                    return .handled
+                }
+                .onKeyPress("r", modifiers: .command) {
+                    viewModel.loadGroups(forceRescan: true)
                     return .handled
                 }
         } else {
@@ -578,7 +1799,7 @@ public final class GroupsListViewModel: ObservableObject {
         NotificationCenter.default.removeObserver(self)
     }
 
-    public func loadGroups() {
+    public func loadGroups(forceRescan: Bool = false) {
         guard !isLoading else { return }
 
         isLoading = true
@@ -587,7 +1808,23 @@ public final class GroupsListViewModel: ObservableObject {
         Task {
             do {
                 let settings = await similaritySettingsStore.current()
-                let loadedGroups = try await duplicateEngine.findDuplicates()
+
+                // Try to load from persistence first, unless forceRescan is true
+                let loadedGroups: [DuplicateGroupResult]
+                if forceRescan {
+                    loadedGroups = try await duplicateEngine.findDuplicates()
+                } else {
+                    // First try to load from persistence
+                    let persistedGroups = try await persistenceController.fetchAllGroups()
+
+                    if persistedGroups.isEmpty {
+                        // No persisted results, run detection
+                        loadedGroups = try await duplicateEngine.findDuplicates()
+                    } else {
+                        // Use persisted results
+                        loadedGroups = persistedGroups
+                    }
+                }
 
                 await MainActor.run {
                     self.similaritySettings = settings
@@ -1404,6 +2641,417 @@ public struct MainView: View {
         }
         .frame(minWidth: 600, minHeight: 400)
         .background(DesignToken.colorBackgroundPrimary)
+    }
+}
+
+// MARK: - Merge Plan Sheet
+
+/**
+ MergePlanSheet provides detailed preview and confirmation for merge operations.
+ - Shows keeper file, duplicates to remove, space savings
+ - Provides risk assessment and safety warnings
+ - Handles merge execution with proper error handling
+ */
+public struct MergePlanSheet: View {
+    @Binding var isPresented: Bool
+    let group: DuplicateGroupResult
+    let keeperFileId: UUID
+    @State private var mergePreview: MergePreviewResponse?
+    @State private var isLoading = false
+    @State private var isExecuting = false
+    @State private var error: String?
+    @State private var mergeResult: MergeExecuteResponse?
+
+    private let mergeService = ServiceManager.shared.mergeService
+
+    public var body: some View {
+        VStack(spacing: DesignToken.spacingMD) {
+            // Header
+            VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                HStack {
+                    Text("Merge Plan")
+                        .font(DesignToken.fontFamilyHeading)
+                        .foregroundStyle(DesignToken.colorForegroundPrimary)
+
+                    Spacer()
+
+                    Button("Cancel", action: { isPresented = false })
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+
+                Text("Review the merge operation before proceeding")
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+            }
+            .padding(DesignToken.spacingMD)
+
+            // Content
+            if isLoading {
+                loadingView
+            } else if let error = error {
+                errorView(error: error)
+            } else if let preview = mergePreview {
+                previewView(preview: preview)
+            } else if let result = mergeResult {
+                resultView(result: result)
+            } else {
+                // Load preview
+                Color.clear.onAppear {
+                    loadPreview()
+                }
+            }
+        }
+        .frame(minWidth: 600, minHeight: 500)
+        .background(DesignToken.colorBackgroundPrimary)
+        .cornerRadius(DesignToken.cornerRadiusLG)
+        .shadow(radius: 10)
+        // Keyboard shortcuts for merge plan sheet
+        .onKeyPress(.return, modifiers: .command) {
+            executeMerge()
+            return .handled
+        }
+        .onKeyPress(.escape) {
+            isPresented = false
+            return .handled
+        }
+        .onKeyPress(.tab) {
+            // Focus management - tab through interactive elements
+            return .ignored
+        }
+    }
+
+    private var loadingView: some View {
+        VStack(spacing: DesignToken.spacingMD) {
+            ProgressView()
+                .controlSize(.large)
+            Text("Analyzing merge operation...")
+                .font(DesignToken.fontFamilyBody)
+                .foregroundStyle(DesignToken.colorForegroundSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func errorView(error: String) -> some View {
+        VStack(spacing: DesignToken.spacingMD) {
+            Image(systemName: "exclamationmark.triangle")
+                .resizable()
+                .frame(width: 48, height: 48)
+                .foregroundStyle(DesignToken.colorStatusError)
+
+            Text("Merge Preview Failed")
+                .font(DesignToken.fontFamilyHeading)
+
+            Text(error)
+                .font(DesignToken.fontFamilyBody)
+                .foregroundStyle(DesignToken.colorForegroundSecondary)
+                .multilineTextAlignment(.center)
+
+            Button("Close", action: { isPresented = false })
+                .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(DesignToken.spacingMD)
+    }
+
+    private func previewView(preview: MergePreviewResponse) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
+                // Keeper section
+                VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                    Text("Keep This File")
+                        .font(DesignToken.fontFamilySubheading)
+                        .foregroundStyle(DesignToken.colorForegroundPrimary)
+
+                    FilePreviewCard(
+                        file: preview.keeperFile,
+                        isSelected: true,
+                        showActions: false
+                    )
+                }
+
+                Divider()
+
+                // Duplicates section
+                VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                    Text("Remove These Files")
+                        .font(DesignToken.fontFamilySubheading)
+                        .foregroundStyle(DesignToken.colorForegroundPrimary)
+
+                    LazyVStack(spacing: DesignToken.spacingSM) {
+                        ForEach(preview.duplicateFiles, id: \.fileId) { file in
+                            FilePreviewCard(
+                                file: file,
+                                isSelected: false,
+                                showActions: false
+                            )
+                        }
+                    }
+                }
+
+                Divider()
+
+                // Operation summary
+                operationSummaryView(preview: preview)
+
+                // Risk assessment
+                riskAssessmentView(preview: preview)
+
+                // Warnings
+                if !preview.warnings.isEmpty {
+                    warningsView(warnings: preview.warnings)
+                }
+
+                // Action buttons
+                actionButtonsView()
+            }
+            .padding(DesignToken.spacingMD)
+        }
+    }
+
+    private func resultView(result: MergeExecuteResponse) -> some View {
+        VStack(spacing: DesignToken.spacingMD) {
+            Image(systemName: "checkmark.circle.fill")
+                .resizable()
+                .frame(width: 48, height: 48)
+                .foregroundStyle(DesignToken.colorStatusSuccess)
+
+            Text("Merge Completed Successfully")
+                .font(DesignToken.fontFamilyHeading)
+
+            VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                Text("Summary:")
+                    .font(DesignToken.fontFamilySubheading)
+
+                Text("\(result.filesMovedToTrash.count) files moved to trash")
+                Text("Space freed: \(ByteCountFormatter.string(fromByteCount: result.totalSpaceFreed, countStyle: .file))")
+                Text("Undo available until: \(result.undoDeadline.formatted(date: .abbreviated, time: .shortened))")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(DesignToken.spacingMD)
+            .background(DesignToken.colorBackgroundSecondary)
+            .cornerRadius(DesignToken.cornerRadiusMD)
+
+            Button("Close", action: { isPresented = false })
+                .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(DesignToken.spacingMD)
+    }
+
+    private func operationSummaryView(preview: MergePreviewResponse) -> some View {
+        VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+            Text("Operation Summary")
+                .font(DesignToken.fontFamilySubheading)
+
+            HStack {
+                VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                    Text("Files to keep:")
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    Text("1")
+                        .font(DesignToken.fontFamilyBody)
+                }
+
+                Spacer()
+
+                VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                    Text("Files to remove:")
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    Text("\(preview.duplicateFiles.count)")
+                        .font(DesignToken.fontFamilyBody)
+                }
+
+                Spacer()
+
+                VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                    Text("Space to reclaim:")
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    Text(ByteCountFormatter.string(fromByteCount: preview.spaceToReclaim, countStyle: .file))
+                        .font(DesignToken.fontFamilyBody)
+                        .foregroundStyle(DesignToken.colorStatusSuccess)
+                }
+            }
+        }
+    }
+
+    private func riskAssessmentView(preview: MergePreviewResponse) -> some View {
+        VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+            Text("Risk Assessment")
+                .font(DesignToken.fontFamilySubheading)
+
+            HStack(spacing: DesignToken.spacingMD) {
+                VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                    Text("Risk Level:")
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+
+                    HStack {
+                        Text(preview.operationRisk.rawValue.capitalized)
+                            .font(DesignToken.fontFamilyBody)
+                            .foregroundStyle(riskColor(for: preview.operationRisk))
+
+                        if preview.operationRisk != .low {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(DesignToken.colorStatusWarning)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                    Text("Operation:")
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                    Text("Safe (Trash)")
+                        .font(DesignToken.fontFamilyBody)
+                        .foregroundStyle(DesignToken.colorStatusSuccess)
+                }
+            }
+        }
+    }
+
+    private func warningsView(warnings: [String]) -> some View {
+        VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+            Text("Warnings")
+                .font(DesignToken.fontFamilySubheading)
+
+            ForEach(warnings, id: \.self) { warning in
+                HStack(spacing: DesignToken.spacingSM) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(DesignToken.colorStatusWarning)
+                    Text(warning)
+                        .font(DesignToken.fontFamilyBody)
+                        .foregroundStyle(DesignToken.colorForegroundSecondary)
+                }
+            }
+        }
+        .padding(DesignToken.spacingMD)
+        .background(DesignToken.colorBackgroundWarning.opacity(0.1))
+        .cornerRadius(DesignToken.cornerRadiusMD)
+    }
+
+    private func actionButtonsView() -> some View {
+        HStack(spacing: DesignToken.spacingMD) {
+            Button("Cancel", action: { isPresented = false })
+                .buttonStyle(.bordered)
+                .keyboardShortcut(.escape, modifiers: [])
+                .accessibilityLabel("Cancel merge operation")
+
+            Spacer()
+
+            Button("Execute Merge", action: executeMerge)
+                .buttonStyle(.borderedProminent)
+                .disabled(isExecuting)
+                .keyboardShortcut(.return, modifiers: .command)
+                .accessibilityLabel("Execute merge operation")
+                .overlay {
+                    if isExecuting {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+        }
+        .padding(.horizontal, DesignToken.spacingMD)
+        .padding(.bottom, DesignToken.spacingMD)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Merge action buttons")
+    }
+
+    private func riskColor(for risk: MergeRiskLevel) -> Color {
+        switch risk {
+        case .low:
+            return DesignToken.colorStatusSuccess
+        case .medium:
+            return DesignToken.colorStatusWarning
+        case .high:
+            return DesignToken.colorStatusError
+        }
+    }
+
+    private func loadPreview() {
+        Task {
+            isLoading = true
+            do {
+                mergePreview = try await mergeService.previewMerge(for: group, keeperFileId: keeperFileId)
+            } catch {
+                self.error = error.localizedDescription
+            }
+            isLoading = false
+        }
+    }
+
+    private func executeMerge() {
+        guard let preview = mergePreview else { return }
+
+        Task {
+            isExecuting = true
+            do {
+                mergeResult = try await mergeService.executeMerge(
+                    for: group,
+                    keeperFileId: keeperFileId,
+                    dryRun: false
+                )
+            } catch {
+                self.error = error.localizedDescription
+            }
+            isExecuting = false
+        }
+    }
+}
+
+/**
+ FilePreviewCard shows detailed file information for merge preview.
+ */
+public struct FilePreviewCard: View {
+    let file: FileInfo
+    let isSelected: Bool
+    let showActions: Bool
+
+    public var body: some View {
+        HStack(spacing: DesignToken.spacingMD) {
+            // File preview
+            Image(systemName: file.isKeeper ? "star.circle.fill" : "photo")
+                .resizable()
+                .frame(width: 60, height: 60)
+                .background(DesignToken.colorBackgroundSecondary)
+                .cornerRadius(DesignToken.cornerRadiusSM)
+                .foregroundStyle(file.isKeeper ? DesignToken.colorStatusSuccess : DesignToken.colorForegroundSecondary)
+
+            // File information
+            VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
+                Text(file.path.components(separatedBy: "/").last ?? "Unknown")
+                    .font(DesignToken.fontFamilyBody)
+                    .lineLimit(1)
+
+                Text("Size: \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))")
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+
+                Text("Confidence: \(Int(file.confidence * 100))%")
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+            }
+
+            Spacer()
+
+            // Keeper indicator
+            if file.isKeeper {
+                VStack {
+                    Image(systemName: "star.fill")
+                        .foregroundStyle(DesignToken.colorStatusSuccess)
+                    Text("Keeper")
+                        .font(DesignToken.fontFamilyCaption)
+                        .foregroundStyle(DesignToken.colorStatusSuccess)
+                }
+            }
+        }
+        .padding(DesignToken.spacingMD)
+        .background(DesignToken.colorBackgroundSecondary)
+        .cornerRadius(DesignToken.cornerRadiusMD)
     }
 }
 
