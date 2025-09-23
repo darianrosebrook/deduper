@@ -17,12 +17,13 @@ import Combine
 public final class OperationsViewModel: ObservableObject {
     private let mergeService = ServiceManager.shared.mergeService
     private let performanceService = ServiceManager.shared.performanceService
+    private let persistenceController = ServiceManager.shared.persistence
     private let logger = Logger(subsystem: "com.deduper", category: "operations")
 
     // MARK: - Operations Data
-    @Published public var operations: [MergeOperation] = []
+    @Published public var operations: [CoreMergeOperation] = []
     @Published public var isLoading: Bool = false
-    @Published public var selectedOperation: MergeOperation?
+    @Published public var selectedOperation: CoreMergeOperation?
     @Published public var showOperationDetails: Bool = false
 
     // MARK: - Statistics
@@ -98,99 +99,99 @@ public final class OperationsViewModel: ObservableObject {
         }
     }
 
-    public struct MergeOperation: Identifiable, Sendable {
-        public let id: UUID
-        public let groupId: UUID
-        public let keeperFileId: UUID
-        public let removedFileIds: [UUID]
-        public let spaceFreed: Int64
-        public let confidence: Double
-        public let timestamp: Date
-        public let wasDryRun: Bool
-        public let wasSuccessful: Bool
-        public let errorMessage: String?
-        public let metadataChanges: [String]
-
-        public init(
-            id: UUID = UUID(),
-            groupId: UUID,
-            keeperFileId: UUID,
-            removedFileIds: [UUID],
-            spaceFreed: Int64,
-            confidence: Double,
-            timestamp: Date = Date(),
-            wasDryRun: Bool = false,
-            wasSuccessful: Bool = true,
-            errorMessage: String? = nil,
-            metadataChanges: [String] = []
-        ) {
-            self.id = id
-            self.groupId = groupId
-            self.keeperFileId = keeperFileId
-            self.removedFileIds = removedFileIds
-            self.spaceFreed = spaceFreed
-            self.confidence = confidence
-            self.timestamp = timestamp
-            self.wasDryRun = wasDryRun
-            self.wasSuccessful = wasSuccessful
-            self.errorMessage = errorMessage
-            self.metadataChanges = metadataChanges
-        }
-
-        public var canUndo: Bool {
-            return wasSuccessful && !wasDryRun
-        }
-
-        public var statusDescription: String {
-            if wasDryRun {
-                return "Dry run"
-            } else if wasSuccessful {
-                return "Completed"
-            } else {
-                return "Failed"
-            }
-        }
-
-        public var statusColor: Color {
-            if wasDryRun {
-                return .blue
-            } else if wasSuccessful {
-                return .green
-            } else {
-                return .red
-            }
-        }
-    }
+    // MARK: - Initialization and Loading
 
     public init() {
         loadOperations()
         setupAutoRefresh()
     }
 
-    public func loadOperations() {
-        isLoading = true
-
-        // For now, load mock data - persistence layer not yet implemented
+    private func loadOperations() {
         Task {
-            await loadMockOperations()
-            await calculateStatistics()
             await MainActor.run {
-                self.isLoading = false
+                self.isLoading = true
+            }
+
+            do {
+                // Load recent transactions from persistence
+                let transactions = try await persistenceController.getRecentTransactions()
+
+                var operations: [CoreMergeOperation] = []
+                for transaction in transactions {
+                    guard let keeperFilePath = await persistenceController.resolveFilePath(id: transaction.keeperFileId) else {
+                        continue
+                    }
+
+                    let removedFilePaths = transaction.removedFileIds.compactMap { id in
+                        persistenceController.resolveFilePath(id: id)
+                    }
+
+                    let operation = CoreMergeOperation(
+                        id: transaction.id,
+                        groupId: transaction.groupId,
+                        keeperFileId: transaction.keeperFileId ?? UUID(),
+                        keeperFilePath: keeperFilePath,
+                        removedFileIds: transaction.removedFileIds,
+                        removedFilePaths: removedFilePaths,
+                        spaceFreed: removedFilePaths.reduce(0) { $0 + (FileManager.default.fileSize(at: $1) ?? 0) },
+                        timestamp: transaction.createdAt,
+                        wasSuccessful: true,
+                        wasDryRun: false,
+                        operationType: .merge,
+                        metadataChanges: [:]
+                    )
+
+                    operations.append(operation)
+                }
+
+                await MainActor.run {
+                    self.operations = operations.sorted { $0.timestamp > $1.timestamp }
+                    self.isLoading = false
+                }
+
+                logger.info("Loaded \(operations.count) operations from persistence")
+            } catch {
+                logger.error("Failed to load operations: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.isLoading = false
+                }
             }
         }
     }
 
-    public func undoOperation(_ operation: MergeOperation) async {
-        logger.info("Attempting to undo operation: \(operation.id)")
+    private func updateStatistics() async {
+        let operations = await MainActor.run { self.operations }
 
-        // For now, just log the attempt - persistence layer not yet implemented
-        logger.info("Undo operation requested for \(operation.id)")
+        let totalSpace = operations.reduce(0) { $0 + $1.spaceFreed }
+        let totalOps = operations.count
+        let successRate = operations.isEmpty ? 0.0 : Double(operations.filter { $0.wasSuccessful }.count) / Double(totalOps)
+
+        await MainActor.run {
+            self.totalSpaceFreed = totalSpace
+            self.totalOperations = totalOps
+            self.successRate = successRate
+        }
     }
 
-    public func retryOperation(_ operation: MergeOperation) async {
+    public func undoOperation(_ operation: CoreMergeOperation) async {
+        logger.info("Attempting to undo operation: \(operation.id)")
+
+        do {
+            // Use the persistence controller to undo the operation
+            _ = try await persistenceController.undoLastTransaction()
+            logger.info("Successfully undid operation: \(operation.id)")
+
+            // Reload operations after undo
+            loadOperations()
+        } catch {
+            logger.error("Failed to undo operation: \(error.localizedDescription)")
+        }
+    }
+
+    public func retryOperation(_ operation: CoreMergeOperation) async {
         logger.info("Attempting to retry operation: \(operation.id)")
 
-        // For now, just log the attempt - persistence layer not yet implemented
+        // For now, just log the attempt - retry logic would be more complex
         logger.info("Retry operation requested for \(operation.id)")
     }
 
@@ -200,13 +201,14 @@ public final class OperationsViewModel: ObservableObject {
                 "id": operation.id.uuidString,
                 "groupId": operation.groupId.uuidString,
                 "keeperFileId": operation.keeperFileId.uuidString,
+                "keeperFilePath": operation.keeperFilePath,
                 "removedFileIds": operation.removedFileIds.map { $0.uuidString },
+                "removedFilePaths": operation.removedFilePaths,
                 "spaceFreed": operation.spaceFreed,
-                "confidence": operation.confidence,
                 "timestamp": operation.timestamp.ISO8601Format(),
                 "wasDryRun": operation.wasDryRun,
                 "wasSuccessful": operation.wasSuccessful,
-                "errorMessage": operation.errorMessage ?? "",
+                "operationType": operation.operationType.rawValue,
                 "metadataChanges": operation.metadataChanges
             ]},
             "statistics": [
@@ -224,48 +226,10 @@ public final class OperationsViewModel: ObservableObject {
         return try? JSONSerialization.data(withJSONObject: exportData, options: [.prettyPrinted])
     }
 
-    private func loadMockOperations() async {
-        // Generate mock operations data
-        let now = Date()
-
-        let mockOperations = [
-            MergeOperation(
-                groupId: UUID(),
-                keeperFileId: UUID(),
-                removedFileIds: [UUID(), UUID()],
-                spaceFreed: 1_234_567,
-                confidence: 0.95,
-                timestamp: now.addingTimeInterval(-3600), // 1 hour ago
-                wasDryRun: false,
-                wasSuccessful: true,
-                metadataChanges: ["captureDate", "GPS"]
-            ),
-            MergeOperation(
-                groupId: UUID(),
-                keeperFileId: UUID(),
-                removedFileIds: [UUID()],
-                spaceFreed: 567_890,
-                confidence: 0.78,
-                timestamp: now.addingTimeInterval(-7200), // 2 hours ago
-                wasDryRun: true,
-                wasSuccessful: true,
-                metadataChanges: ["keywords"]
-            ),
-            MergeOperation(
-                groupId: UUID(),
-                keeperFileId: UUID(),
-                removedFileIds: [UUID(), UUID(), UUID()],
-                spaceFreed: 3_456_789,
-                confidence: 0.92,
-                timestamp: now.addingTimeInterval(-86400), // 1 day ago
-                wasDryRun: false,
-                wasSuccessful: false,
-                errorMessage: "Permission denied"
-            )
-        ]
-
-        await MainActor.run {
-            self.operations = mockOperations
+    private func setupAutoRefresh() {
+        // Auto-refresh operations every 30 seconds
+        Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
+            self.loadOperations()
         }
     }
 
