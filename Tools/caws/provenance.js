@@ -440,3 +440,4 @@ module.exports = {
   calculateTrustScore,
   validateWorkingSpec,
 };
+test
