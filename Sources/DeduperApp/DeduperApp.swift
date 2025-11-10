@@ -58,6 +58,9 @@ public struct DeduperApp: App {
  */
 public struct MainView: View {
     @StateObject private var viewModel = MainViewModel()
+    @State private var showRecoveryDialog = false
+    @State private var incompleteTransactions: [MergeService.IncompleteTransaction] = []
+    @State private var recoveryInProgress = false
 
     public init() {}
 
@@ -71,6 +74,67 @@ public struct MainView: View {
         }
         .frame(minWidth: 1000, minHeight: 600)
         .background(DesignToken.colorBackgroundPrimary)
+        .onAppear {
+            Task {
+                await checkForCrashRecovery()
+            }
+        }
+        .alert("Incomplete Operations Detected", isPresented: $showRecoveryDialog) {
+            Button("Recover Automatically") {
+                Task {
+                    await recoverIncompleteTransactions()
+                }
+            }
+            Button("Review Manually") {
+                // Navigate to operations view for manual review
+                viewModel.selectedScreen = .history
+            }
+            Button("Dismiss", role: .cancel) {
+                // User dismisses - transactions remain for manual review
+            }
+        } message: {
+            let autoRecoverable = incompleteTransactions.filter { $0.canAutoRecover }.count
+            let needsReview = incompleteTransactions.count - autoRecoverable
+            if needsReview > 0 {
+                Text("Found \(incompleteTransactions.count) incomplete operation(s). \(autoRecoverable) can be recovered automatically. \(needsReview) require manual review.")
+            } else {
+                Text("Found \(incompleteTransactions.count) incomplete operation(s) that may have been interrupted. Would you like to recover them automatically?")
+            }
+        }
+    }
+    
+    private func checkForCrashRecovery() async {
+        let core = DeduperCore.shared
+        do {
+            let detected = try await core.mergeService.detectIncompleteTransactions()
+            if !detected.isEmpty {
+                incompleteTransactions = detected
+                showRecoveryDialog = true
+            }
+        } catch {
+            // Log error but don't block app startup
+            print("Error during crash recovery check: \(error.localizedDescription)")
+        }
+    }
+    
+    private func recoverIncompleteTransactions() async {
+        recoveryInProgress = true
+        let core = DeduperCore.shared
+        do {
+            let autoRecoverable = incompleteTransactions.filter { $0.canAutoRecover }
+            let transactionIds = autoRecoverable.map { $0.transaction.id }
+            let recovered = try await core.mergeService.recoverIncompleteTransactions(transactionIds)
+            recoveryInProgress = false
+            if recovered.count == transactionIds.count {
+                incompleteTransactions.removeAll { recovered.contains($0.transaction.id) }
+                if incompleteTransactions.isEmpty {
+                    showRecoveryDialog = false
+                }
+            }
+        } catch {
+            recoveryInProgress = false
+            print("Error during recovery: \(error.localizedDescription)")
+        }
     }
 }
 

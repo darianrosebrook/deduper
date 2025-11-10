@@ -287,3 +287,13 @@ $RECYCLE.BIN/
 .DS_Store?
 ehthumbs.db
 Thumbs.db
+
+# CAWS (Code Assurance Workflow System) generated files
+.agent/
+docs-status/
+*.provenance.json
+provenance.json
+.caws/*.tmp
+.caws/*.cache
+.caws/quality-exceptions.json
+.caws/waivers.json

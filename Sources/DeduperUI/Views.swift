@@ -2355,19 +2355,38 @@ public struct GroupDetailView: View {
                         ProgressView("Loading metadata...")
                     }
 
-                    // Preview placeholder
-                    VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
-                        Text("Previews")
-                            .font(DesignToken.fontFamilyHeading)
-                        HStack {
-                            Rectangle()
-                                .fill(DesignToken.colorBackgroundSecondary)
-                                .frame(width: 120, height: 90)
-                                .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
-                            Rectangle()
-                                .fill(DesignToken.colorBackgroundSecondary)
-                                .frame(width: 120, height: 90)
-                                .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
+                    // Visual differences (if available)
+                    if let visualDifferences = mergePlan.visualDifferences, !visualDifferences.isEmpty {
+                        VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                            Text("Visual Comparison")
+                                .font(DesignToken.fontFamilyHeading)
+                            
+                            // Show visual differences for each duplicate
+                            ForEach(Array(visualDifferences.keys.prefix(3)), id: \.self) { duplicateId in
+                                if let analysis = visualDifferences[duplicateId] {
+                                    VisualDifferenceViewWrapper(
+                                        keeperId: mergePlan.keeperId,
+                                        duplicateId: duplicateId,
+                                        analysis: analysis
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // Preview placeholder
+                        VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                            Text("Previews")
+                                .font(DesignToken.fontFamilyHeading)
+                            HStack {
+                                Rectangle()
+                                    .fill(DesignToken.colorBackgroundSecondary)
+                                    .frame(width: 120, height: 90)
+                                    .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
+                                Rectangle()
+                                    .fill(DesignToken.colorBackgroundSecondary)
+                                    .frame(width: 120, height: 90)
+                                    .clipShape(RoundedRectangle(cornerRadius: DesignToken.radiusSM))
+                            }
                         }
                     }
                 }
@@ -2463,6 +2482,47 @@ public struct MergePlanView: View {
             }
         }
         .background(DesignToken.colorBackgroundPrimary)
+    }
+}
+
+/**
+ * Helper view that loads file URLs asynchronously for visual difference display.
+ */
+private struct VisualDifferenceViewWrapper: View {
+    let keeperId: UUID
+    let duplicateId: UUID
+    let analysis: VisualDifferenceAnalysis
+    @State private var keeperURL: URL?
+    @State private var duplicateURL: URL?
+    @State private var isLoading = true
+    
+    var body: some View {
+        Group {
+            if let keeperURL = keeperURL, let duplicateURL = duplicateURL {
+                VisualDifferenceView(
+                    keeperURL: keeperURL,
+                    duplicateURL: duplicateURL,
+                    analysis: analysis
+                )
+            } else if isLoading {
+                ProgressView("Loading images...")
+                    .frame(height: 200)
+            } else {
+                Text("Could not load images for comparison")
+                    .font(DesignToken.fontFamilyCaption)
+                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+            }
+        }
+        .task {
+            await loadURLs()
+        }
+    }
+    
+    private func loadURLs() async {
+        let persistence = PersistenceController.shared
+        keeperURL = await MainActor.run { persistence.resolveFileURL(id: keeperId) }
+        duplicateURL = await MainActor.run { persistence.resolveFileURL(id: duplicateId) }
+        isLoading = false
     }
 }
 

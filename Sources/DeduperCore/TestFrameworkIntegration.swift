@@ -488,3 +488,4 @@ final class TestFrameworkIntegration {
         """
     }
 }
+

@@ -175,15 +175,26 @@ public final class ServiceManager: ObservableObject {
         // Initialize thumbnail service
         self.thumbnailService = ThumbnailService.shared
 
+        // Initialize monitoring service (shared with scan orchestrator)
+        let monitoringConfig = MonitoringService.MonitoringConfig(
+            debounceInterval: 2.0,
+            coalesceEvents: true,
+            monitorSubdirectories: true
+        )
+        let monitoringService = MonitoringService(config: monitoringConfig)
+        
         // Initialize merge service with dependencies
         self.mergeService = MergeService(
             persistenceController: persistence,
-            metadataService: metadataService
+            metadataService: metadataService,
+            config: .default,
+            monitoringService: monitoringService
         )
 
-        // Initialize scan orchestrator
+        // Initialize scan orchestrator with shared monitoring service
         self.scanOrchestrator = ScanOrchestrator(
-            persistenceController: persistence
+            persistenceController: persistence,
+            monitoringService: monitoringService
         )
 
         // Initialize duplicate detection engine

@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 public enum MediaType: Int16, CaseIterable, Sendable {
     case photo = 0
     case video = 1
+    case audio = 2
     
     /// Returns the corresponding UTType for this media type
     public var utType: UTType? {
@@ -17,6 +18,8 @@ public enum MediaType: Int16, CaseIterable, Sendable {
             return UTType.image
         case .video:
             return UTType.movie
+        case .audio:
+            return UTType.audio
         }
     }
     
@@ -39,6 +42,17 @@ public enum MediaType: Int16, CaseIterable, Sendable {
                 "mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "m4v", "3gp", "mts", "m2ts", "ogv",
                 // Professional formats
                 "prores", "dnxhd", "xdcam", "xavc", "r3d", "ari", "arri"
+            ]
+        case .audio:
+            return [
+                // Standard formats
+                "mp3", "wav", "aac", "m4a", "flac", "ogg", "oga", "opus",
+                // Lossless formats
+                "alac", "ape", "wv", "tak", "tta",
+                // Professional formats
+                "aiff", "aif", "au", "ra", "rm", "wma", "ac3", "dts",
+                // Additional formats
+                "mpc", "spx", "vorbis", "amr", "3ga"
             ]
         }
     }
@@ -626,6 +640,7 @@ public struct MergeConfig: Sendable, Equatable {
     public let moveToTrash: Bool
     public let requireConfirmation: Bool
     public let atomicWrites: Bool
+    public let enableVisualDifferenceAnalysis: Bool
 
     public static let `default` = MergeConfig(
         enableDryRun: true,
@@ -634,7 +649,8 @@ public struct MergeConfig: Sendable, Equatable {
         retentionDays: 7,
         moveToTrash: true,
         requireConfirmation: true,
-        atomicWrites: true
+        atomicWrites: true,
+        enableVisualDifferenceAnalysis: false // Disabled by default as it can be slow
     )
 
     public init(
@@ -644,7 +660,8 @@ public struct MergeConfig: Sendable, Equatable {
         retentionDays: Int = 7,
         moveToTrash: Bool = true,
         requireConfirmation: Bool = true,
-        atomicWrites: Bool = true
+        atomicWrites: Bool = true,
+        enableVisualDifferenceAnalysis: Bool = false
     ) {
         self.enableDryRun = enableDryRun
         self.enableUndo = enableUndo
@@ -653,6 +670,7 @@ public struct MergeConfig: Sendable, Equatable {
         self.moveToTrash = moveToTrash
         self.requireConfirmation = requireConfirmation
         self.atomicWrites = atomicWrites
+        self.enableVisualDifferenceAnalysis = enableVisualDifferenceAnalysis
     }
 }
 
@@ -717,6 +735,7 @@ public struct MergePlan: Equatable {
     public let exifWrites: [String: Any]
     public let trashList: [UUID]
     public let fieldChanges: [FieldChange]
+    public let visualDifferences: [UUID: VisualDifferenceAnalysis]? // Visual analysis for each duplicate file compared to keeper
 
     public init(
         groupId: UUID,
@@ -725,7 +744,8 @@ public struct MergePlan: Equatable {
         mergedMetadata: MediaMetadata,
         exifWrites: [String: Any],
         trashList: [UUID],
-        fieldChanges: [FieldChange]
+        fieldChanges: [FieldChange],
+        visualDifferences: [UUID: VisualDifferenceAnalysis]? = nil
     ) {
         self.groupId = groupId
         self.keeperId = keeperId
@@ -734,9 +754,11 @@ public struct MergePlan: Equatable {
         self.exifWrites = exifWrites
         self.trashList = trashList
         self.fieldChanges = fieldChanges
+        self.visualDifferences = visualDifferences
     }
 
     public static func == (lhs: MergePlan, rhs: MergePlan) -> Bool {
+        // Note: Visual differences are excluded from equality check as they may vary
         return lhs.groupId == rhs.groupId &&
                lhs.keeperId == rhs.keeperId &&
                lhs.keeperMetadata == rhs.keeperMetadata &&
@@ -782,6 +804,10 @@ public enum MergeError: Error, LocalizedError, Sendable {
     case transactionFailed(String)
     case undoNotAvailable
     case invalidMergePlan(String)
+    case transactionNotFound(UUID)
+    case fileNotInTrash(String)
+    case incompleteTransaction(UUID)
+    case transactionStateMismatch(UUID, String)
 
     public var errorDescription: String? {
         switch self {
@@ -801,6 +827,14 @@ public enum MergeError: Error, LocalizedError, Sendable {
             return "Undo not available - no previous merge found"
         case .invalidMergePlan(let reason):
             return "Invalid merge plan: \(reason)"
+        case .transactionNotFound(let id):
+            return "Transaction not found: \(id)"
+        case .fileNotInTrash(let fileName):
+            return "File not found in trash: \(fileName)"
+        case .incompleteTransaction(let id):
+            return "Incomplete transaction detected: \(id)"
+        case .transactionStateMismatch(let id, let reason):
+            return "Transaction state mismatch for \(id): \(reason)"
         }
     }
 }
@@ -810,7 +844,7 @@ public enum MergeError: Error, LocalizedError, Sendable {
 /**
  * Operation tracking for safe file operations and undo functionality
  */
-public struct MergeOperation: Identifiable, Sendable, Equatable {
+public struct MergeOperation: Identifiable, @unchecked Sendable, Equatable {
     public let id: UUID
     public let groupId: UUID
     public let keeperFileId: UUID

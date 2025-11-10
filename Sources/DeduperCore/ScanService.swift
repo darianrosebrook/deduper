@@ -27,6 +27,8 @@ public final class ScanService: @unchecked Sendable {
         public let maxConcurrency: Int
         public let memoryPressureThreshold: Double
         public let healthCheckInterval: TimeInterval
+        public let maxDatasetSize: Int64 // Maximum dataset size in bytes before warning
+        public let batchSizeForLargeDatasets: Int // Batch size when processing large datasets
 
         public static let `default` = ScanConfig(
             enableMemoryMonitoring: true,
@@ -34,7 +36,9 @@ public final class ScanService: @unchecked Sendable {
             enableParallelProcessing: true,
             maxConcurrency: ProcessInfo.processInfo.activeProcessorCount,
             memoryPressureThreshold: 0.8,
-            healthCheckInterval: 30.0
+            healthCheckInterval: 30.0,
+            maxDatasetSize: 100 * 1024 * 1024 * 1024, // 100 GB default warning threshold
+            batchSizeForLargeDatasets: 1000 // Process 1000 files at a time for large datasets
         )
 
         public init(
@@ -43,7 +47,9 @@ public final class ScanService: @unchecked Sendable {
             enableParallelProcessing: Bool = true,
             maxConcurrency: Int = ProcessInfo.processInfo.activeProcessorCount,
             memoryPressureThreshold: Double = 0.8,
-            healthCheckInterval: TimeInterval = 30.0
+            healthCheckInterval: TimeInterval = 30.0,
+            maxDatasetSize: Int64 = 100 * 1024 * 1024 * 1024,
+            batchSizeForLargeDatasets: Int = 1000
         ) {
             self.enableMemoryMonitoring = enableMemoryMonitoring
             self.enableAdaptiveConcurrency = enableAdaptiveConcurrency
@@ -51,6 +57,8 @@ public final class ScanService: @unchecked Sendable {
             self.maxConcurrency = max(1, min(maxConcurrency, ProcessInfo.processInfo.activeProcessorCount * 2))
             self.memoryPressureThreshold = max(0.1, min(memoryPressureThreshold, 0.95))
             self.healthCheckInterval = max(5.0, healthCheckInterval)
+            self.maxDatasetSize = maxDatasetSize
+            self.batchSizeForLargeDatasets = max(100, batchSizeForLargeDatasets) // Minimum batch size of 100
         }
     }
 
@@ -409,8 +417,10 @@ public final class ScanService: @unchecked Sendable {
         // Strategy 2: UTType detection from resource values
         if let resourceValues = try? url.resourceValues(forKeys: [.contentTypeKey, .typeIdentifierKey]),
            let contentType = resourceValues.contentType {
-            // Check if it conforms to image or movie types
-            if contentType.conforms(to: UTType.image) || contentType.conforms(to: UTType.movie) {
+            // Check if it conforms to image, movie, or audio types
+            if contentType.conforms(to: UTType.image) || 
+               contentType.conforms(to: UTType.movie) || 
+               contentType.conforms(to: UTType.audio) {
                 return true
             }
         }
@@ -454,6 +464,19 @@ public final class ScanService: @unchecked Sendable {
             return true
         }
         
+        // Audio format magic numbers
+        if headerHex.hasPrefix("FFFB") || headerHex.hasPrefix("FFF3") || headerHex.hasPrefix("FFF2") || // MP3
+           headerHex.hasPrefix("494433") || // ID3v2 tag (MP3)
+           headerHex.hasPrefix("52494646") && headerHex.contains("57415645") || // WAV (RIFF...WAVE)
+           headerHex.hasPrefix("4F676753") || // OGG
+           headerHex.hasPrefix("664C6143") || // FLAC
+           headerHex.hasPrefix("4D546864") || // MIDI
+           headerHex.hasPrefix("2E7261FD") || // RealAudio
+           headerHex.hasPrefix("464F524D") || // AIFF
+           headerHex.hasPrefix("4D344120") { // M4A (MPEG-4 audio)
+            return true
+        }
+        
         // Strategy 4: Use ImageIO and AVFoundation for final detection
         return isMediaFileByFramework(url: url)
     }
@@ -474,12 +497,19 @@ public final class ScanService: @unchecked Sendable {
             }
         }
         
-        // Try AVFoundation for video/audio detection (using synchronous API for compatibility)
-        let _ = AVAsset(url: url)
-
-        // Use the synchronous API that's available in the current context
-        // For now, we'll skip AVFoundation detection to avoid deprecated warnings
-        // This can be enhanced later with proper async handling
+        // Try AVFoundation for video/audio detection
+        // Check if file is readable by AVFoundation (indicates it's a valid media file)
+        let asset = AVAsset(url: url)
+        if asset.isReadable {
+            // Check if it has audio or video tracks
+            let tracks = asset.tracks
+            if tracks.contains(where: { $0.mediaType == .audio }) {
+                return true // Audio file
+            }
+            if tracks.contains(where: { $0.mediaType == .video }) {
+                return true // Video file
+            }
+        }
 
         return false
     }
@@ -930,9 +960,11 @@ public final class ScanService: @unchecked Sendable {
         let fileExtension = url.pathExtension.lowercased()
         if MediaType.photo.commonExtensions.contains(fileExtension) { return .photo }
         if MediaType.video.commonExtensions.contains(fileExtension) { return .video }
+        if MediaType.audio.commonExtensions.contains(fileExtension) { return .audio }
         if let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType {
             if type.conforms(to: UTType.image) { return .photo }
             if type.conforms(to: UTType.movie) { return .video }
+            if type.conforms(to: UTType.audio) { return .audio }
         }
         return .photo
     }

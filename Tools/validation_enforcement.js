@@ -519,3 +519,4 @@ if (require.main === module) {
 }
 
 module.exports = { ValidationEnforcer };
+

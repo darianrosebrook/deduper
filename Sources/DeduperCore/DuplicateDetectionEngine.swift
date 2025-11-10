@@ -432,6 +432,14 @@ public struct VideoDistanceResult: Sendable, Equatable {
     public let rationale: [String]
 }
 
+public struct AudioDistanceResult: Sendable, Equatable {
+    public let checksumMatch: Bool
+    public let durationMatch: Bool
+    public let fileSizeMatch: Bool
+    public let metadataMatch: Bool
+    public let rationale: [String]
+}
+
 // MARK: - Detection Metrics
 
 public struct DetectionMetrics: Sendable, Equatable {
@@ -525,6 +533,8 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
                 return CandidateKey(mediaType: .photo, signature: photoSignature(for: asset))
             case .video:
                 return CandidateKey(mediaType: .video, signature: videoSignature(for: asset, options: options))
+            case .audio:
+                return CandidateKey(mediaType: .audio, signature: audioSignature(for: asset))
             }
         }
 
@@ -548,7 +558,15 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
                 skippedByPolicy: estimatePolicySkips(in: members, options: options),
                 estimatedComparisons: comparisons
             )
-            let heuristic = key.mediaType == .photo ? "image.dimensions+size" : "video.duration+resolution"
+            let heuristic: String
+            switch key.mediaType {
+            case .photo:
+                heuristic = "image.dimensions+size"
+            case .video:
+                heuristic = "video.duration+resolution"
+            case .audio:
+                heuristic = "audio.duration+size"
+            }
             return CandidateBucket(key: key, fileIds: sortedIds, heuristic: heuristic, stats: stats)
         }.sorted { $0.key.signature < $1.key.signature }
     }
@@ -605,6 +623,81 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
             maxDistance: maxDistance,
             comparedFrames: distances.count,
             mismatchedFrames: mismatched,
+            rationale: rationale
+        )
+    }
+    
+    public func distance(audio first: DetectionAsset, second: DetectionAsset, options: DetectOptions) -> AudioDistanceResult {
+        guard first.mediaType == .audio, second.mediaType == .audio else {
+            return AudioDistanceResult(
+                checksumMatch: false,
+                durationMatch: false,
+                fileSizeMatch: false,
+                metadataMatch: false,
+                rationale: ["mediaTypeMismatch"]
+            )
+        }
+        
+        var rationale: [String] = []
+        var checksumMatch = false
+        var durationMatch = false
+        var fileSizeMatch = false
+        var metadataMatch = false
+        
+        // Check checksum match (exact duplicate)
+        if let checksum1 = first.checksum, let checksum2 = second.checksum {
+            checksumMatch = checksum1 == checksum2
+            if checksumMatch {
+                rationale.append("checksum:match")
+            } else {
+                rationale.append("checksum:mismatch")
+            }
+        } else {
+            rationale.append("checksum:missing")
+        }
+        
+        // Check file size match (within tolerance)
+        let sizeDiff = abs(first.fileSize - second.fileSize)
+        let sizeTolerance = Double(max(first.fileSize, second.fileSize)) * 0.01 // 1% tolerance
+        fileSizeMatch = Double(sizeDiff) <= sizeTolerance
+        if fileSizeMatch {
+            rationale.append("size:match")
+        } else {
+            rationale.append("size:mismatch(\(sizeDiff))")
+        }
+        
+        // Check duration match (if available)
+        if let duration1 = first.duration, let duration2 = second.duration {
+            let durationDiff = abs(duration1 - duration2)
+            let durationTolerance = max(duration1, duration2) * 0.01 // 1% tolerance
+            durationMatch = durationDiff <= durationTolerance
+            if durationMatch {
+                rationale.append("duration:match")
+            } else {
+                rationale.append("duration:mismatch(\(String(format: "%.2f", durationDiff)))")
+            }
+        } else {
+            rationale.append("duration:missing")
+        }
+        
+        // Check metadata match (capture date, if available)
+        if let date1 = first.captureDate, let date2 = second.captureDate {
+            let dateDiff = abs(date1.timeIntervalSince(date2))
+            metadataMatch = dateDiff < 60 // Within 1 minute
+            if metadataMatch {
+                rationale.append("metadata:match")
+            } else {
+                rationale.append("metadata:mismatch")
+            }
+        } else {
+            rationale.append("metadata:partial")
+        }
+        
+        return AudioDistanceResult(
+            checksumMatch: checksumMatch,
+            durationMatch: durationMatch,
+            fileSizeMatch: fileSizeMatch,
+            metadataMatch: metadataMatch,
             rationale: rationale
         )
     }
@@ -800,7 +893,15 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
             }
         case .bucket(let key):
             return assets.filter { asset in
-                let candidateKey: CandidateKey = asset.mediaType == .photo ? CandidateKey(mediaType: .photo, signature: photoSignature(for: asset)) : CandidateKey(mediaType: .video, signature: videoSignature(for: asset, options: options))
+                let candidateKey: CandidateKey
+                switch asset.mediaType {
+                case .photo:
+                    candidateKey = CandidateKey(mediaType: .photo, signature: photoSignature(for: asset))
+                case .video:
+                    candidateKey = CandidateKey(mediaType: .video, signature: videoSignature(for: asset, options: options))
+                case .audio:
+                    candidateKey = CandidateKey(mediaType: .audio, signature: audioSignature(for: asset))
+                }
                 return candidateKey == key
             }
         }
@@ -822,6 +923,14 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
         let durationBand = durationBucket(for: duration, tolerancePct: options.thresholds.durationTolerancePct)
         let stem = stemBucket(for: asset)
         return "vid:\(resolution):d\(durationBand):n\(stem)"
+    }
+    
+    private func audioSignature(for asset: DetectionAsset) -> String {
+        let duration = asset.duration ?? 0
+        let durationBand = durationBucket(for: duration, tolerancePct: 0.01) // 1% tolerance for audio
+        let sizeBand = sizeBucket(for: asset.fileSize)
+        let stem = stemBucket(for: asset)
+        return "aud:d\(durationBand):s\(sizeBand):n\(stem)"
     }
 
     private func snapDimension(_ value: Int) -> Int {
@@ -925,6 +1034,8 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
             return compareImages(a, b, options: options)
         case (.video, .video):
             return compareVideos(a, b, options: options)
+        case (.audio, .audio):
+            return compareAudio(a, b, options: options)
         default:
             return nil
         }
@@ -941,6 +1052,77 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
         let breakdown = ConfidenceCalculator(weights: options.weights, hashingService: hashingService).evaluateVideos(a, b, thresholds: options.thresholds)
         guard breakdown.score > 0 else { return nil }
         let rationale = buildRationale(from: breakdown, fallback: "videoCompare")
+        return CandidateEdge(a: a.id, b: b.id, breakdown: breakdown, rationale: rationale, policyCode: nil)
+    }
+    
+    private func compareAudio(_ a: DetectionAsset, _ b: DetectionAsset, options: DetectOptions) -> CandidateEdge? {
+        let audioResult = distance(audio: a, second: b, options: options)
+        
+        // Calculate confidence score based on audio distance result
+        var score: Double = 0.0
+        var signals: [ConfidenceSignal] = []
+        var penalties: [ConfidencePenalty] = []
+        
+        // Checksum match gives highest confidence
+        if audioResult.checksumMatch {
+            score += 0.9
+            signals.append(ConfidenceSignal(
+                key: "checksum",
+                weight: options.weights.checksum,
+                rawScore: 1.0,
+                contribution: 0.9,
+                rationale: "exact_match"
+            ))
+        } else {
+            // File size match
+            if audioResult.fileSizeMatch {
+                score += 0.3
+                signals.append(ConfidenceSignal(
+                    key: "fileSize",
+                    weight: 0.3,
+                    rawScore: 1.0,
+                    contribution: 0.3,
+                    rationale: "size_match"
+                ))
+            }
+            
+            // Duration match
+            if audioResult.durationMatch {
+                score += 0.4
+                signals.append(ConfidenceSignal(
+                    key: "duration",
+                    weight: 0.4,
+                    rawScore: 1.0,
+                    contribution: 0.4,
+                    rationale: "duration_match"
+                ))
+            }
+            
+            // Metadata match
+            if audioResult.metadataMatch {
+                score += 0.2
+                signals.append(ConfidenceSignal(
+                    key: "metadata",
+                    weight: options.weights.metadata,
+                    rawScore: 1.0,
+                    contribution: 0.2,
+                    rationale: "metadata_match"
+                ))
+            }
+        }
+        
+        // Require minimum confidence threshold
+        guard score >= 0.5 else {
+            return nil
+        }
+        
+        let breakdown = ConfidenceBreakdown(
+            score: score,
+            signals: signals,
+            penalties: penalties
+        )
+        
+        let rationale = buildRationale(from: breakdown, fallback: "audioCompare")
         return CandidateEdge(a: a.id, b: b.id, breakdown: breakdown, rationale: rationale, policyCode: nil)
     }
 
@@ -1062,21 +1244,34 @@ public final class DuplicateDetectionEngine: @unchecked Sendable {
 
     private func suggestKeeper(from members: [DetectionAsset]) -> UUID? {
         let sorted = members.sorted { lhs, rhs in
-            // First: prefer photos over videos
+            // First: prefer photos over videos, videos over audio
             if lhs.mediaType != rhs.mediaType {
-                return lhs.mediaType == .photo
+                if lhs.mediaType == .photo { return true }
+                if rhs.mediaType == .photo { return false }
+                if lhs.mediaType == .video { return true }
+                if rhs.mediaType == .video { return false }
+                return false // Both audio, continue to next criteria
             }
             
-            // Second: prefer higher resolution
-            let lhsPixels = (lhs.dimensions?.width ?? 0) * (lhs.dimensions?.height ?? 0)
-            let rhsPixels = (rhs.dimensions?.width ?? 0) * (rhs.dimensions?.height ?? 0)
-            if lhsPixels != rhsPixels {
-                return lhsPixels > rhsPixels
+            // Second: prefer higher resolution (for photos/videos)
+            if lhs.mediaType != .audio {
+                let lhsPixels = (lhs.dimensions?.width ?? 0) * (lhs.dimensions?.height ?? 0)
+                let rhsPixels = (rhs.dimensions?.width ?? 0) * (rhs.dimensions?.height ?? 0)
+                if lhsPixels != rhsPixels {
+                    return lhsPixels > rhsPixels
+                }
             }
             
             // Third: prefer larger file size
             if lhs.fileSize != rhs.fileSize {
                 return lhs.fileSize > rhs.fileSize
+            }
+            
+            // For audio: prefer longer duration if available
+            if lhs.mediaType == .audio, let lhsDuration = lhs.duration, let rhsDuration = rhs.duration {
+                if lhsDuration != rhsDuration {
+                    return lhsDuration > rhsDuration
+                }
             }
             
             // Fourth: prefer earlier creation date (deterministic, stable across runs)
