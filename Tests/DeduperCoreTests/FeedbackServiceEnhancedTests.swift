@@ -11,7 +11,7 @@ struct FeedbackServiceEnhancedTests {
 
     @Test("LearningConfig Initialization and Validation")
     func testLearningConfigInitialization() {
-        let config = FeedbackService.LearningConfig(
+        let config = LearningConfig(
             enableMemoryMonitoring: true,
             enablePerformanceProfiling: true,
             enableSecurityAudit: true,
@@ -40,7 +40,7 @@ struct FeedbackServiceEnhancedTests {
 
     @Test("LearningConfig Default Configuration")
     func testLearningConfigDefault() {
-        let config = FeedbackService.LearningConfig.default
+        let config = LearningConfig.default
 
         #expect(config.enableMemoryMonitoring == true)
         #expect(config.enablePerformanceProfiling == true)
@@ -58,25 +58,25 @@ struct FeedbackServiceEnhancedTests {
     @Test("LearningConfig Validation Bounds")
     func testLearningConfigValidation() {
         // Test max feedback history bounds
-        let smallHistoryConfig = FeedbackService.LearningConfig(maxFeedbackHistory: 500)
+        let smallHistoryConfig = LearningConfig(maxFeedbackHistory: 500)
         #expect(smallHistoryConfig.maxFeedbackHistory >= 1000) // Should clamp to minimum
 
-        let largeHistoryConfig = FeedbackService.LearningConfig(maxFeedbackHistory: 200000)
+        let largeHistoryConfig = LearningConfig(maxFeedbackHistory: 200000)
         #expect(largeHistoryConfig.maxFeedbackHistory <= 100000) // Should clamp to maximum
 
         // Test metrics update interval bounds
-        let shortIntervalConfig = FeedbackService.LearningConfig(metricsUpdateInterval: 15.0)
+        let shortIntervalConfig = LearningConfig(metricsUpdateInterval: 15.0)
         #expect(shortIntervalConfig.metricsUpdateInterval >= 30.0) // Should clamp to minimum
 
         // Test memory threshold bounds
-        let lowThresholdConfig = FeedbackService.LearningConfig(memoryPressureThreshold: 0.0)
+        let lowThresholdConfig = LearningConfig(memoryPressureThreshold: 0.0)
         #expect(lowThresholdConfig.memoryPressureThreshold >= 0.1)
 
-        let highThresholdConfig = FeedbackService.LearningConfig(memoryPressureThreshold: 1.0)
+        let highThresholdConfig = LearningConfig(memoryPressureThreshold: 1.0)
         #expect(highThresholdConfig.memoryPressureThreshold <= 0.95)
 
         // Test health check interval bounds
-        let shortHealthConfig = FeedbackService.LearningConfig(healthCheckInterval: 5.0)
+        let shortHealthConfig = LearningConfig(healthCheckInterval: 5.0)
         #expect(shortHealthConfig.healthCheckInterval >= 10.0)
     }
 
@@ -84,28 +84,28 @@ struct FeedbackServiceEnhancedTests {
 
     @Test("LearningHealth Description Generation")
     func testLearningHealthDescription() {
-        #expect(FeedbackService.LearningHealth.healthy.description == "healthy")
-        #expect(FeedbackService.LearningHealth.memoryPressure(0.75).description == "memory_pressure_0.75")
-        #expect(FeedbackService.LearningHealth.highProcessingLatency(250.5).description == "high_processing_latency_250.500")
-        #expect(FeedbackService.LearningHealth.dataCorrupted.description == "data_corrupted")
-        #expect(FeedbackService.LearningHealth.metricsInaccuracy.description == "metrics_inaccuracy")
-        #expect(FeedbackService.LearningHealth.securityConcern("privacy_violation").description == "security_concern_privacy_violation")
+        #expect(LearningHealth.healthy.description == "healthy")
+        #expect(LearningHealth.memoryPressure(0.75).description == "memory_pressure_0.75")
+        #expect(LearningHealth.highProcessingLatency(250.5).description == "high_processing_latency_250.500")
+        #expect(LearningHealth.dataCorrupted.description == "data_corrupted")
+        #expect(LearningHealth.metricsInaccuracy.description == "metrics_inaccuracy")
+        #expect(LearningHealth.securityConcern("privacy_violation").description == "security_concern_privacy_violation")
     }
 
     @Test("LearningHealth Equatable")
     func testLearningHealthEquatable() {
-        #expect(FeedbackService.LearningHealth.healthy == .healthy)
-        #expect(FeedbackService.LearningHealth.memoryPressure(0.5) == .memoryPressure(0.5))
-        #expect(FeedbackService.LearningHealth.memoryPressure(0.5) != .memoryPressure(0.7))
-        #expect(FeedbackService.LearningHealth.highProcessingLatency(100.0) != .highProcessingLatency(120.0))
-        #expect(FeedbackService.LearningHealth.securityConcern("test") != .securityConcern("different"))
+        #expect(LearningHealth.healthy == .healthy)
+        #expect(LearningHealth.memoryPressure(0.5) == .memoryPressure(0.5))
+        #expect(LearningHealth.memoryPressure(0.5) != .memoryPressure(0.7))
+        #expect(LearningHealth.highProcessingLatency(100.0) != .highProcessingLatency(120.0))
+        #expect(LearningHealth.securityConcern("test") != .securityConcern("different"))
     }
 
     // MARK: - Enhanced Service API Tests
 
     @Test("Enhanced Service Initialization")
-    func testEnhancedServiceInitialization() {
-        let config = FeedbackService.LearningConfig(
+    func testEnhancedServiceInitialization() async {
+        let config = LearningConfig(
             enableMemoryMonitoring: false,
             enablePerformanceProfiling: false,
             enableSecurityAudit: false,
@@ -119,17 +119,26 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: false
         )
 
-        let service = FeedbackService(config: config)
+        let service = await MainActor.run {
+            FeedbackService(persistence: PersistenceController.shared, config: config)
+        }
 
-        #expect(service.getHealthStatus() == .healthy)
-        #expect(service.getConfig().enableMemoryMonitoring == false)
-        #expect(service.getConfig().enableMLBasedLearning == false)
-        #expect(service.getConfig().maxFeedbackHistory == 2000)
+        let healthStatus = await MainActor.run {
+            service.getHealthStatus()
+        }
+        #expect(healthStatus == .healthy)
+        
+        let serviceConfig = await MainActor.run {
+            service.getConfig()
+        }
+        #expect(serviceConfig.enableMemoryMonitoring == false)
+        #expect(serviceConfig.enableMLBasedLearning == false)
+        #expect(serviceConfig.maxFeedbackHistory == 2000)
     }
 
     @Test("Configuration Update at Runtime")
-    func testConfigurationUpdate() {
-        let initialConfig = FeedbackService.LearningConfig(
+    func testConfigurationUpdate() async {
+        let initialConfig = LearningConfig(
             enableMemoryMonitoring: false,
             enablePerformanceProfiling: false,
             enableSecurityAudit: false,
@@ -143,12 +152,17 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: false
         )
 
-        let service = FeedbackService(config: initialConfig)
+        let service = await MainActor.run {
+            FeedbackService(persistence: PersistenceController.shared, config: initialConfig)
+        }
 
-        #expect(service.getConfig().enableMemoryMonitoring == false)
+        let initialServiceConfig = await MainActor.run {
+            service.getConfig()
+        }
+        #expect(initialServiceConfig.enableMemoryMonitoring == false)
 
         // Update configuration
-        let newConfig = FeedbackService.LearningConfig(
+        let newConfig = LearningConfig(
             enableMemoryMonitoring: true,
             enablePerformanceProfiling: true,
             enableSecurityAudit: true,
@@ -162,24 +176,29 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: true
         )
 
-        service.updateConfig(newConfig)
+        await MainActor.run {
+            service.updateConfig(newConfig)
+        }
 
-        #expect(service.getConfig().enableMemoryMonitoring == true)
-        #expect(service.getConfig().enablePerformanceProfiling == true)
-        #expect(service.getConfig().enableSecurityAudit == true)
-        #expect(service.getConfig().enableMLBasedLearning == true)
-        #expect(service.getConfig().enableAutomatedOptimization == true)
-        #expect(service.getConfig().maxFeedbackHistory == 15000)
-        #expect(service.getConfig().metricsUpdateInterval == 180.0)
-        #expect(service.getConfig().healthCheckInterval == 90.0)
-        #expect(service.getConfig().memoryPressureThreshold == 0.9)
-        #expect(service.getConfig().enableAuditLogging == true)
-        #expect(service.getConfig().enableDataEncryption == true)
+        let updatedConfig = await MainActor.run {
+            service.getConfig()
+        }
+        #expect(updatedConfig.enableMemoryMonitoring == true)
+        #expect(updatedConfig.enablePerformanceProfiling == true)
+        #expect(updatedConfig.enableSecurityAudit == true)
+        #expect(updatedConfig.enableMLBasedLearning == true)
+        #expect(updatedConfig.enableAutomatedOptimization == true)
+        #expect(updatedConfig.maxFeedbackHistory == 15000)
+        #expect(updatedConfig.metricsUpdateInterval == 180.0)
+        #expect(updatedConfig.healthCheckInterval == 90.0)
+        #expect(updatedConfig.memoryPressureThreshold == 0.9)
+        #expect(updatedConfig.enableAuditLogging == true)
+        #expect(updatedConfig.enableDataEncryption == true)
     }
 
     @Test("Memory Pressure Monitoring")
-    func testMemoryPressureMonitoring() {
-        let config = FeedbackService.LearningConfig(
+    func testMemoryPressureMonitoring() async {
+        let config = LearningConfig(
             enableMemoryMonitoring: true,
             enablePerformanceProfiling: false,
             enableSecurityAudit: false,
@@ -193,15 +212,19 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: false
         )
 
-        let service = FeedbackService(config: config)
+        let service = await MainActor.run {
+            FeedbackService(persistence: PersistenceController.shared, config: config)
+        }
 
-        let memoryPressure = service.getCurrentMemoryPressure()
+        let memoryPressure = await MainActor.run {
+            service.getCurrentMemoryPressure()
+        }
         #expect(memoryPressure >= 0.0 && memoryPressure <= 1.0)
     }
 
     @Test("Security Event Logging")
-    func testSecurityEventLogging() {
-        let config = FeedbackService.LearningConfig(
+    func testSecurityEventLogging() async {
+        let config = LearningConfig(
             enableMemoryMonitoring: false,
             enablePerformanceProfiling: false,
             enableSecurityAudit: true,
@@ -215,18 +238,22 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: false
         )
 
-        let service = FeedbackService(config: config)
+        let service = await MainActor.run {
+            FeedbackService(persistence: PersistenceController.shared, config: config)
+        }
 
         // Initially should have no security events
-        let initialEvents = service.getSecurityEvents()
+        let initialEvents = await MainActor.run {
+            service.getSecurityEvents()
+        }
         #expect(initialEvents.count >= 0)
     }
 
     // MARK: - Metrics Export Tests
 
     @Test("Metrics Export JSON Format")
-    func testMetricsExportJSON() {
-        let config = FeedbackService.LearningConfig(
+    func testMetricsExportJSON() async {
+        let config = LearningConfig(
             enableMemoryMonitoring: false,
             enablePerformanceProfiling: true,
             enableSecurityAudit: false,
@@ -240,16 +267,20 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: false
         )
 
-        let service = FeedbackService(config: config)
+        let service = await MainActor.run {
+            FeedbackService(persistence: PersistenceController.shared, config: config)
+        }
 
-        let jsonMetrics = service.exportMetrics(format: "json")
+        let jsonMetrics = await MainActor.run {
+            service.exportMetrics(format: "json")
+        }
         #expect(!jsonMetrics.isEmpty)
         #expect(jsonMetrics.contains("operationId") || jsonMetrics == "{}")
     }
 
     @Test("Metrics Export Prometheus Format")
-    func testMetricsExportPrometheus() {
-        let config = FeedbackService.LearningConfig(
+    func testMetricsExportPrometheus() async {
+        let config = LearningConfig(
             enableMemoryMonitoring: false,
             enablePerformanceProfiling: true,
             enableSecurityAudit: false,
@@ -263,16 +294,20 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: false
         )
 
-        let service = FeedbackService(config: config)
+        let service = await MainActor.run {
+            FeedbackService(persistence: PersistenceController.shared, config: config)
+        }
 
-        let prometheusMetrics = service.exportMetrics(format: "prometheus")
+        let prometheusMetrics = await MainActor.run {
+            service.exportMetrics(format: "prometheus")
+        }
         #expect(!prometheusMetrics.isEmpty)
         #expect(prometheusMetrics.contains("# Learning & Refinement Metrics") || prometheusMetrics.isEmpty)
     }
 
     @Test("Health Report Generation")
-    func testHealthReportGeneration() {
-        let config = FeedbackService.LearningConfig(
+    func testHealthReportGeneration() async {
+        let config = LearningConfig(
             enableMemoryMonitoring: false,
             enablePerformanceProfiling: true,
             enableSecurityAudit: false,
@@ -286,9 +321,13 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: false
         )
 
-        let service = FeedbackService(config: config)
+        let service = await MainActor.run {
+            FeedbackService(persistence: PersistenceController.shared, config: config)
+        }
 
-        let healthReport = service.getHealthReport()
+        let healthReport = await MainActor.run {
+            service.getHealthReport()
+        }
         #expect(!healthReport.isEmpty)
         #expect(healthReport.contains("Learning & Refinement Health Report"))
         #expect(healthReport.contains("System Status"))
@@ -298,8 +337,8 @@ struct FeedbackServiceEnhancedTests {
     }
 
     @Test("System Information Generation")
-    func testSystemInformationGeneration() {
-        let config = FeedbackService.LearningConfig(
+    func testSystemInformationGeneration() async {
+        let config = LearningConfig(
             enableMemoryMonitoring: false,
             enablePerformanceProfiling: true,
             enableSecurityAudit: false,
@@ -313,9 +352,13 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: false
         )
 
-        let service = FeedbackService(config: config)
+        let service = await MainActor.run {
+            FeedbackService(persistence: PersistenceController.shared, config: config)
+        }
 
-        let systemInfo = service.getSystemInfo()
+        let systemInfo = await MainActor.run {
+            service.getSystemInfo()
+        }
         #expect(!systemInfo.isEmpty)
         #expect(systemInfo.contains("Learning & Refinement System Information"))
         #expect(systemInfo.contains("Configuration"))
@@ -325,8 +368,8 @@ struct FeedbackServiceEnhancedTests {
     }
 
     @Test("Learning Statistics")
-    func testLearningStatistics() {
-        let config = FeedbackService.LearningConfig(
+    func testLearningStatistics() async {
+        let config = LearningConfig(
             enableMemoryMonitoring: false,
             enablePerformanceProfiling: true,
             enableSecurityAudit: false,
@@ -340,9 +383,13 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: false
         )
 
-        let service = FeedbackService(config: config)
+        let service = await MainActor.run {
+            FeedbackService(persistence: PersistenceController.shared, config: config)
+        }
 
-        let (feedbackCount, falsePositiveRate, correctDetectionRate, averageConfidence) = service.getLearningStatistics()
+        let (feedbackCount, falsePositiveRate, correctDetectionRate, averageConfidence) = await MainActor.run {
+            service.getLearningStatistics()
+        }
 
         #expect(feedbackCount >= 0)
         #expect(falsePositiveRate >= 0.0 && falsePositiveRate <= 1.0)
@@ -353,9 +400,9 @@ struct FeedbackServiceEnhancedTests {
     // MARK: - Health Monitoring Tests
 
     @Test("Health Monitoring Configuration")
-    func testHealthMonitoringConfiguration() {
+    func testHealthMonitoringConfiguration() async {
         // Test with health monitoring disabled
-        let noHealthConfig = FeedbackService.LearningConfig(
+        let noHealthConfig = LearningConfig(
             enableMemoryMonitoring: false,
             enablePerformanceProfiling: false,
             enableSecurityAudit: false,
@@ -369,12 +416,17 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: false
         )
 
-        let serviceNoHealth = FeedbackService(config: noHealthConfig)
+        let serviceNoHealth = await MainActor.run {
+            FeedbackService(persistence: PersistenceController.shared, config: noHealthConfig)
+        }
 
-        #expect(serviceNoHealth.getConfig().healthCheckInterval == 0.0)
+        let config = await MainActor.run {
+            serviceNoHealth.getConfig()
+        }
+        #expect(config.healthCheckInterval == 0.0)
 
         // Test with health monitoring enabled
-        let healthConfig = FeedbackService.LearningConfig(
+        let healthConfig = LearningConfig(
             enableMemoryMonitoring: false,
             enablePerformanceProfiling: false,
             enableSecurityAudit: false,
@@ -388,16 +440,21 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: false
         )
 
-        let serviceWithHealth = FeedbackService(config: healthConfig)
+        let serviceWithHealth = await MainActor.run {
+            FeedbackService(persistence: PersistenceController.shared, config: healthConfig)
+        }
 
-        #expect(serviceWithHealth.getConfig().healthCheckInterval == 30.0)
+        let healthConfigResult = await MainActor.run {
+            serviceWithHealth.getConfig()
+        }
+        #expect(healthConfigResult.healthCheckInterval == 30.0)
     }
 
     // MARK: - API Contract Tests
 
     @Test("API Contract Compliance")
-    func testAPIContractCompliance() {
-        let config = FeedbackService.LearningConfig(
+    func testAPIContractCompliance() async {
+        let config = LearningConfig(
             enableMemoryMonitoring: false,
             enablePerformanceProfiling: true,
             enableSecurityAudit: true,
@@ -411,37 +468,59 @@ struct FeedbackServiceEnhancedTests {
             enableDataEncryption: false
         )
 
-        let service = FeedbackService(config: config)
+        let service = await MainActor.run {
+            FeedbackService(persistence: PersistenceController.shared, config: config)
+        }
 
         // Test that all required public APIs exist and return expected types
-        let healthStatus = service.getHealthStatus()
-        #expect(healthStatus is FeedbackService.LearningHealth)
+        let healthStatus = await MainActor.run {
+            service.getHealthStatus()
+        }
+        #expect(healthStatus is LearningHealth)
 
-        let learningConfig = service.getConfig()
-        #expect(learningConfig is FeedbackService.LearningConfig)
+        let learningConfig = await MainActor.run {
+            service.getConfig()
+        }
+        #expect(learningConfig is LearningConfig)
 
-        let memoryPressure = service.getCurrentMemoryPressure()
+        let memoryPressure = await MainActor.run {
+            service.getCurrentMemoryPressure()
+        }
         #expect(memoryPressure >= 0.0 && memoryPressure <= 1.0)
 
-        let securityEvents = service.getSecurityEvents()
+        let securityEvents = await MainActor.run {
+            service.getSecurityEvents()
+        }
         #expect(securityEvents is [LearningSecurityEvent])
 
-        let performanceMetrics = service.getPerformanceMetrics()
+        let performanceMetrics = await MainActor.run {
+            service.getPerformanceMetrics()
+        }
         #expect(performanceMetrics is [LearningPerformanceMetrics])
 
-        let jsonMetrics = service.exportMetrics(format: "json")
+        let jsonMetrics = await MainActor.run {
+            service.exportMetrics(format: "json")
+        }
         #expect(jsonMetrics is String)
 
-        let prometheusMetrics = service.exportMetrics(format: "prometheus")
+        let prometheusMetrics = await MainActor.run {
+            service.exportMetrics(format: "prometheus")
+        }
         #expect(prometheusMetrics is String)
 
-        let healthReport = service.getHealthReport()
+        let healthReport = await MainActor.run {
+            service.getHealthReport()
+        }
         #expect(healthReport is String && !healthReport.isEmpty)
 
-        let systemInfo = service.getSystemInfo()
+        let systemInfo = await MainActor.run {
+            service.getSystemInfo()
+        }
         #expect(systemInfo is String && !systemInfo.isEmpty)
 
-        let learningStats = service.getLearningStatistics()
+        let learningStats = await MainActor.run {
+            service.getLearningStatistics()
+        }
         #expect(learningStats.feedbackCount >= 0)
         #expect(learningStats.falsePositiveRate >= 0.0 && learningStats.falsePositiveRate <= 1.0)
         #expect(learningStats.correctDetectionRate >= 0.0 && learningStats.correctDetectionRate <= 1.0)

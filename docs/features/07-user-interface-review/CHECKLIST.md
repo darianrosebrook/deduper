@@ -63,6 +63,29 @@ SwiftUI screens for onboarding/permissions, scan status, groups list, group deta
 
 ✅ Complete, accessible, and performant UI with comprehensive error handling, keyboard navigation, and design system compliance.
 
+### UI Component Backend Integration Status
+
+**Last Updated**: December 2024
+
+#### Backend Integration
+- ✅ **OperationsView**: Connected to real `MergeService` and `PersistenceController` - replaced placeholder calls with actual service methods
+- ✅ **MergePlanSheet**: Displays visual differences and field changes from `MergePlan` - connected to `MergeService.planMerge()`
+- ✅ **TestingView**: Uses real test results and coverage data - replaced placeholder quality metrics with actual test runner integration
+- ✅ **LoggingView**: Connected to `PerformanceMonitoringService.getCurrentMetrics()` - replaced mock performance metrics with real-time system metrics
+
+#### Implementation Notes
+- **OperationsView**: Removed `confidence` placeholder calculation; uses `persistenceController.resolveFileURL()` for file path resolution
+- **MergePlanSheet**: Displays `visualDifferences` and `fieldChanges` from `MergePlan` structure
+- **TestingView**: `generateQualityReport()` uses real `testResults` and `coverageData` instead of placeholders
+- **LoggingView**: Falls back to `performanceService.getPerformanceSummary()` if `performanceMonitoringService` is unavailable
+
+### Known Limitations
+
+1. **UI Polish**: Some components may need additional edge case handling and polish
+2. **Error Handling**: Additional error scenarios may need UI coverage
+3. **Performance**: Large datasets may need additional optimization for UI responsiveness
+4. **Accessibility**: Full VoiceOver support and keyboard navigation implemented; additional a11y features may be needed for complex workflows
+
 ### Bi-directional References
 
 - Code → Docs

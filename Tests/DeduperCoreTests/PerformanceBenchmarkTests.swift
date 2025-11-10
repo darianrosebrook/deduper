@@ -47,7 +47,9 @@ struct PerformanceBenchmarkTests {
 
     @Test("Sequential vs Parallel Processing Benchmark")
     func testSequentialVsParallelBenchmark() async throws {
-        let persistenceController = PersistenceController(inMemory: true)
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
 
         // Create test data
         let testDirs = try createTestDirectories(count: 4, filesPerDirectory: 25)
@@ -136,7 +138,7 @@ struct PerformanceBenchmarkTests {
         print("  Time saved: \(String(format: "%.1f", sequentialDuration - parallelDuration))s")
 
         // Validate results
-        #expect(parallelFilesFound >= sequentialFilesFound * 0.95) // Allow 5% variance
+        #expect(parallelFilesFound >= Int(Double(sequentialFilesFound) * 0.95)) // Allow 5% variance
         #expect(speedup > 1.5) // Expect at least 50% improvement
         #expect(parallelDuration < sequentialDuration) // Should be faster
 
@@ -145,7 +147,9 @@ struct PerformanceBenchmarkTests {
 
     @Test("Memory Usage Benchmark")
     func testMemoryUsageBenchmark() async throws {
-        let persistenceController = PersistenceController(inMemory: true)
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
 
         // Create larger test data for memory testing
         let testDirs = try createTestDirectories(count: 6, filesPerDirectory: 100)
@@ -225,7 +229,9 @@ struct PerformanceBenchmarkTests {
 
     @Test("Health Monitoring Benchmark")
     func testHealthMonitoringBenchmark() async throws {
-        let persistenceController = PersistenceController(inMemory: true)
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
 
         // Create test data
         let testDirs = try createTestDirectories(count: 3, filesPerDirectory: 50)
@@ -292,7 +298,9 @@ struct PerformanceBenchmarkTests {
 
     @Test("Stress Test - Large Dataset")
     func testStressTestLargeDataset() async throws {
-        let persistenceController = PersistenceController(inMemory: true)
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
 
         // Create large test dataset (skip in CI for performance)
         let testDirs = try createTestDirectories(count: 10, filesPerDirectory: 200)
@@ -337,6 +345,12 @@ struct PerformanceBenchmarkTests {
                 filesFound += 1
             case .error:
                 errorsEncountered += 1
+            case .started:
+                break
+            case .progress:
+                break
+            case .skipped:
+                break
             case .finished:
                 monitoringTimer.invalidate()
             }
@@ -360,7 +374,7 @@ struct PerformanceBenchmarkTests {
 
         // Validate stress test results
         #expect(filesFound >= Int(Double(expectedFileCount) * 0.9)) // Allow 10% variance
-        #expect(errorsEncountered < expectedFileCount * 0.05) // Less than 5% errors
+        #expect(errorsEncountered < Int(Double(expectedFileCount) * 0.05)) // Less than 5% errors
         #expect(duration > 0) // Should take some time for large dataset
         #expect(duration < 60.0) // Should not take too long
 
@@ -369,7 +383,9 @@ struct PerformanceBenchmarkTests {
 
     @Test("Stress Test - High Concurrency")
     func testStressTestHighConcurrency() async throws {
-        let persistenceController = PersistenceController(inMemory: true)
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
 
         // Create test data
         let testDirs = try createTestDirectories(count: 8, filesPerDirectory: 100)
@@ -442,7 +458,9 @@ struct PerformanceBenchmarkTests {
 
     @Test("Configuration Comparison Benchmark")
     func testConfigurationComparisonBenchmark() async throws {
-        let persistenceController = PersistenceController(inMemory: true)
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
 
         // Create test data
         let testDirs = try createTestDirectories(count: 3, filesPerDirectory: 75)
@@ -515,7 +533,7 @@ struct PerformanceBenchmarkTests {
         print("-------------|-------------|----------|----------")
 
         for (configName, filesFound, duration, filesPerSec) in results {
-            print("\(configName.padding(toLength: 13, withTruncation: true)) | \(String(format: "%11d", filesFound)) | \(String(format: "%8.2f", duration)) | \(String(format: "%8.1f", filesPerSec))")
+            print("\(configName.padding(toLength: 13, withPad: " ", startingAt: 0)) | \(String(format: "%11d", filesFound)) | \(String(format: "%8.2f", duration)) | \(String(format: "%8.1f", filesPerSec))")
         }
 
         // Find best performing configuration

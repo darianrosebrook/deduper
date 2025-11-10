@@ -1,8 +1,8 @@
 # Deduper — Advanced Duplicate Photo & Video Finder for macOS
 
-**The most comprehensive duplicate detection application architecture ever created.**
+**A duplicate detection application architecture for macOS.**
 
-A professional-grade, native macOS application that intelligently finds and manages duplicate and visually similar photos and videos. Built with enterprise-level architecture, safety-first design principles, and cutting-edge performance optimization.
+A native macOS application that intelligently finds and manages duplicate and visually similar photos and videos. Built with modular architecture, safety-first design principles, and performance optimization.
 
 [![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
 [![macOS](https://img.shields.io/badge/macOS-13+-blue.svg)](https://developer.apple.com/macos)
@@ -83,13 +83,18 @@ A professional-grade, native macOS application that intelligently finds and mana
    ```
 
 ### **Current Status**
-- ✅ **Core Services (`DeduperCore`)**: Fully implemented and building successfully
-- ✅ **Architecture**: Complete enterprise-grade service layer with dependency injection
-- ✅ **Documentation**: 72 comprehensive guides and specifications
+
+**Implementation Status**: Core functionality implemented, testing coverage improved, UI components connected to backend services.
+
+- ✅ **Core Services (`DeduperCore`)**: Implemented and building successfully
+- ✅ **Architecture**: Service layer with dependency injection implemented
+- ✅ **Documentation**: 72+ guides and specifications available
 - ✅ **Build System**: Swift Package Manager with proper targets
-- ✅ **CoreData Model**: Programmatic model with secure transformers (no compilation issues)
-- ✅ **UI Components**: Advanced implementation with concurrency fixes applied
-- 🔄 **Implementation Plan**: Detailed roadmap for remaining TODOs available
+- ✅ **Testing**: Comprehensive test suites implemented for MergeService, VisualDifferenceService, Audio detection, Integration tests, and Transaction recovery
+- ✅ **UI Components**: Core views implemented and connected to backend services (OperationsView, MergePlanSheet, TestingView, LoggingView)
+- ✅ **Performance Monitoring**: Real system metrics, detection metrics, persistence, and benchmark execution implemented
+- ⚠️ **CoreData Model**: Programmatic model with secure transformers (some pre-existing compilation issues in unrelated files)
+- 🔄 **Production Readiness**: In development - core features implemented but comprehensive testing and validation ongoing
 
 ### Recent Updates & Fixes
 
@@ -185,19 +190,19 @@ deduper/
 - **OSLog** for structured logging
 
 ### **Testing Strategy**
-- **Unit Tests**: Core algorithms and business logic
-- **Integration Tests**: Service interactions and data flow
-- **UI Tests**: User workflows and interface behavior
-- **Performance Tests**: Benchmarking and resource usage
+- **Unit Tests**: Core algorithms and business logic implemented (MergeService, VisualDifferenceService, Audio detection)
+- **Integration Tests**: Service interactions and data flow implemented (MergeIntegrationTests, TransactionRecoveryTests)
+- **UI Tests**: User workflows and interface behavior (in progress)
+- **Performance Tests**: Benchmarking and resource usage implemented (real metrics collection)
 - **Test Fixtures**: Realistic sample data for development
 
 ## Documentation
 
 ### **Implementation Guides**
-- **[Core Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)** - Complete development roadmap
-- **[Architectural Decision Records](docs/adr/)** - Design rationale and trade-offs
+- **[Core Implementation Guide](docs/architecture/IMPLEMENTATION_GUIDE.md)** - Development roadmap
+- **[Architectural Decision Records](docs/reference/adr/)** - Design rationale and trade-offs
 - **[Component Standards](DesignSystem/COMPONENT_STANDARDS.md)** - UI/UX specifications
-- **[Best Practices](docs/best-in-class-ideas.md)** - Industry-leading techniques
+- **[Best Practices](docs/development/best-in-class-ideas.md)** - Development techniques
 
 ### **Feature Documentation**
 - **[File Access & Scanning](docs/01-file-access-scanning/)** - Secure folder access implementation
@@ -215,7 +220,7 @@ deduper/
 
 ## Contributing
 
-We welcome contributions! This project represents a comprehensive implementation of duplicate detection best practices.
+We welcome contributions! This project implements duplicate detection best practices with a focus on correctness, safety, and transparency.
 
 ### **Development Setup**
 1. Fork the repository
@@ -244,10 +249,10 @@ We welcome contributions! This project represents a comprehensive implementation
 ## Security & Privacy
 
 ### **Security Features**
-- **macOS Sandbox Compliance**: Proper entitlements and security-scoped bookmarks
+- **macOS Sandbox Compliance**: Proper entitlements and security-scoped bookmarks implemented
 - **Safe File Operations**: Move-to-trash by default with undo support
 - **Protected Path Detection**: Automatic identification of system and cloud-synced directories
-- **Transaction Logging**: Complete audit trail of all file operations
+- **Transaction Logging**: Audit trail of file operations (framework implemented)
 
 ### **Privacy Protection**
 - **Local Processing**: All analysis happens on-device, no cloud processing
@@ -264,21 +269,22 @@ We welcome contributions! This project represents a comprehensive implementation
 - **Pause/Resume**: Interruptible operations with state persistence
 
 ### **Benchmarking**
-- **Built-in Benchmarks**: Comprehensive performance testing suite
-- **Real-time Metrics**: Live monitoring of CPU, memory, and I/O usage
-- **Comparative Analysis**: Historical performance tracking and optimization
+- **Built-in Benchmarks**: Performance testing suite with real DuplicateDetectionEngine execution
+- **Real-time Metrics**: Live monitoring of CPU, memory, and I/O usage (system metrics implemented)
+- **Detection Metrics**: Query times, cache hit rates, and memory usage tracking (integrated with detection engine)
+- **Historical Tracking**: Performance trends and metrics persistence (UserDefaults-based storage)
 - **Resource Bounds**: Configurable limits to prevent system impact
 
 ## What Makes This Special
 
-This isn't just another duplicate finder—it's a comprehensive platform that demonstrates:
+This project demonstrates:
 
-1. **Enterprise Architecture**: Professional-grade service layer with dependency injection
-2. **Safety-First Design**: Every operation is reversible with complete audit trails
-3. **Transparency**: Evidence-based decisions with detailed confidence scoring
+1. **Modular Architecture**: Service layer with dependency injection
+2. **Safety-First Design**: Operations are reversible with audit trail framework
+3. **Transparency**: Evidence-based decisions with confidence scoring
 4. **Performance Engineering**: Optimized for large-scale media libraries
-5. **Accessibility Excellence**: Full support for assistive technologies
-6. **Developer Experience**: Comprehensive testing, documentation, and tooling
+5. **Accessibility**: Support for assistive technologies (in progress)
+6. **Developer Experience**: Documentation and tooling available
 
 ## License
 

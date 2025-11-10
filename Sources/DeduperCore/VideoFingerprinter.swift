@@ -174,7 +174,8 @@ public final class VideoFingerprinter: @unchecked Sendable {
             self.enableParallelProcessing = enableParallelProcessing
             self.maxConcurrentVideos = max(1, min(maxConcurrentVideos, ProcessInfo.processInfo.activeProcessorCount * 4))
             self.memoryPressureThreshold = max(0.1, min(memoryPressureThreshold, 0.95))
-            self.healthCheckInterval = max(5.0, healthCheckInterval)
+            // Allow 0.0 to disable health monitoring, otherwise enforce minimum of 5.0
+            self.healthCheckInterval = healthCheckInterval == 0.0 ? 0.0 : max(5.0, healthCheckInterval)
             self.frameQualityThreshold = max(0.1, min(frameQualityThreshold, 1.0))
             self.enableSecurityAudit = enableSecurityAudit
             self.enablePerformanceProfiling = enablePerformanceProfiling

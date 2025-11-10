@@ -17,6 +17,7 @@ import Combine
 @MainActor
 public final class LoggingViewModel: ObservableObject {
     private let performanceService = ServiceManager.shared.performanceService
+    private let performanceMonitoringService = ServiceManager.shared.performanceMonitoringService
     private let logger = Logger(subsystem: "com.deduper", category: "logging")
 
     // MARK: - Log Data
@@ -219,13 +220,37 @@ public final class LoggingViewModel: ObservableObject {
     }
 
     private func loadPerformanceData() {
-        // Load recent performance metrics
-        // This would normally come from the PerformanceService
-        performanceMetrics = [] // Placeholder for now
-
-        // Update current resource usage
-        currentMemoryUsage = Int64.random(in: 100_000_000...500_000_000) // Mock data
-        currentCPUUsage = Double.random(in: 0.1...0.8) // Mock data
+        Task {
+            do {
+                // Get real-time metrics from PerformanceMonitoringService if available
+                if let monitoringService = performanceMonitoringService {
+                    let metrics = try await monitoringService.getCurrentMetrics()
+                    
+                    await MainActor.run {
+                        // Update current resource usage with real metrics
+                        currentMemoryUsage = Int64(metrics.averageMemoryUsage)
+                        currentCPUUsage = metrics.averageCPUUsage
+                        
+                        logger.debug("Loaded performance metrics: CPU \(String(format: "%.1f", metrics.averageCPUUsage))%, Memory \(ByteCountFormatter.string(fromByteCount: Int64(metrics.averageMemoryUsage), countStyle: .memory))")
+                    }
+                } else {
+                    // Fallback to PerformanceService summary
+                    let summary = performanceService.getPerformanceSummary()
+                    await MainActor.run {
+                        currentMemoryUsage = summary.averageMemoryUsage
+                        currentCPUUsage = summary.averageItemsPerSecond > 0 ? summary.averageItemsPerSecond : 0.0
+                        logger.debug("Loaded performance summary: \(summary.totalOperations) operations")
+                    }
+                }
+            } catch {
+                logger.error("Failed to load performance metrics: \(error.localizedDescription)")
+                // Fallback to zero values if metrics unavailable
+                await MainActor.run {
+                    currentMemoryUsage = 0
+                    currentCPUUsage = 0.0
+                }
+            }
+        }
     }
 
     public func filterLogs() {

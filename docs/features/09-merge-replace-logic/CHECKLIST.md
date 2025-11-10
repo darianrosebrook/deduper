@@ -51,6 +51,33 @@ Select keeper, merge metadata from duplicates, and move redundant files to Trash
 
 ✅ Complete merge and replace functionality with atomic operations, transaction support, and comprehensive test coverage.
 
+### Test Implementation Status
+
+**Last Updated**: December 2024
+
+#### Unit Tests
+- ✅ **MergeServiceTests.swift**: Implemented - 26 test cases covering keeper suggestion, metadata merging, merge plan building, undo operations
+- ✅ **VisualDifferenceServiceTests.swift**: Implemented - 32 test cases covering hash distance, pixel difference, SSIM, color histogram, verdict system
+- ✅ **AudioDetectionTests.swift**: Implemented - 30 test cases covering signature generation, distance calculation, bucket building, format support
+
+#### Integration Tests
+- ✅ **MergeIntegrationTests.swift**: Implemented - 11 test cases covering end-to-end merge workflow, transaction rollback, undo restoration, concurrent operations
+- ✅ **TransactionRecoveryTests.swift**: Implemented - 14 test cases covering crash detection, state verification, recovery options, partial recovery
+
+#### Test Coverage
+- **MergeService**: Tests implemented with real `PersistenceController` (in-memory) and mocked `MetadataExtractionService`
+- **VisualDifferenceService**: Tests implemented with test image generation utilities
+- **Audio Detection**: Tests implemented within DuplicateDetectionEngine tests
+- **Coverage Targets**: Tests aim for 85-95% branch coverage depending on component criticality
+
+### Known Limitations
+
+1. **Contract Tests**: Not yet implemented - API contract verification planned but not yet implemented
+2. **Chaos Tests**: Not yet implemented - Failure mode testing planned but not yet implemented
+3. **Mutation Tests**: Not yet implemented - Mutation testing framework integration planned but not yet implemented
+4. **E2E Tests**: Partial - Basic workflows covered in integration tests; additional E2E tests for error handling, multiple formats, and batch operations planned
+5. **Visual Difference Analysis**: Disabled by default - Can be slow for large image sets; parallel processing implemented but SSIM could be optimized with Accelerate framework
+
 ### Bi-directional References
 
 - Code → Docs

@@ -827,7 +827,7 @@ public struct FieldChange: Sendable, Equatable {
 /**
  * Errors that can occur during merge operations
  */
-public enum MergeError: Error, LocalizedError, Sendable {
+public enum MergeError: Error, LocalizedError, Sendable, Equatable {
     case groupNotFound(UUID)
     case keeperNotFound(UUID)
     case permissionDenied(URL)

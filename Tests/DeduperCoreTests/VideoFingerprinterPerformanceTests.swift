@@ -39,7 +39,7 @@ import Foundation
         var totalFrameCount = 0
         
         for _ in 0..<iterations {
-            if let signature = fingerprinter.fingerprint(url: videoURL) {
+            if let signature = await fingerprinter.fingerprint(url: videoURL) {
                 successCount += 1
                 totalFrameCount += signature.frameHashes.count
             }
@@ -71,8 +71,8 @@ import Foundation
         let videoURL1 = fixtureURL(referenceClip)
         let videoURL2 = fixtureURL(comparisonClip)
         
-        guard let signature1 = fingerprinter.fingerprint(url: videoURL1),
-              let signature2 = fingerprinter.fingerprint(url: videoURL2) else {
+        guard let signature1 = await fingerprinter.fingerprint(url: videoURL1),
+              let signature2 = await fingerprinter.fingerprint(url: videoURL2) else {
             Issue.record("Failed to create test signatures")
             return
         }
@@ -110,7 +110,7 @@ import Foundation
         
         for url in videoURLs {
             totalAttempts += 1
-            if let signature = fingerprinter.fingerprint(url: url) {
+            if let signature = await fingerprinter.fingerprint(url: url) {
                 successfulFingerprints += 1
                 totalFramesExtracted += signature.frameHashes.count
                 

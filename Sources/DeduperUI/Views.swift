@@ -2381,13 +2381,31 @@ public struct GroupDetailView: View {
             // Evidence and metadata comparison
             ScrollView {
                 VStack(spacing: DesignToken.spacingMD) {
-                    if viewModel.mergePlan != nil {
-                        EvidencePanel(items: [
-                            EvidenceItem(id: "phash", label: "pHash", distanceText: "8", thresholdText: "10", verdict: .pass),
-                            EvidenceItem(id: "date", label: "date", distanceText: "2m", thresholdText: "5m", verdict: .warn),
-                            EvidenceItem(id: "size", label: "fileSize", distanceText: "1.2MB", thresholdText: "1.5MB", verdict: .pass),
-                        ], overallConfidence: currentGroup.confidence)
+                    // Always show evidence panel if group has members, even if merge plan is loading
+                    if !currentGroup.members.isEmpty {
+                        let evidenceItems = mapConfidenceSignalsToEvidenceItems(
+                            group: currentGroup,
+                            thresholds: DetectOptions.Thresholds() // Use default thresholds
+                        )
+                        if evidenceItems.isEmpty {
+                            Text("No evidence signals available")
+                                .font(DesignToken.fontFamilyCaption)
+                                .foregroundStyle(DesignToken.colorForegroundSecondary)
+                                .padding()
+                        } else {
+                            EvidencePanel(
+                                items: evidenceItems,
+                                overallConfidence: currentGroup.confidence
+                            )
+                        }
                     } else {
+                        Text("No group members available")
+                            .font(DesignToken.fontFamilyCaption)
+                            .foregroundStyle(DesignToken.colorForegroundSecondary)
+                            .padding()
+                    }
+                    
+                    if viewModel.mergePlan == nil {
                         ProgressView("Loading merge plan...")
                     }
 
@@ -2407,6 +2425,29 @@ public struct GroupDetailView: View {
                         ProgressView("Loading metadata...")
                     }
 
+                    // Video frame-by-frame analysis (for video groups)
+                    if currentGroup.mediaType == .video {
+                        if let summary = extractVideoFrameSummary(from: currentGroup, threshold: 5) {
+                            VideoFrameEvidenceView(
+                                averageDistance: summary.averageDistance,
+                                maxDistance: summary.maxDistance,
+                                mismatchedFrameCount: summary.mismatchedFrameCount,
+                                totalFrames: summary.totalFrames,
+                                threshold: 5
+                            )
+                        } else {
+                            // Fallback: Show basic video info
+                            VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                                Text("Video Analysis")
+                                    .font(DesignToken.fontFamilyHeading)
+                                Text("Frame-by-frame analysis requires video signatures")
+                                    .font(DesignToken.fontFamilyCaption)
+                                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                            }
+                            .padding(DesignToken.spacingMD)
+                        }
+                    }
+                    
                     // Visual differences (if available)
                     if let mergePlan = viewModel.mergePlan,
                        let visualDifferences = mergePlan.visualDifferences, !visualDifferences.isEmpty {
@@ -2425,8 +2466,8 @@ public struct GroupDetailView: View {
                                 }
                             }
                         }
-                    } else {
-                        // Preview placeholder
+                    } else if currentGroup.mediaType == .photo {
+                        // Preview placeholder for photos
                         VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
                             Text("Previews")
                                 .font(DesignToken.fontFamilyHeading)
@@ -3006,6 +3047,63 @@ public struct MergePlanSheet: View {
                 }
 
                 Divider()
+
+                // Visual differences section
+                if let visualDifferences = preview.visualDifferences, !visualDifferences.isEmpty {
+                    VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                        Text("Visual Differences")
+                            .font(DesignToken.fontFamilySubheading)
+                            .foregroundStyle(DesignToken.colorForegroundPrimary)
+
+                        ForEach(Array(visualDifferences.keys.prefix(3)), id: \.self) { duplicateId in
+                            if let analysis = visualDifferences[duplicateId] {
+                                VisualDifferenceViewWrapper(
+                                    keeperId: preview.keeperId,
+                                    duplicateId: duplicateId,
+                                    analysis: analysis
+                                )
+                            }
+                        }
+                    }
+                    .padding(DesignToken.spacingMD)
+                    .background(DesignToken.colorBackgroundSecondary)
+                    .cornerRadius(DesignToken.cornerRadiusMD)
+
+                    Divider()
+                }
+
+                // Metadata preview section
+                if !preview.fieldChanges.isEmpty {
+                    VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                        Text("Metadata Changes")
+                            .font(DesignToken.fontFamilySubheading)
+                            .foregroundStyle(DesignToken.colorForegroundPrimary)
+
+                        ForEach(preview.fieldChanges, id: \.field) { change in
+                            HStack {
+                                Text(change.field)
+                                    .font(DesignToken.fontFamilyBody)
+                                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                                Spacer()
+                                if let oldValue = change.oldValue {
+                                    Text("\(oldValue) → \(change.newValue ?? "N/A")")
+                                        .font(DesignToken.fontFamilyBody)
+                                        .foregroundStyle(DesignToken.colorForegroundPrimary)
+                                } else {
+                                    Text("→ \(change.newValue ?? "N/A")")
+                                        .font(DesignToken.fontFamilyBody)
+                                        .foregroundStyle(DesignToken.colorForegroundPrimary)
+                                }
+                            }
+                            .padding(.vertical, DesignToken.spacingXS)
+                        }
+                    }
+                    .padding(DesignToken.spacingMD)
+                    .background(DesignToken.colorBackgroundSecondary)
+                    .cornerRadius(DesignToken.cornerRadiusMD)
+
+                    Divider()
+                }
 
                 // Operation summary
                 operationSummaryView(preview: preview)

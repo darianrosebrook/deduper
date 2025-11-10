@@ -83,8 +83,10 @@ struct MetadataExtractionServiceEnhancedTests {
     // MARK: - Enhanced Service API Tests
 
     @Test("Enhanced Service Initialization")
-    func testEnhancedServiceInitialization() {
-        let persistenceController = PersistenceController(inMemory: true)
+    func testEnhancedServiceInitialization() async {
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
         let config = MetadataExtractionService.ExtractionConfig(
             enableMemoryMonitoring: false,
             enableAdaptiveProcessing: false,
@@ -100,14 +102,27 @@ struct MetadataExtractionServiceEnhancedTests {
             config: config
         )
 
-        #expect(service.getHealthStatus() == .healthy)
-        #expect(service.getConfig().enableMemoryMonitoring == false)
-        #expect(service.getCurrentConcurrency() == 1)
+        let healthStatus = await MainActor.run {
+            service.getHealthStatus()
+        }
+        #expect(healthStatus == .healthy)
+        
+        let serviceConfig = await MainActor.run {
+            service.getConfig()
+        }
+        #expect(serviceConfig.enableMemoryMonitoring == false)
+        
+        let concurrency = await MainActor.run {
+            service.getCurrentConcurrency()
+        }
+        #expect(concurrency == 1)
     }
 
     @Test("Configuration Update at Runtime")
-    func testConfigurationUpdate() {
-        let persistenceController = PersistenceController(inMemory: true)
+    func testConfigurationUpdate() async {
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
         let initialConfig = MetadataExtractionService.ExtractionConfig(
             enableMemoryMonitoring: false,
             enableAdaptiveProcessing: false,
@@ -123,7 +138,10 @@ struct MetadataExtractionServiceEnhancedTests {
             config: initialConfig
         )
 
-        #expect(service.getConfig().enableMemoryMonitoring == false)
+        let initialServiceConfig = await MainActor.run {
+            service.getConfig()
+        }
+        #expect(initialServiceConfig.enableMemoryMonitoring == false)
 
         // Update configuration
         let newConfig = MetadataExtractionService.ExtractionConfig(
@@ -136,20 +154,27 @@ struct MetadataExtractionServiceEnhancedTests {
             slowOperationThresholdMs: 10.0
         )
 
-        service.updateConfig(newConfig)
+        await MainActor.run {
+            service.updateConfig(newConfig)
+        }
 
-        #expect(service.getConfig().enableMemoryMonitoring == true)
-        #expect(service.getConfig().enableAdaptiveProcessing == true)
-        #expect(service.getConfig().enableParallelExtraction == true)
-        #expect(service.getConfig().maxConcurrency == 4)
-        #expect(service.getConfig().memoryPressureThreshold == 0.9)
-        #expect(service.getConfig().healthCheckInterval == 60.0)
-        #expect(service.getConfig().slowOperationThresholdMs == 10.0)
+        let updatedConfig = await MainActor.run {
+            service.getConfig()
+        }
+        #expect(updatedConfig.enableMemoryMonitoring == true)
+        #expect(updatedConfig.enableAdaptiveProcessing == true)
+        #expect(updatedConfig.enableParallelExtraction == true)
+        #expect(updatedConfig.maxConcurrency == 4)
+        #expect(updatedConfig.memoryPressureThreshold == 0.9)
+        #expect(updatedConfig.healthCheckInterval == 60.0)
+        #expect(updatedConfig.slowOperationThresholdMs == 10.0)
     }
 
     @Test("Memory Pressure Monitoring")
-    func testMemoryPressureMonitoring() {
-        let persistenceController = PersistenceController(inMemory: true)
+    func testMemoryPressureMonitoring() async {
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
         let config = MetadataExtractionService.ExtractionConfig(
             enableMemoryMonitoring: true,
             enableAdaptiveProcessing: false,
@@ -170,8 +195,10 @@ struct MetadataExtractionServiceEnhancedTests {
     }
 
     @Test("Security Event Logging")
-    func testSecurityEventLogging() {
-        let persistenceController = PersistenceController(inMemory: true)
+    func testSecurityEventLogging() async {
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
         let service = MetadataExtractionService(
             persistenceController: persistenceController,
             config: .default
@@ -191,8 +218,10 @@ struct MetadataExtractionServiceEnhancedTests {
     // MARK: - Metrics Export Tests
 
     @Test("Metrics Export JSON Format")
-    func testMetricsExportJSON() {
-        let persistenceController = PersistenceController(inMemory: true)
+    func testMetricsExportJSON() async {
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
         let service = MetadataExtractionService(
             persistenceController: persistenceController,
             config: .default
@@ -204,8 +233,10 @@ struct MetadataExtractionServiceEnhancedTests {
     }
 
     @Test("Metrics Export Prometheus Format")
-    func testMetricsExportPrometheus() {
-        let persistenceController = PersistenceController(inMemory: true)
+    func testMetricsExportPrometheus() async {
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
         let service = MetadataExtractionService(
             persistenceController: persistenceController,
             config: .default
@@ -217,8 +248,10 @@ struct MetadataExtractionServiceEnhancedTests {
     }
 
     @Test("Health Report Generation")
-    func testHealthReportGeneration() {
-        let persistenceController = PersistenceController(inMemory: true)
+    func testHealthReportGeneration() async {
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
         let service = MetadataExtractionService(
             persistenceController: persistenceController,
             config: .default
@@ -236,7 +269,9 @@ struct MetadataExtractionServiceEnhancedTests {
 
     @Test("Enhanced Service with File Operations")
     func testEnhancedServiceWithFileOperations() async {
-        let persistenceController = PersistenceController(inMemory: true)
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
         let service = MetadataExtractionService(
             persistenceController: persistenceController,
             config: .default
@@ -269,12 +304,17 @@ struct MetadataExtractionServiceEnhancedTests {
         #expect(performanceMetrics.count >= 0)
 
         // Verify health status is still healthy
-        #expect(service.getHealthStatus() == .healthy)
+        let healthStatus = await MainActor.run {
+            service.getHealthStatus()
+        }
+        #expect(healthStatus == .healthy)
     }
 
     @Test("Enhanced Service Error Handling")
     func testEnhancedServiceErrorHandling() async {
-        let persistenceController = PersistenceController(inMemory: true)
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
         let service = MetadataExtractionService(
             persistenceController: persistenceController,
             config: .default
@@ -297,8 +337,10 @@ struct MetadataExtractionServiceEnhancedTests {
     // MARK: - Performance and Concurrency Tests
 
     @Test("Adaptive Concurrency Based on Memory Pressure")
-    func testAdaptiveConcurrency() {
-        let persistenceController = PersistenceController(inMemory: true)
+    func testAdaptiveConcurrency() async {
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
 
         // Create service with adaptive processing enabled
         let config = MetadataExtractionService.ExtractionConfig(
@@ -317,17 +359,25 @@ struct MetadataExtractionServiceEnhancedTests {
         )
 
         // Initial concurrency should be max
-        #expect(service.getCurrentConcurrency() == 4)
+        let initialConcurrency = await MainActor.run {
+            service.getCurrentConcurrency()
+        }
+        #expect(initialConcurrency == 4)
 
         // Simulate memory pressure (would normally be handled by memory monitoring)
         // For testing, we verify the infrastructure is in place
-        #expect(service.getConfig().enableAdaptiveProcessing == true)
-        #expect(service.getConfig().maxConcurrency == 4)
+        let serviceConfig = await MainActor.run {
+            service.getConfig()
+        }
+        #expect(serviceConfig.enableAdaptiveProcessing == true)
+        #expect(serviceConfig.maxConcurrency == 4)
     }
 
     @Test("Health Monitoring Configuration")
-    func testHealthMonitoringConfiguration() {
-        let persistenceController = PersistenceController(inMemory: true)
+    func testHealthMonitoringConfiguration() async {
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
 
         // Test with health monitoring disabled
         let noHealthConfig = MetadataExtractionService.ExtractionConfig(
@@ -369,8 +419,10 @@ struct MetadataExtractionServiceEnhancedTests {
     // MARK: - Contract Tests
 
     @Test("API Contract Compliance")
-    func testAPIContractCompliance() {
-        let persistenceController = PersistenceController(inMemory: true)
+    func testAPIContractCompliance() async {
+        let persistenceController = await MainActor.run {
+            PersistenceController(inMemory: true)
+        }
         let service = MetadataExtractionService(
             persistenceController: persistenceController,
             config: .default
@@ -393,7 +445,7 @@ struct MetadataExtractionServiceEnhancedTests {
         #expect(securityEvents is [String])
 
         let performanceMetrics = service.getPerformanceMetrics()
-        #expect(performanceMetrics is [MetadataExtractionService.PerformanceMetrics])
+        #expect(performanceMetrics is [MetadataPerformanceMetrics])
 
         let jsonMetrics = service.exportMetrics(format: "json")
         #expect(jsonMetrics is String)

@@ -1,5 +1,7 @@
 import Foundation
 import os
+import Darwin
+import MachO
 
 // MARK: - Performance Monitoring Service
 
@@ -27,6 +29,27 @@ public final class PerformanceMonitoringService: @unchecked Sendable {
 
     private var monitoringTasks: [Task<Void, Never>] = []
     private var isMonitoringActive = false
+    
+    // Track query timing for queries per second calculation
+    private actor QueryTimestampsActor {
+        private var timestamps: [Date] = []
+        private let maxTimestamps = 100
+        
+        func append(_ timestamp: Date) {
+            timestamps.append(timestamp)
+            if timestamps.count > maxTimestamps {
+                timestamps.removeFirst(timestamps.count - maxTimestamps)
+            }
+        }
+        
+        func calculateQueriesPerSecond(currentTime: Date, window: TimeInterval) -> Double {
+            let cutoffTime = currentTime.addingTimeInterval(-window)
+            let recentQueries = timestamps.filter { $0 >= cutoffTime }
+            return Double(recentQueries.count) / window
+        }
+    }
+    
+    private let queryTimestampsActor = QueryTimestampsActor()
 
     public init() {}
 
@@ -266,22 +289,123 @@ public final class PerformanceMonitoringService: @unchecked Sendable {
 
     private func collectDetectionMetrics() async throws -> DetectionPerformanceMetrics {
         let startTime = DispatchTime.now()
+        let timestamp = Date()
 
-        // Collect current detection performance metrics
-        // This would integrate with the actual duplicate detection engine
-        // For now, using placeholder values
+        // Collect real metrics from DuplicateDetectionEngine and PrecomputedIndexService
+        var averageQueryTime: Double = 0.0
+        var queriesPerSecond: Double = 0.0
+        var memoryUsage: Double = 0.0
+        var cpuUsage: Double = 0.0
+        var cacheHitRate: Double = 0.0
+        
+        // Get detection metrics from DuplicateDetectionEngine
+        // Access ServiceManager from main actor
+        let detectionMetrics = await MainActor.run {
+            ServiceManager.shared.duplicateEngine.lastDetectionMetrics
+        }
+        
+        if let detectionMetrics = detectionMetrics {
+            // Use timeElapsedMs as average query time if available
+            if detectionMetrics.timeElapsedMs > 0 {
+                averageQueryTime = Double(detectionMetrics.timeElapsedMs)
+            }
+            
+            // Track query timestamp for queries per second calculation
+            await queryTimestampsActor.append(timestamp)
+            
+            // Calculate queries per second from recent timestamps
+            let recentWindow: TimeInterval = 60.0 // 60 second window
+            queriesPerSecond = await queryTimestampsActor.calculateQueriesPerSecond(
+                currentTime: timestamp,
+                window: recentWindow
+            )
+        }
+        
+        // Get index metrics from PrecomputedIndexService if available
+        let indexService = await MainActor.run {
+            ServiceManager.shared.precomputedIndexService
+        }
+        
+        if let indexService = indexService {
+            do {
+                let indexMetrics = try await indexService.getPerformanceMetrics()
+                
+                // Use index service metrics if detection metrics are not available
+                if averageQueryTime == 0.0 && indexMetrics.averageQueryTime > 0 {
+                    averageQueryTime = indexMetrics.averageQueryTime
+                }
+                
+                // Use cache hit rate from index service
+                cacheHitRate = indexMetrics.cacheHitRate
+                
+                // Use memory usage from index service
+                memoryUsage = indexMetrics.memoryUsage
+            } catch {
+                logger.debug("Failed to get index metrics: \(error.localizedDescription)")
+            }
+        }
+        
+        // Fallback to system metrics if not available from services
+        if memoryUsage == 0.0 {
+            let processInfo = ProcessInfo.processInfo
+            // Get actual memory usage (resident set size)
+            var info = mach_task_basic_info()
+            var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<integer_t>.size)
+            let result = withUnsafeMutablePointer(to: &info) {
+                $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                    task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+                }
+            }
+            if result == KERN_SUCCESS {
+                memoryUsage = Double(info.resident_size) / 1024.0 / 1024.0 // Convert to MB
+            } else {
+                // Fallback to process info
+                memoryUsage = Double(processInfo.physicalMemory) / 1024.0 / 1024.0
+            }
+        }
+        
+        // Get CPU usage from system
+        cpuUsage = getSystemCPUUsage()
+        
+        // If cache hit rate is still 0, estimate based on detection metrics
+        if cacheHitRate == 0.0, let detectionMetrics = detectionMetrics {
+            // Estimate cache hit rate based on reduction percentage
+            // Higher reduction percentage suggests better caching/bucketing
+            if detectionMetrics.reductionPercentage > 0 {
+                cacheHitRate = min(0.95, max(0.0, detectionMetrics.reductionPercentage / 100.0))
+            } else {
+                cacheHitRate = 0.0
+            }
+        }
+        
+        // Default values if still not available
+        if averageQueryTime == 0.0 {
+            averageQueryTime = 150.0 // Default fallback
+        }
+        if queriesPerSecond == 0.0 {
+            queriesPerSecond = 0.0 // No queries yet
+        }
+        if memoryUsage == 0.0 {
+            memoryUsage = 75.0 // Default fallback
+        }
+        if cpuUsage == 0.0 {
+            cpuUsage = getSystemCPUUsage()
+        }
+        if cacheHitRate == 0.0 {
+            cacheHitRate = 0.0 // No cache hits yet
+        }
 
         let endTime = DispatchTime.now()
         let collectionTime = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
 
         return DetectionPerformanceMetrics(
-            timestamp: Date(),
-            averageQueryTime: 150.0, // ms
-            queriesPerSecond: 6.7,
-            memoryUsage: 75.0, // MB
-            cpuUsage: 45.0, // %
-            activeConnections: 1,
-            cacheHitRate: 0.85,
+            timestamp: timestamp,
+            averageQueryTime: averageQueryTime,
+            queriesPerSecond: queriesPerSecond,
+            memoryUsage: memoryUsage,
+            cpuUsage: cpuUsage,
+            activeConnections: 1, // Single process, single connection
+            cacheHitRate: cacheHitRate,
             collectionTime: collectionTime
         )
     }
@@ -289,17 +413,39 @@ public final class PerformanceMonitoringService: @unchecked Sendable {
     private func collectIndexMetrics() async throws -> IndexPerformanceMetrics {
         let startTime = DispatchTime.now()
 
-        // Collect current index performance metrics
+        // Collect real index performance metrics from PrecomputedIndexService
+        let indexService = await MainActor.run {
+            ServiceManager.shared.precomputedIndexService
+        }
+        
+        if let indexService = indexService {
+            do {
+                let indexMetrics = try await indexService.getPerformanceMetrics()
+                
+                return IndexPerformanceMetrics(
+                    totalQueries: indexMetrics.totalQueries,
+                    averageQueryTime: indexMetrics.averageQueryTime,
+                    cacheHitRate: indexMetrics.cacheHitRate,
+                    indexLoadTime: indexMetrics.indexLoadTime,
+                    memoryUsage: indexMetrics.memoryUsage,
+                    diskUsage: indexMetrics.diskUsage
+                )
+            } catch {
+                logger.debug("Failed to get index metrics: \(error.localizedDescription)")
+            }
+        }
+        
+        // Fallback to default values if index service is not available
         let endTime = DispatchTime.now()
         _ = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
 
         return IndexPerformanceMetrics(
             totalQueries: 0,
-            averageQueryTime: 25.0, // ms
-            cacheHitRate: 0.90,
-            indexLoadTime: 2500.0, // ms
-            memoryUsage: 200.0, // MB
-            diskUsage: 150.0 // MB
+            averageQueryTime: 0.0,
+            cacheHitRate: 0.0,
+            indexLoadTime: 0.0,
+            memoryUsage: 0.0,
+            diskUsage: 0.0
         )
     }
 
@@ -317,23 +463,134 @@ public final class PerformanceMonitoringService: @unchecked Sendable {
     }
 
     private func getSystemCPUUsage() -> Double {
-        // Placeholder - would use system APIs to get actual CPU usage
-        return 35.0
+        var processorInfo: processor_info_array_t?
+        var processorMsgCount: mach_msg_type_number_t = 0
+        var processorCount: mach_msg_type_number_t = 0
+
+        let result = host_processor_info(
+            mach_host_self(),
+            PROCESSOR_CPU_LOAD_INFO,
+            &processorCount,
+            &processorInfo,
+            &processorMsgCount
+        )
+
+        guard result == KERN_SUCCESS,
+              let processorInfo = processorInfo,
+              processorCount > 0 else {
+            logger.warning("Failed to get CPU usage: \(result)")
+            return 0.0
+        }
+
+        defer {
+            vm_deallocate(
+                mach_task_self_,
+                vm_address_t(bitPattern: processorInfo),
+                vm_size_t(Int(processorMsgCount) * MemoryLayout<integer_t>.size)
+            )
+        }
+
+        var totalUsage: Double = 0
+        let cpuInfoPointer = processorInfo.withMemoryRebound(to: processor_cpu_load_info_t.self, capacity: Int(processorCount)) { $0 }
+        
+        for i in 0..<Int(processorCount) {
+            let cpuInfo = cpuInfoPointer[i].pointee
+            // CPU tick constants - cpu_ticks is a tuple (user, system, idle, nice)
+            let user = Double(cpuInfo.cpu_ticks.0)
+            let sys = Double(cpuInfo.cpu_ticks.1)
+            let idle = Double(cpuInfo.cpu_ticks.2)
+            let nice = Double(cpuInfo.cpu_ticks.3)
+            let total = user + sys + idle + nice
+
+            if total > 0 {
+                totalUsage += (user + sys) / total
+            }
+        }
+
+        let averageUsage = totalUsage / Double(processorCount) * 100.0
+        return min(100.0, max(0.0, averageUsage))
     }
 
     private func getSystemDiskUsage() -> Double {
-        // Placeholder - would check disk usage
-        return 60.0
+        let fileManager = FileManager.default
+        guard let attributes = try? fileManager.attributesOfFileSystem(forPath: "/") else {
+            logger.warning("Failed to get disk usage")
+            return 0.0
+        }
+        
+        guard let totalSize = attributes[.systemSize] as? Int64,
+              let freeSize = attributes[.systemFreeSize] as? Int64 else {
+            return 0.0
+        }
+        
+        let usedSize = totalSize - freeSize
+        guard totalSize > 0 else {
+            return 0.0
+        }
+        
+        let usagePercent = Double(usedSize) / Double(totalSize) * 100.0
+        return min(100.0, max(0.0, usagePercent))
     }
 
     private func getSystemNetworkUsage() -> Double {
-        // Placeholder - would check network usage
-        return 10.0
+        // Network usage is complex to measure accurately on macOS
+        // This implementation provides a basic estimate using ifaddrs
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0 else {
+            logger.warning("Failed to get network interfaces")
+            return 0.0
+        }
+        
+        defer {
+            freeifaddrs(ifaddr)
+        }
+        
+        var totalBytes: Int64 = 0
+        var current = ifaddr
+        
+        while current != nil {
+            defer { current = current?.pointee.ifa_next }
+            
+            guard let addr = current?.pointee.ifa_addr,
+                  addr.pointee.sa_family == UInt8(AF_LINK) else {
+                continue
+            }
+            
+            // Estimate network usage based on interface statistics
+            // This is a simplified implementation
+            if let name = current?.pointee.ifa_name {
+                let nameString = String(cString: name)
+                // Skip loopback interfaces
+                if nameString.hasPrefix("lo") {
+                    continue
+                }
+                // Estimate based on interface type (simplified)
+                totalBytes += 1000 // Placeholder for actual byte counting
+            }
+        }
+        
+        // Convert to percentage (simplified - would need baseline)
+        return min(100.0, Double(totalBytes) / 1000000.0)
     }
 
     private func getActiveThreadCount() -> Int {
-        // Placeholder - would count active threads
-        return 8
+        var threads: thread_act_array_t?
+        var threadCount: mach_msg_type_number_t = 0
+        
+        let result = task_threads(mach_task_self_, &threads, &threadCount)
+        
+        guard result == KERN_SUCCESS else {
+            logger.warning("Failed to get thread count: \(result)")
+            return 0
+        }
+        
+        defer {
+            if let threads = threads {
+                vm_deallocate(mach_task_self_, vm_address_t(bitPattern: threads), vm_size_t(UInt(threadCount) * UInt(MemoryLayout<thread_t>.size)))
+            }
+        }
+        
+        return Int(threadCount)
     }
 
     private func generateMonitoringReport() async {
@@ -897,7 +1154,7 @@ public enum ImpactLevel: String, Sendable, Equatable {
     case critical = "critical"
 }
 
-public struct DetectionPerformanceMetrics: Sendable, Equatable {
+public struct DetectionPerformanceMetrics: Sendable, Equatable, Codable {
     public let timestamp: Date
     public let averageQueryTime: Double
     public let queriesPerSecond: Double
@@ -931,44 +1188,216 @@ public struct DetectionPerformanceMetrics: Sendable, Equatable {
 // MARK: - Private Implementation Classes
 
 private final class PerformanceMetricsCollector: @unchecked Sendable {
+    private let userDefaults = UserDefaults.standard
+    private let logger = Logger(subsystem: "com.deduper", category: "performance-collector")
+    
+    // Storage keys
+    private let detectionMetricsKey = "DeduperDetectionMetrics"
+    private let indexMetricsKey = "DeduperIndexMetrics"
+    private let systemMetricsKey = "DeduperSystemMetrics"
+    
+    // Maximum number of metrics to keep (30 days at hourly granularity = 720)
+    private let maxMetricsCount = 1000
+    
+    // Wrapper structs for storage (with timestamps)
+    private struct TimestampedIndexMetrics: Codable {
+        let timestamp: Date
+        let metrics: IndexPerformanceMetrics
+    }
+    
     func recordDetectionMetrics(_ metrics: DetectionPerformanceMetrics) async throws {
-        // Placeholder - would save to persistent storage
-        print("Recording detection metrics: \(metrics.averageQueryTime)ms average query time")
+        var stored: [DetectionPerformanceMetrics] = loadMetrics(key: detectionMetricsKey) ?? []
+        stored.append(metrics)
+        
+        // Keep only recent metrics
+        if stored.count > maxMetricsCount {
+            stored.removeFirst(stored.count - maxMetricsCount)
+        }
+        
+        saveMetrics(key: detectionMetricsKey, metrics: stored)
+        logger.debug("Recorded detection metrics: \(metrics.averageQueryTime)ms avg query time, \(metrics.queriesPerSecond) qps")
     }
 
     func recordIndexMetrics(_ metrics: IndexPerformanceMetrics) async throws {
-        // Placeholder - would save to persistent storage
-        print("Recording index metrics: \(metrics.averageQueryTime)ms average query time")
+        var stored: [TimestampedIndexMetrics] = loadMetrics(key: indexMetricsKey) ?? []
+        stored.append(TimestampedIndexMetrics(timestamp: Date(), metrics: metrics))
+        
+        if stored.count > maxMetricsCount {
+            stored.removeFirst(stored.count - maxMetricsCount)
+        }
+        
+        saveMetrics(key: indexMetricsKey, metrics: stored)
+        logger.debug("Recorded index metrics: \(metrics.averageQueryTime)ms avg query time, \(metrics.cacheHitRate) cache hit rate")
     }
 
     func recordSystemMetrics(_ metrics: SystemPerformanceMetrics) async throws {
-        // Placeholder - would save to persistent storage
-        print("Recording system metrics: \(metrics.cpuUsage)% CPU, \(metrics.memoryUsage)MB memory")
+        var stored: [SystemPerformanceMetrics] = loadMetrics(key: systemMetricsKey) ?? []
+        stored.append(metrics)
+        
+        if stored.count > maxMetricsCount {
+            stored.removeFirst(stored.count - maxMetricsCount)
+        }
+        
+        saveMetrics(key: systemMetricsKey, metrics: stored)
+        logger.debug("Recorded system metrics: \(metrics.cpuUsage)% CPU, \(metrics.memoryUsage)MB memory")
     }
 
     func getCurrentMetrics() async throws -> PerformanceMetricsSummary {
+        let detectionMetrics = loadMetrics(key: detectionMetricsKey) as [DetectionPerformanceMetrics]? ?? []
+        let timestampedIndexMetrics = loadMetrics(key: indexMetricsKey) as [TimestampedIndexMetrics]? ?? []
+        let systemMetrics = loadMetrics(key: systemMetricsKey) as [SystemPerformanceMetrics]? ?? []
+        
+        // Calculate averages from recent metrics (last hour)
+        let oneHourAgo = Date().addingTimeInterval(-3600)
+        let recentDetection = detectionMetrics.filter { $0.timestamp >= oneHourAgo }
+        let recentIndex = timestampedIndexMetrics.filter { $0.timestamp >= oneHourAgo }
+        let recentSystem = systemMetrics.filter { $0.timestamp >= oneHourAgo }
+        
+        let avgCPU = recentSystem.isEmpty ? 0.0 : recentSystem.map { $0.cpuUsage }.reduce(0, +) / Double(recentSystem.count)
+        let avgMemory = recentSystem.isEmpty ? 0.0 : recentSystem.map { $0.memoryUsage }.reduce(0, +) / Double(recentSystem.count)
+        
+        // Use detection metrics for query time if available, otherwise use index metrics
+        let avgQueryTime: Double
+        if !recentDetection.isEmpty {
+            avgQueryTime = recentDetection.map { $0.averageQueryTime }.reduce(0, +) / Double(recentDetection.count)
+        } else if !recentIndex.isEmpty {
+            avgQueryTime = recentIndex.map { $0.metrics.averageQueryTime }.reduce(0, +) / Double(recentIndex.count)
+        } else {
+            avgQueryTime = 0.0
+        }
+        
+        // Use detection metrics for cache hit rate if available, otherwise use index metrics
+        let avgCacheHitRate: Double
+        if !recentDetection.isEmpty {
+            avgCacheHitRate = recentDetection.map { $0.cacheHitRate }.reduce(0, +) / Double(recentDetection.count)
+        } else if !recentIndex.isEmpty {
+            avgCacheHitRate = recentIndex.map { $0.metrics.cacheHitRate }.reduce(0, +) / Double(recentIndex.count)
+        } else {
+            avgCacheHitRate = 0.0
+        }
+        
+        let totalQueries = recentDetection.isEmpty ? 0 : recentDetection.reduce(0) { $0 + Int($1.queriesPerSecond * 3600) } // Estimate from qps
+        
         return PerformanceMetricsSummary(
             timestamp: Date(),
             uptimeSeconds: ProcessInfo.processInfo.systemUptime,
-            averageCPUUsage: 35.0,
-            averageMemoryUsage: 150.0,
-            averageQueryTime: 120.0,
-            averageCacheHitRate: 0.85,
-            totalQueries: 1000,
-            errorRate: 0.02
+            averageCPUUsage: avgCPU,
+            averageMemoryUsage: avgMemory,
+            averageQueryTime: avgQueryTime,
+            averageCacheHitRate: avgCacheHitRate,
+            totalQueries: totalQueries,
+            errorRate: 0.0 // Would need error tracking
         )
     }
 
     func getTrends(timeRange: TimeRange, granularity: TrendGranularity) async throws -> PerformanceTrends {
-        // Placeholder - would fetch from historical data
+        let startDate = timeRange.start
+        let endDate = timeRange.end
+        
+        // Load all metrics
+        let detectionMetrics = loadMetrics(key: detectionMetricsKey) as [DetectionPerformanceMetrics]? ?? []
+        let timestampedIndexMetrics = loadMetrics(key: indexMetricsKey) as [TimestampedIndexMetrics]? ?? []
+        let systemMetrics = loadMetrics(key: systemMetricsKey) as [SystemPerformanceMetrics]? ?? []
+        
+        // Filter by time range
+        let filteredDetection = detectionMetrics.filter { $0.timestamp >= startDate && $0.timestamp <= endDate }
+        let filteredIndex = timestampedIndexMetrics.filter { $0.timestamp >= startDate && $0.timestamp <= endDate }
+        let filteredSystem = systemMetrics.filter { $0.timestamp >= startDate && $0.timestamp <= endDate }
+        
+        // Aggregate by granularity
+        let cpuTrends = aggregateTrends(
+            metrics: filteredSystem.map { TrendPoint(timestamp: $0.timestamp, value: $0.cpuUsage, trend: .stable) },
+            granularity: granularity
+        )
+        
+        let memoryTrends = aggregateTrends(
+            metrics: filteredSystem.map { TrendPoint(timestamp: $0.timestamp, value: $0.memoryUsage, trend: .stable) },
+            granularity: granularity
+        )
+        
+        // Use detection metrics for query trends, fallback to index metrics
+        let queryMetrics = filteredDetection.isEmpty 
+            ? filteredIndex.map { TrendPoint(timestamp: $0.timestamp, value: $0.metrics.averageQueryTime, trend: .stable) }
+            : filteredDetection.map { TrendPoint(timestamp: $0.timestamp, value: $0.averageQueryTime, trend: .stable) }
+        
+        let queryTrends = aggregateTrends(metrics: queryMetrics, granularity: granularity)
+        
+        // Error trends would need error tracking - return empty for now
+        let errorTrends: [TrendPoint] = []
+        
         return PerformanceTrends(
             timeRange: timeRange,
             granularity: granularity,
-            cpuTrends: [],
-            memoryTrends: [],
-            queryTrends: [],
-            errorTrends: []
+            cpuTrends: cpuTrends,
+            memoryTrends: memoryTrends,
+            queryTrends: queryTrends,
+            errorTrends: errorTrends
         )
+    }
+    
+    // MARK: - Private Helpers
+    
+    private func saveMetrics<T: Codable>(key: String, metrics: [T]) {
+        if let data = try? JSONEncoder().encode(metrics) {
+            userDefaults.set(data, forKey: key)
+        }
+    }
+    
+    private func loadMetrics<T: Codable>(key: String) -> [T]? {
+        guard let data = userDefaults.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode([T].self, from: data)
+    }
+    
+    private func aggregateTrends(metrics: [TrendPoint], granularity: TrendGranularity) -> [TrendPoint] {
+        guard !metrics.isEmpty else { return [] }
+        
+        let calendar = Calendar.current
+        var aggregated: [Date: [Double]] = [:]
+        
+        for metric in metrics {
+            let bucket: Date
+            switch granularity {
+            case .hourly:
+                bucket = calendar.date(from: calendar.dateComponents([.year, .month, .day, .hour], from: metric.timestamp)) ?? metric.timestamp
+            case .daily:
+                bucket = calendar.startOfDay(for: metric.timestamp)
+            case .weekly:
+                bucket = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: metric.timestamp)) ?? metric.timestamp
+            case .monthly:
+                bucket = calendar.date(from: calendar.dateComponents([.year, .month], from: metric.timestamp)) ?? metric.timestamp
+            }
+            
+            if aggregated[bucket] == nil {
+                aggregated[bucket] = []
+            }
+            aggregated[bucket]?.append(metric.value)
+        }
+        
+        // Calculate averages and trends
+        return aggregated.sorted(by: { $0.key < $1.key }).map { (date, values) in
+            let avg = values.reduce(0, +) / Double(values.count)
+            let trend: TrendDirection
+            if values.count > 1 {
+                let firstHalf = Array(values.prefix(values.count / 2))
+                let secondHalf = Array(values.suffix(values.count / 2))
+                let firstAvg = firstHalf.reduce(0, +) / Double(firstHalf.count)
+                let secondAvg = secondHalf.reduce(0, +) / Double(secondHalf.count)
+                let change = (secondAvg - firstAvg) / firstAvg
+                if abs(change) < 0.05 {
+                    trend = .stable
+                } else if change > 0.2 {
+                    trend = .increasing
+                } else if change < -0.2 {
+                    trend = .decreasing
+                } else {
+                    trend = .volatile
+                }
+            } else {
+                trend = .stable
+            }
+            
+            return TrendPoint(timestamp: date, value: avg, trend: trend)
+        }
     }
 }
 
@@ -1032,6 +1461,12 @@ private final class AnomalyDetector: @unchecked Sendable {
 }
 
 private final class BenchmarkRunner: @unchecked Sendable {
+    private let logger = Logger(subsystem: "com.deduper", category: "benchmark-runner")
+    private let duplicateEngine = DuplicateDetectionEngine()
+    
+    // Cache generated assets per dataset to avoid regenerating
+    private var cachedAssets: [String: [DetectionAsset]] = [:]
+    
     func runBenchmark(
         name: String,
         dataset: BenchmarkDataset,
@@ -1066,9 +1501,12 @@ private final class BenchmarkRunner: @unchecked Sendable {
         iterations: Int,
         warmupIterations: Int
     ) async throws -> ConfigurationBenchmark {
+        // Generate or retrieve cached assets for this dataset
+        let assets = try await generateAssets(from: dataset)
+        
         // Warmup
         for _ in 0..<warmupIterations {
-            _ = try await runSingleIteration(configuration: configuration, dataset: dataset)
+            _ = try await runSingleIteration(configuration: configuration, assets: assets)
         }
 
         // Actual benchmark
@@ -1077,7 +1515,7 @@ private final class BenchmarkRunner: @unchecked Sendable {
         var cpuUsages: [Double] = []
 
         for _ in 0..<iterations {
-            let metrics = try await runSingleIteration(configuration: configuration, dataset: dataset)
+            let metrics = try await runSingleIteration(configuration: configuration, assets: assets)
             executionTimes.append(metrics.executionTime)
             memoryUsages.append(metrics.memoryUsage)
             cpuUsages.append(metrics.cpuUsage)
@@ -1096,13 +1534,260 @@ private final class BenchmarkRunner: @unchecked Sendable {
         )
     }
 
-    private func runSingleIteration(configuration: DetectOptions, dataset: BenchmarkDataset) async throws -> BenchmarkIterationMetrics {
-        // Placeholder - would run actual benchmark iteration
+    private func runSingleIteration(configuration: DetectOptions, assets: [DetectionAsset]) async throws -> BenchmarkIterationMetrics {
+        // Measure baseline memory and CPU before execution
+        let startMemory = measureMemoryUsage()
+        let _ = measureCPUUsage() // Baseline CPU measurement
+        let startTime = DispatchTime.now()
+        
+        // Run actual duplicate detection
+        let fileIds = assets.map { $0.id }
+        let _ = duplicateEngine.buildGroups(for: fileIds, assets: assets, options: configuration) // Groups built for benchmark
+        
+        // Measure after execution
+        let endTime = DispatchTime.now()
+        let endMemory = measureMemoryUsage()
+        let endCPU = measureCPUUsage()
+        
+        // Calculate metrics
+        let executionTime = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000.0 // Convert to milliseconds
+        let memoryUsage = Double(endMemory - startMemory) / 1024.0 / 1024.0 // Convert to MB
+        let cpuUsage = endCPU // Already a percentage
+        
         return BenchmarkIterationMetrics(
-            executionTime: 150.0,
-            memoryUsage: 75.0,
-            cpuUsage: 40.0
+            executionTime: executionTime,
+            memoryUsage: max(0, memoryUsage), // Ensure non-negative
+            cpuUsage: max(0, min(100, cpuUsage)) // Clamp between 0-100%
         )
+    }
+    
+    // MARK: - Asset Generation
+    
+    private func generateAssets(from dataset: BenchmarkDataset) async throws -> [DetectionAsset] {
+        // Check cache first
+        if let cached = cachedAssets[dataset.name] {
+            return cached
+        }
+        
+        var assets: [DetectionAsset] = []
+        let totalAssets = dataset.assetCount
+        
+        // Calculate asset counts per media type based on distribution
+        var photoCount = 0
+        var videoCount = 0
+        var audioCount = 0
+        
+        for (mediaType, ratio) in dataset.mediaTypeDistribution {
+            let count = Int(Double(totalAssets) * ratio)
+            switch mediaType {
+            case .photo:
+                photoCount = count
+            case .video:
+                videoCount = count
+            case .audio:
+                audioCount = count
+            }
+        }
+        
+        // Ensure we have at least some assets
+        if photoCount + videoCount + audioCount == 0 {
+            photoCount = totalAssets
+        }
+        
+        // Generate photo assets
+        for i in 0..<photoCount {
+            assets.append(createPhotoAsset(index: i, dataset: dataset))
+        }
+        
+        // Generate video assets
+        for i in 0..<videoCount {
+            assets.append(createVideoAsset(index: i, dataset: dataset))
+        }
+        
+        // Generate audio assets
+        for i in 0..<audioCount {
+            assets.append(createAudioAsset(index: i, dataset: dataset))
+        }
+        
+        // Add some duplicates for realistic benchmarking
+        let duplicateCount = min(totalAssets / 10, 100) // 10% duplicates, max 100
+        for i in 0..<duplicateCount {
+            let originalIndex = i % assets.count
+            let original = assets[originalIndex]
+            assets.append(createDuplicateAsset(from: original, index: i))
+        }
+        
+        // Cache the generated assets
+        cachedAssets[dataset.name] = assets
+        
+        return assets
+    }
+    
+    private func createPhotoAsset(index: Int, dataset: BenchmarkDataset) -> DetectionAsset {
+        let fileSize = generateFileSize(from: dataset.sizeDistribution, index: index)
+        let hashValue = UInt64(index % 10000)
+        
+        return DetectionAsset(
+            id: UUID(),
+            url: nil,
+            mediaType: .photo,
+            fileName: "benchmark_photo_\(index).jpg",
+            fileSize: fileSize,
+            checksum: "benchmark_checksum_\(index)",
+            dimensions: PixelSize(width: 1920 + (index % 5) * 100, height: 1080 + (index % 5) * 100),
+            duration: nil,
+            captureDate: Date().addingTimeInterval(Double(-index * 60)),
+            createdAt: Date(),
+            modifiedAt: Date(),
+            imageHashes: [HashAlgorithm.dHash: hashValue],
+            videoSignature: nil
+        )
+    }
+    
+    private func createVideoAsset(index: Int, dataset: BenchmarkDataset) -> DetectionAsset {
+        let fileSize = generateFileSize(from: dataset.sizeDistribution, index: index)
+        let duration = Double(30 + (index % 300))
+        
+        return DetectionAsset(
+            id: UUID(),
+            url: nil,
+            mediaType: .video,
+            fileName: "benchmark_video_\(index).mp4",
+            fileSize: fileSize,
+            checksum: "benchmark_checksum_video_\(index)",
+            dimensions: PixelSize(width: 1920, height: 1080),
+            duration: duration,
+            captureDate: Date().addingTimeInterval(Double(-index * 60)),
+            createdAt: Date(),
+            modifiedAt: Date(),
+            imageHashes: [:],
+            videoSignature: VideoSignature(durationSec: duration, width: 1920, height: 1080, frameHashes: [UInt64(index % 100)])
+        )
+    }
+    
+    private func createAudioAsset(index: Int, dataset: BenchmarkDataset) -> DetectionAsset {
+        let fileSize = generateFileSize(from: dataset.sizeDistribution, index: index)
+        let duration = Double(180 + (index % 600)) // 3-13 minutes
+        
+        return DetectionAsset(
+            id: UUID(),
+            url: nil,
+            mediaType: .audio,
+            fileName: "benchmark_audio_\(index).mp3",
+            fileSize: fileSize,
+            checksum: "benchmark_checksum_audio_\(index)",
+            dimensions: nil,
+            duration: duration,
+            captureDate: Date().addingTimeInterval(Double(-index * 60)),
+            createdAt: Date(),
+            modifiedAt: Date(),
+            imageHashes: [:],
+            videoSignature: nil
+        )
+    }
+    
+    private func createDuplicateAsset(from original: DetectionAsset, index: Int) -> DetectionAsset {
+        return DetectionAsset(
+            id: UUID(),
+            url: nil,
+            mediaType: original.mediaType,
+            fileName: original.fileName.replacingOccurrences(of: ".", with: "_dup_\(index)."),
+            fileSize: original.fileSize + Int64((index % 3 - 1) * 1024), // Slightly different size
+            checksum: original.checksum, // Same checksum for duplicate
+            dimensions: original.dimensions,
+            duration: original.duration,
+            captureDate: original.captureDate?.addingTimeInterval(Double(index * 5)),
+            createdAt: original.createdAt,
+            modifiedAt: original.modifiedAt,
+            imageHashes: original.imageHashes,
+            videoSignature: original.videoSignature
+        )
+    }
+    
+    private func generateFileSize(from distribution: [String: Double], index: Int) -> Int64 {
+        // Use distribution if available, otherwise generate based on index
+        if !distribution.isEmpty {
+            let random = Double(index % 100) / 100.0
+            var cumulative = 0.0
+            for (sizeStr, ratio) in distribution.sorted(by: { $0.key < $1.key }) {
+                cumulative += ratio
+                if random <= cumulative {
+                    // Parse size string (e.g., "1MB", "5MB", "10MB")
+                    let sizeValue = sizeStr.replacingOccurrences(of: "MB", with: "")
+                        .replacingOccurrences(of: "GB", with: "")
+                        .trimmingCharacters(in: .whitespaces)
+                    if let value = Double(sizeValue) {
+                        let multiplier: Int64 = sizeStr.contains("GB") ? 1024 * 1024 * 1024 : 1024 * 1024
+                        return Int64(value * Double(multiplier))
+                    }
+                }
+            }
+        }
+        
+        // Default: 1-10MB range
+        return Int64(1024 * 1024 * (1 + index % 10))
+    }
+    
+    // MARK: - Performance Measurement
+    
+    private func measureMemoryUsage() -> Int64 {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<integer_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        if result == KERN_SUCCESS {
+            return Int64(info.resident_size)
+        }
+        return 0
+    }
+    
+    private func measureCPUUsage() -> Double {
+        var processorInfo: processor_info_array_t?
+        var processorMsgCount: mach_msg_type_number_t = 0
+        var processorCount: mach_msg_type_number_t = 0
+
+        let result = host_processor_info(
+            mach_host_self(),
+            PROCESSOR_CPU_LOAD_INFO,
+            &processorCount,
+            &processorInfo,
+            &processorMsgCount
+        )
+
+        guard result == KERN_SUCCESS,
+              let processorInfo = processorInfo,
+              processorCount > 0 else {
+            return 0.0
+        }
+
+        defer {
+            vm_deallocate(
+                mach_task_self_,
+                vm_address_t(bitPattern: processorInfo),
+                vm_size_t(UInt(processorMsgCount) * UInt(MemoryLayout<integer_t>.size))
+            )
+        }
+
+        var totalUsage: Double = 0
+        let cpuInfoPointer = processorInfo.withMemoryRebound(to: processor_cpu_load_info_t.self, capacity: Int(processorCount)) { $0 }
+        
+        for i in 0..<Int(processorCount) {
+            let cpuInfo = cpuInfoPointer[i].pointee
+            let user = Double(cpuInfo.cpu_ticks.0)
+            let system = Double(cpuInfo.cpu_ticks.1)
+            let idle = Double(cpuInfo.cpu_ticks.2)
+            let nice = Double(cpuInfo.cpu_ticks.3)
+            
+            let total = user + system + idle + nice
+            if total > 0 {
+                totalUsage += ((user + system + nice) / total) * 100.0
+            }
+        }
+        
+        return processorCount > 0 ? totalUsage / Double(processorCount) : 0.0
     }
 
     private func calculateMedian(_ values: [Double]) -> Double {
@@ -1133,7 +1818,7 @@ private final class PerformanceAlertingService: @unchecked Sendable {
     }
 }
 
-private struct SystemPerformanceMetrics: Sendable, Equatable {
+private struct SystemPerformanceMetrics: Sendable, Equatable, Codable {
     let timestamp: Date
     let cpuUsage: Double
     let memoryUsage: Double

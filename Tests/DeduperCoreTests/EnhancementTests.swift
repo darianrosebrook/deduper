@@ -411,31 +411,49 @@ final class EnhancementTests: XCTestCase {
 
     func testEnhancementServiceIntegration() async throws {
         // Test that enhancement services integrate properly with core services
-        let serviceManager = ServiceManager.shared
+        let serviceManager = await MainActor.run {
+            ServiceManager.shared
+        }
 
         // Feature flags should control service availability
         if EnhancementFeatureFlags.chaosTestingEnabled {
-            XCTAssertNotNil(serviceManager.chaosTestingService)
+            await MainActor.run {
+                XCTAssertNotNil(serviceManager.chaosTestingService)
+            }
         } else {
-            XCTAssertNil(serviceManager.chaosTestingService)
+            await MainActor.run {
+                XCTAssertNil(serviceManager.chaosTestingService)
+            }
         }
 
         if EnhancementFeatureFlags.abTestingEnabled {
-            XCTAssertNotNil(serviceManager.abTestingService)
+            await MainActor.run {
+                XCTAssertNotNil(serviceManager.abTestingService)
+            }
         } else {
-            XCTAssertNil(serviceManager.abTestingService)
+            await MainActor.run {
+                XCTAssertNil(serviceManager.abTestingService)
+            }
         }
 
         if EnhancementFeatureFlags.precomputedIndexesEnabled {
-            XCTAssertNotNil(serviceManager.precomputedIndexService)
+            await MainActor.run {
+                XCTAssertNotNil(serviceManager.precomputedIndexService)
+            }
         } else {
-            XCTAssertNil(serviceManager.precomputedIndexService)
+            await MainActor.run {
+                XCTAssertNil(serviceManager.precomputedIndexService)
+            }
         }
 
         if EnhancementFeatureFlags.performanceMonitoringEnabled {
-            XCTAssertNotNil(serviceManager.performanceMonitoringService)
+            await MainActor.run {
+                XCTAssertNotNil(serviceManager.performanceMonitoringService)
+            }
         } else {
-            XCTAssertNil(serviceManager.performanceMonitoringService)
+            await MainActor.run {
+                XCTAssertNil(serviceManager.performanceMonitoringService)
+            }
         }
     }
 
@@ -474,7 +492,7 @@ final class EnhancementTests: XCTestCase {
                 captureDate: Date().addingTimeInterval(Double(-i * 60)),
                 createdAt: Date(),
                 modifiedAt: Date(),
-                imageHashes: [HashAlgorithm.dhash: UInt64(i)],
+                imageHashes: [HashAlgorithm.dHash: UInt64(i)],
                 videoSignature: nil
             )
             assets.append(asset)

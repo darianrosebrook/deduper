@@ -112,57 +112,62 @@ public final class OperationsViewModel: ObservableObject {
                 self.isLoading = true
             }
 
-            // Load recent transactions from persistence
-            // Note: getRecentTransactions is on MergeService, not PersistenceController
-            _ = ServiceManager.shared.mergeService
-            // Placeholder: would call appropriate method when available
-            // let transactions = try await mergeService.getRecentTransactions()
-            let transactions: [MergeTransactionRecord] = []
+            do {
+                // Load recent transactions from persistence
+                let historyEntries = try await persistenceController.fetchMergeHistoryEntries(limit: 100)
 
-            var operations: [CoreMergeOperation] = []
-            for transaction in transactions {
-                // Note: resolveFilePath method not available - using placeholder
-                // guard let keeperFilePath = await persistenceController.resolveFilePath(id: transaction.keeperFileId) else {
-                //     continue
-                // }
-                let keeperFilePath = "Unknown" // Placeholder
+                var operations: [CoreMergeOperation] = []
+                for entry in historyEntries {
+                    let transaction = entry.transaction
+                    
+                    // Resolve keeper file path
+                    let keeperFilePath: String
+                    if let keeperId = transaction.keeperFileId,
+                       let keeperURL = persistenceController.resolveFileURL(id: keeperId) {
+                        keeperFilePath = keeperURL.path
+                    } else {
+                        keeperFilePath = entry.keeperName ?? "Unknown"
+                    }
 
-                // Note: resolveFilePath method not available - using placeholder
-                // let removedFilePaths = transaction.removedFileIds.compactMap { id in
-                //     persistenceController.resolveFilePath(id: id)
-                // }
-                let removedFilePaths: [String] = [] // Placeholder
-
-                let operation = CoreMergeOperation(
-                    id: transaction.id,
-                    groupId: transaction.groupId,
-                    keeperFileId: transaction.keeperFileId ?? UUID(),
-                    keeperFilePath: keeperFilePath,
-                    removedFileIds: transaction.removedFileIds,
-                    removedFilePaths: removedFilePaths,
-                    spaceFreed: removedFilePaths.reduce(0) { total, path in
-                        if let attributes = try? FileManager.default.attributesOfItem(atPath: path),
-                           let size = attributes[.size] as? Int64 {
-                            return total + size
+                    // Resolve removed file paths
+                    let removedFilePaths = entry.removedFiles.map { removedFile -> String in
+                        if let url = persistenceController.resolveFileURL(id: removedFile.id) {
+                            return url.path
                         }
-                        return total
-                    },
-                    timestamp: transaction.createdAt,
-                    wasSuccessful: true,
-                    wasDryRun: false,
-                    operationType: .merge,
-                    metadataChanges: [:]
-                )
+                        return removedFile.name
+                    }
 
-                operations.append(operation)
+                    let operation = CoreMergeOperation(
+                        id: transaction.id,
+                        groupId: transaction.groupId,
+                        keeperFileId: transaction.keeperFileId ?? UUID(),
+                        keeperFilePath: keeperFilePath,
+                        removedFileIds: transaction.removedFileIds,
+                        removedFilePaths: removedFilePaths,
+                        spaceFreed: entry.totalBytesFreed,
+                        timestamp: transaction.createdAt,
+                        wasSuccessful: true,
+                        wasDryRun: false,
+                        operationType: .merge,
+                        metadataChanges: [:]
+                    )
+
+                    operations.append(operation)
+                }
+
+                await MainActor.run {
+                    self.operations = operations.sorted { $0.timestamp > $1.timestamp }
+                    self.isLoading = false
+                }
+
+                logger.info("Loaded \(operations.count) operations from persistence")
+            } catch {
+                logger.error("Failed to load operations: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.operations = []
+                    self.isLoading = false
+                }
             }
-
-            await MainActor.run {
-                self.operations = operations.sorted { $0.timestamp > $1.timestamp }
-                self.isLoading = false
-            }
-
-            logger.info("Loaded \(operations.count) operations from persistence")
         }
     }
 
@@ -184,9 +189,13 @@ public final class OperationsViewModel: ObservableObject {
         logger.info("Attempting to undo operation: \(operation.id)")
 
         do {
-            // Use the persistence controller to undo the operation
-            _ = try await persistenceController.undoLastTransaction()
-            logger.info("Successfully undid operation: \(operation.id)")
+            // Use MergeService to undo the operation (handles file restoration)
+            let undoResult = try await mergeService.undoLast()
+            if undoResult.success {
+                logger.info("Successfully undid operation: \(operation.id), restored \(undoResult.restoredFileIds.count) files")
+            } else {
+                logger.warning("Undo operation returned success=false for \(operation.id)")
+            }
 
             // Reload operations after undo
             loadOperations()
@@ -246,14 +255,13 @@ public final class OperationsViewModel: ObservableObject {
 
         let successfulOps = operations.filter { $0.wasSuccessful }
         let totalSpace = operations.reduce(0) { $0 + $1.spaceFreed }
-        // Note: MergeOperation doesn't have confidence property - using placeholder
-        let totalConfidence = Double(operations.count) * 0.85 // Placeholder average confidence
 
         await MainActor.run {
             self.totalSpaceFreed = totalSpace
             self.totalOperations = operations.count
-            self.successRate = Double(successfulOps.count) / Double(operations.count)
-            self.averageConfidence = totalConfidence / Double(operations.count)
+            self.successRate = operations.isEmpty ? 0.0 : Double(successfulOps.count) / Double(operations.count)
+            // Average confidence not available from MergeTransactionRecord - set to 0
+            self.averageConfidence = 0.0
         }
     }
 

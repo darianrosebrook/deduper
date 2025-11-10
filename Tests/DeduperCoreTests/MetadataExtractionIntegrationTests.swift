@@ -155,7 +155,7 @@ struct MetadataExtractionIntegrationTests {
         let metadataService = MetadataExtractionService(persistenceController: persistenceController)
 
         // Create multiple test files
-        let testFiles = (0..<50).map { index in
+        let testFiles = try (0..<50).map { index in
             let url = tempDir.appendingPathComponent("concurrent_test_\(index).jpg")
             let size = Int.random(in: 1024...1048576) // 1KB to 1MB
             try Data(count: size).write(to: url)
@@ -277,7 +277,7 @@ struct MetadataExtractionIntegrationTests {
         #expect(reconstructedMeta.fileName == originalMeta.fileName, "Filename should match")
         #expect(reconstructedMeta.fileSize == originalMeta.fileSize, "File size should match")
         #expect(reconstructedMeta.mediaType == originalMeta.mediaType, "Media type should match")
-        #expect(reconstructedMeta.dimensions == originalMeta.dimensions, "Dimensions should match")
+        #expect(reconstructedMeta.dimensions?.width == originalMeta.dimensions?.width && reconstructedMeta.dimensions?.height == originalMeta.dimensions?.height, "Dimensions should match")
         #expect(reconstructedMeta.cameraModel == originalMeta.cameraModel, "Camera model should match")
         #expect(abs(reconstructedMeta.gpsLat! - originalMeta.gpsLat!) < 0.000001, "GPS lat should match")
         #expect(abs(reconstructedMeta.gpsLon! - originalMeta.gpsLon!) < 0.000001, "GPS lon should match")
@@ -317,7 +317,7 @@ struct MetadataExtractionIntegrationTests {
         var data = Data()
 
         // MP4 ftyp box (file type)
-        let ftypBox = [
+        let ftypBox: [UInt8] = [
             0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6F, 0x6D, 0x00, 0x00, 0x00, 0x00,
             0x69, 0x73, 0x6F, 0x6D, 0x69, 0x73, 0x6F, 0x32
         ]

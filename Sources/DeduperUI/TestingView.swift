@@ -442,25 +442,64 @@ public final class TestingViewModel: ObservableObject {
     public func generateQualityReport() async {
         logger.info("📊 Generating real quality report (not mock data)")
 
-        // Use real quality metrics - addresses critical gap in skeptical review
-        // Note: RealTestingSystem implementation pending
-        // let realMetrics = await realTestingSystem.calculateRealQualityMetrics()
+        do {
+            // Use real test results and coverage data
+            let testCount = testResults.count
+            let passCount = testResults.filter { $0.status == .passed }.count
+            let failCount = testResults.filter { $0.status == .failed }.count
+            let skipCount = testResults.filter { $0.status == .skipped }.count
+            
+            // Calculate average test duration from real results
+            let avgDuration = testResults.isEmpty ? 0.0 : testResults.map { $0.duration }.reduce(0, +) / Double(testResults.count)
+            
+            // Get coverage percentage from real coverage data
+            let coveragePct = coverageData?.coveragePercentage ?? 0.0
+            
+            // Generate coverage report if not already available
+            if coverageData == nil && enableCoverageReporting {
+                _ = try await generateCoverageReport()
+            }
+            
+            // Use updated coverage data
+            let finalCoveragePct = coverageData?.coveragePercentage ?? coveragePct
 
-        await MainActor.run {
-            // Note: RealTestingSystem implementation pending - using placeholder values
-            qualityMetrics = QualityMetrics(
-                testCount: 0, // realMetrics.totalTests,
-                passCount: 0, // realMetrics.passedTests,
-                failCount: 0, // realMetrics.failedTests,
-                skipCount: 0, // realMetrics.totalTests - realMetrics.passedTests - realMetrics.failedTests,
-                coveragePercentage: 0.0, // realMetrics.coveragePercentage,
-                averageTestDuration: 0.0, // realMetrics.averageTestDuration,
-                flakyTests: 0,
-                regressionCount: 0
-            )
+            await MainActor.run {
+                qualityMetrics = QualityMetrics(
+                    testCount: testCount,
+                    passCount: passCount,
+                    failCount: failCount,
+                    skipCount: skipCount,
+                    coveragePercentage: finalCoveragePct,
+                    averageTestDuration: avgDuration,
+                    flakyTests: 0, // Would require historical test runs to detect flakiness
+                    regressionCount: 0 // Would require baseline comparison
+                )
 
-            showQualityReport = true
-            logger.info("✅ Quality metrics placeholder initialized")
+                showQualityReport = true
+                logger.info("✅ Quality metrics calculated from real test results: \(testCount) tests, \(String(format: "%.1f", finalCoveragePct))% coverage")
+            }
+        } catch {
+            logger.error("Failed to generate quality report: \(error.localizedDescription)")
+            // Fallback to basic metrics from test results
+            await MainActor.run {
+                let testCount = testResults.count
+                let passCount = testResults.filter { $0.status == .passed }.count
+                let failCount = testResults.filter { $0.status == .failed }.count
+                let skipCount = testResults.filter { $0.status == .skipped }.count
+                let avgDuration = testResults.isEmpty ? 0.0 : testResults.map { $0.duration }.reduce(0, +) / Double(testResults.count)
+                
+                qualityMetrics = QualityMetrics(
+                    testCount: testCount,
+                    passCount: passCount,
+                    failCount: failCount,
+                    skipCount: skipCount,
+                    coveragePercentage: coverageData?.coveragePercentage ?? 0.0,
+                    averageTestDuration: avgDuration,
+                    flakyTests: 0,
+                    regressionCount: 0
+                )
+                showQualityReport = true
+            }
         }
     }
 

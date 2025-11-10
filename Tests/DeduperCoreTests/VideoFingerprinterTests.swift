@@ -17,10 +17,10 @@ import Foundation
     private let shortClip = "Snapchat-7264795816042222207.mp4"
     private let alternateClip = "Snapchat-7477392024873137008.mp4"
     
-    @Test func testShortClipProducesTwoFrameHashes() {
+    @Test func testShortClipProducesTwoFrameHashes() async throws {
         let config = VideoFingerprintConfig(middleSampleMinimumDuration: 120.0, endSampleOffset: 1.0, generatorMaxDimension: 720, preferredTimescale: 600)
         let fingerprinter = VideoFingerprinter(config: config, imageHasher: ImageHashingService())
-        let signature = fingerprinter.fingerprint(url: fixtureURL(shortClip))
+        let signature = await fingerprinter.fingerprint(url: fixtureURL(shortClip))
         #expect(signature != nil)
         if let sig = signature {
             #expect(sig.durationSec < config.middleSampleMinimumDuration)
@@ -28,10 +28,10 @@ import Foundation
         }
     }
     
-    @Test func testSameVideoComparesAsDuplicate() {
+    @Test func testSameVideoComparesAsDuplicate() async throws {
         let fingerprinter = VideoFingerprinter(imageHasher: ImageHashingService())
         let url = fixtureURL(shortClip)
-        let signature = fingerprinter.fingerprint(url: url)
+        let signature = await fingerprinter.fingerprint(url: url)
         #expect(signature != nil)
         if let sig = signature {
             let similarity = fingerprinter.compare(sig, sig)
@@ -41,12 +41,12 @@ import Foundation
         }
     }
     
-    @Test func testDifferentVideosProduceDifferentVerdict() {
+    @Test func testDifferentVideosProduceDifferentVerdict() async throws {
         let fingerprinter = VideoFingerprinter(imageHasher: ImageHashingService())
         let urlA = fixtureURL(shortClip)
         let urlB = fixtureURL(alternateClip)
-        let sigA = fingerprinter.fingerprint(url: urlA)
-        let sigB = fingerprinter.fingerprint(url: urlB)
+        let sigA = await fingerprinter.fingerprint(url: urlA)
+        let sigB = await fingerprinter.fingerprint(url: urlB)
         #expect(sigA != nil)
         #expect(sigB != nil)
         if let sigA, let sigB {
@@ -73,14 +73,14 @@ import Foundation
         #expect(resetStats.failureRate == 0.0)
     }
     
-    @Test func testErrorRateThreshold() {
+    @Test func testErrorRateThreshold() async throws {
         let fingerprinter = VideoFingerprinter()
         
         // Create a test video URL that will likely fail (non-existent file)
         let testURL = URL(fileURLWithPath: "/nonexistent/video.mp4")
         
         // Attempt to fingerprint - should fail gracefully
-        let result = fingerprinter.fingerprint(url: testURL)
+        let result = await fingerprinter.fingerprint(url: testURL)
         #expect(result == nil)
         
         // Error tracking should still work even with failed operations
@@ -92,12 +92,12 @@ import Foundation
         #expect(stats.failureRate <= 1.0)
     }
 
-    @Test func testFingerprintCachingAvoidsRework() {
+    @Test func testFingerprintCachingAvoidsRework() async throws {
         let fingerprinter = VideoFingerprinter()
         fingerprinter.resetErrorTracking()
 
         let url = fixtureURL(shortClip)
-        guard let firstSignature = fingerprinter.fingerprint(url: url) else {
+        guard let firstSignature = await fingerprinter.fingerprint(url: url) else {
             Issue.record("Failed to fingerprint baseline clip")
             return
         }
@@ -105,7 +105,7 @@ import Foundation
         let statsAfterFirst = fingerprinter.errorStatistics
         #expect(statsAfterFirst.attempted > 0)
 
-        guard let secondSignature = fingerprinter.fingerprint(url: url) else {
+        guard let secondSignature = await fingerprinter.fingerprint(url: url) else {
             Issue.record("Failed to re-fingerprint cached clip")
             return
         }

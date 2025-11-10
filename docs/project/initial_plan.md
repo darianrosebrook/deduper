@@ -648,7 +648,9 @@ Steps for detecting duplicates:
     
 7.  **Group Formation:** Use a union-find (disjoint set) or clustering approach to group all files that match each other. For instance, if A ≈ B and B ≈ C by our comparisons, put A, B, C in one group.
     
-8.  **Conservative Grouping:** Default to conservative thresholds. Only auto-group with high confidence (>0.8); lower confidence groups marked as "manual review recommended."
+8.  **Conservative Grouping:** Default to conservative thresholds. Only auto-group with high confidence (>0.85, see ADR-0002); lower confidence groups marked as "manual review recommended."
+    
+    **Note:** The default confidence threshold was adjusted from 0.8 to 0.85 to better align with the "Correctness First" principle, prioritizing precision over recall. This reduces false positives and improves user trust. The threshold remains configurable via UI controls. See `docs/reference/adr/0002-confidence-threshold.md` for detailed rationale.
     
 
 _Pseudocode for duplicate grouping logic:_

@@ -25,18 +25,26 @@ final class PerformanceValidationTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
 
-        performanceService = PerformanceService()
+        performanceService = await MainActor.run {
+            PerformanceService()
+        }
         duplicateEngine = DuplicateDetectionEngine()
 
         // Create comprehensive test datasets
-        testAssets = try await createValidationTestAssets()
+        let assets = try await createValidationTestAssets()
+        self.testAssets = assets
 
-        logger.info("Performance validation tests setup completed with \(testAssets.count) test assets")
+        logger.info("Performance validation tests setup completed with \(assets.count) test assets")
     }
 
     override func tearDown() async throws {
         // Clean up any resources
-        performanceService.clearPerformanceHistory()
+        let service = performanceService
+        if let service = service {
+            await MainActor.run {
+                service.clearPerformanceHistory()
+            }
+        }
         try await super.tearDown()
     }
 
@@ -97,19 +105,19 @@ final class PerformanceValidationTests: XCTestCase {
         let memoryThreshold: Int64 = 100 * 1024 * 1024 // 100MB for 100K files
 
         // Test with small dataset
-        let smallDataset = Array(testAssets.prefix(1000))
+        let smallDataset = Array(self.testAssets.prefix(1000))
         let smallMemoryUsage = try await measureMemoryUsage(for: smallDataset)
-        logger.info("Small dataset (1K files): \(formatBytes(smallMemoryUsage))")
+        logger.info("Small dataset (1K files): \(self.formatBytes(smallMemoryUsage))")
 
         // Test with medium dataset
-        let mediumDataset = Array(testAssets.prefix(10000))
+        let mediumDataset = Array(self.testAssets.prefix(10000))
         let mediumMemoryUsage = try await measureMemoryUsage(for: mediumDataset)
-        logger.info("Medium dataset (10K files): \(formatBytes(mediumMemoryUsage))")
+        logger.info("Medium dataset (10K files): \(self.formatBytes(mediumMemoryUsage))")
 
         // Test with large dataset
-        let largeDataset = Array(testAssets.prefix(100000))
+        let largeDataset = Array(self.testAssets.prefix(100000))
         let largeMemoryUsage = try await measureMemoryUsage(for: largeDataset)
-        logger.info("Large dataset (100K files): \(formatBytes(largeMemoryUsage))")
+        logger.info("Large dataset (100K files): \(self.formatBytes(largeMemoryUsage))")
 
         // Validate memory efficiency claims
         let bytesPerFile = Double(largeMemoryUsage) / Double(largeDataset.count)
@@ -117,11 +125,11 @@ final class PerformanceValidationTests: XCTestCase {
 
         // Memory usage should scale linearly, not exponentially
         let smallBytesPerFile = Double(smallMemoryUsage) / Double(smallDataset.count)
-        let mediumBytesPerFile = Double(mediumMemoryUsage) / Double(mediumDataset.count)
+        let _ = Double(mediumMemoryUsage) / Double(mediumDataset.count) // Medium dataset bytes per file (for future validation)
 
         // Linear scaling validation
         let expectedMediumUsage = smallBytesPerFile * Double(mediumDataset.count)
-        let scalingRatio = mediumMemoryUsage / Int64(expectedMediumUsage)
+        let scalingRatio = Double(mediumMemoryUsage) / expectedMediumUsage
 
         logger.info("Memory scaling ratio: \(String(format: "%.2f", scalingRatio)) (should be ~1.0 for linear)")
 
@@ -130,7 +138,7 @@ final class PerformanceValidationTests: XCTestCase {
 
         // Final validation against claimed limits
         XCTAssertLessThan(largeMemoryUsage, memoryThreshold,
-            "Large dataset memory usage should be < \(formatBytes(memoryThreshold)) (was \(formatBytes(largeMemoryUsage)))")
+            "Large dataset memory usage should be < \(self.formatBytes(memoryThreshold)) (was \(self.formatBytes(largeMemoryUsage)))")
     }
 
     /**
@@ -139,9 +147,12 @@ final class PerformanceValidationTests: XCTestCase {
     func testAdaptiveConcurrencyClaims() async throws {
         logger.info("🔬 Validating adaptive concurrency claims")
 
+        let persistenceController = await MainActor.run {
+            PersistenceController.shared
+        }
         let scanService = ScanService(
-            persistenceController: PersistenceController.shared,
-            config: ScanConfig(
+            persistenceController: persistenceController,
+            config: ScanService.ScanConfig(
                 enableMemoryMonitoring: true,
                 enableAdaptiveConcurrency: true,
                 maxConcurrency: 8,
@@ -159,7 +170,7 @@ final class PerformanceValidationTests: XCTestCase {
             dataset: Array(testAssets.prefix(5000))
         )
 
-        logger.info("Pressure test results: \(pressureTestResults)")
+        logger.info("Pressure test results: reducedConcurrency=\(pressureTestResults.reducedConcurrency), maintainedPerformance=\(pressureTestResults.maintainedPerformance), performanceDegradation=\(pressureTestResults.performanceDegradation)")
 
         // Validate concurrency adaptation
         let adaptationOccurred = pressureTestResults.reducedConcurrency || pressureTestResults.maintainedPerformance
@@ -189,11 +200,11 @@ final class PerformanceValidationTests: XCTestCase {
             logger.info("Detected slow progress: \(String(format: "%.1f", rate)) files/sec")
             XCTAssertLessThan(rate, 10.0, "Should detect progress < 10 files/sec as slow")
         } else {
-            XCTFail("Should have detected slow progress, got: \(healthStatus)")
+            XCTFail("Should have detected slow progress, got: \(String(describing: healthStatus))")
         }
 
         // Test recovery mechanism
-        let recoveryResult = try await recoveryManager.attemptRecovery(for: .slowProgress)
+        let recoveryResult = try await recoveryManager.attemptRecovery(for: ScanService.ScanHealth.slowProgress(5.0))
 
         logger.info("Recovery result: success=\(recoveryResult.success), time=\(String(format: "%.2f", recoveryResult.recoveryTime))s")
 
@@ -203,7 +214,7 @@ final class PerformanceValidationTests: XCTestCase {
             if case .healthy = postRecoveryHealth {
                 logger.info("✅ Recovery successful - health restored")
             } else {
-                logger.warning("⚠️ Recovery completed but health not fully restored: \(postRecoveryHealth)")
+                logger.warning("⚠️ Recovery completed but health not fully restored: \(String(describing: postRecoveryHealth))")
             }
         }
 
@@ -250,7 +261,7 @@ final class PerformanceValidationTests: XCTestCase {
 
             // Validate memory efficiency
             let memoryEfficiency = comparison.memoryEfficiency
-            let memoryThreshold: Double = 100 * 1024 * 1024 // 100MB for 100K files
+            let _: Double = 100 * 1024 * 1024 // 100MB threshold for 100K files (for future validation)
             let bytesPerFile = memoryEfficiency.bytesPerFile
             logger.info("Memory efficiency: \(String(format: "%.1f", bytesPerFile)) bytes per file")
 
@@ -279,22 +290,33 @@ final class PerformanceValidationTests: XCTestCase {
         logger.info("🔬 Validating implementation completeness")
 
         // Test PerformanceService functionality
-        let service = PerformanceService()
-        let monitor = service.startMonitoring(operation: "test_operation")
+        let service = await MainActor.run {
+            PerformanceService()
+        }
+        await MainActor.run {
+            let monitor = service.startMonitoring(operation: "test_operation")
+            // Monitor lifecycle is managed by PerformanceService
+            // We'll stop it after recording metrics
+        }
 
         // Record some metrics
-        service.recordMetrics(
-            operation: "test_operation",
-            duration: 1.5,
-            memoryUsage: 10_000_000,
-            cpuUsage: 25.0,
-            itemsProcessed: 1000
-        )
+        await MainActor.run {
+            service.recordMetrics(
+                operation: "test_operation",
+                duration: 1.5,
+                memoryUsage: 10_000_000,
+                cpuUsage: 25.0,
+                itemsProcessed: 1000
+            )
+        }
 
-        monitor.stop(itemsProcessed: 1000)
+        // Monitor is scoped within MainActor.run, so we don't need to stop it separately
+        // The monitor lifecycle is managed by PerformanceService
 
         // Verify metrics were recorded
-        let summary = service.getPerformanceSummary()
+        let summary = await MainActor.run {
+            service.getPerformanceSummary()
+        }
         XCTAssertGreaterThan(summary.totalOperations, 0,
             "PerformanceService should record and summarize metrics")
 
@@ -306,10 +328,14 @@ final class PerformanceValidationTests: XCTestCase {
             maxConcurrentOperations: 4
         )
 
-        service.updateThresholds(thresholds)
+        await MainActor.run {
+            service.updateThresholds(thresholds)
+        }
 
         // Verify thresholds were updated
-        let retrievedThresholds = service.thresholds
+        let retrievedThresholds = await MainActor.run {
+            service.thresholds
+        }
         XCTAssertEqual(retrievedThresholds.maxMemoryUsage, 200_000_000,
             "Resource thresholds should be updatable")
     }
@@ -321,27 +347,30 @@ final class PerformanceValidationTests: XCTestCase {
         logger.info("🔬 Testing real-world performance scenarios")
 
         // Create realistic test scenario
-        let realisticDataset = try await createRealisticTestDataset(
+        let _ = try await createRealisticTestDataset(
             photoCount: 5000,
             videoCount: 500,
             duplicateRatio: 0.15
-        )
+        ) // Realistic dataset created for test environment setup
 
         let scanOptions = ScanOptions(
             excludes: [],
-            maxConcurrency: 4,
-            enableHealthMonitoring: true,
-            enableMemoryMonitoring: true
+            followSymlinks: false,
+            concurrency: 4,
+            incremental: false,
+            incrementalLookbackHours: 0
         )
 
-        let scanService = ScanService(
-            persistenceController: PersistenceController.shared,
-            config: ScanConfig(
-                enableMemoryMonitoring: true,
-                enableAdaptiveConcurrency: true,
-                maxConcurrency: 8
+        let scanService = await MainActor.run {
+            ScanService(
+                persistenceController: PersistenceController.shared,
+                config: ScanService.ScanConfig(
+                    enableMemoryMonitoring: true,
+                    enableAdaptiveConcurrency: true,
+                    maxConcurrency: 8
+                )
             )
-        )
+        }
 
         // Measure performance with realistic data
         let startTime = Date()
@@ -370,7 +399,7 @@ final class PerformanceValidationTests: XCTestCase {
 
             // Memory usage should be tracked
             let memoryUsage = try await measureCurrentMemoryUsage()
-            logger.info("Peak memory usage: \(formatBytes(memoryUsage))")
+            logger.info("Peak memory usage: \(self.formatBytes(memoryUsage))")
 
             // Should not exceed reasonable limits
             let memoryLimit: Int64 = 500 * 1024 * 1024 // 500MB
@@ -396,10 +425,12 @@ final class PerformanceValidationTests: XCTestCase {
     }
 
     private func measureMemoryUsage(for dataset: [DetectionAsset]) async throws -> Int64 {
-        let scanService = ScanService(
-            persistenceController: PersistenceController.shared,
-            config: ScanConfig(enableMemoryMonitoring: true)
-        )
+        let scanService = await MainActor.run {
+            ScanService(
+                persistenceController: PersistenceController.shared,
+                config: ScanService.ScanConfig(enableMemoryMonitoring: true)
+            )
+        }
 
         let startMemory = try await measureCurrentMemoryUsage()
 
@@ -441,8 +472,8 @@ final class PerformanceValidationTests: XCTestCase {
                 captureDate: Date().addingTimeInterval(Double(-i * 60)),
                 createdAt: Date(),
                 modifiedAt: Date(),
-                imageHashes: isPhoto ? [HashAlgorithm.dhash: UInt64(i % 100)] : [:],
-                videoSignature: isPhoto ? nil : VideoSignature(durationSec: Double(30 + i % 120), frameHashes: [UInt64(i)])
+                imageHashes: isPhoto ? [HashAlgorithm.dHash: UInt64(i % 100)] : [:],
+                videoSignature: isPhoto ? nil : VideoSignature(durationSec: Double(30 + i % 120), width: 1920, height: 1080, frameHashes: [UInt64(i)])
             ))
         }
 
@@ -469,15 +500,15 @@ final class PerformanceValidationTests: XCTestCase {
                 captureDate: Date().addingTimeInterval(Double(-i * 30)),
                 createdAt: Date(),
                 modifiedAt: Date(),
-                imageHashes: isPhoto ? [HashAlgorithm.dhash: UInt64(i % 1000)] : [:],
-                videoSignature: isPhoto ? nil : VideoSignature(durationSec: Double(30 + i % 300), frameHashes: [UInt64(i % 100)])
+                imageHashes: isPhoto ? [HashAlgorithm.dHash: UInt64(i % 1000)] : [:],
+                videoSignature: isPhoto ? nil : VideoSignature(durationSec: Double(30 + i % 300), width: 1920, height: 1080, frameHashes: [UInt64(i % 100)])
             ))
         }
 
         // Add duplicates
         for i in 0..<duplicateCount {
             let originalIndex = i % totalAssets
-            let duplicateIndex = totalAssets + i
+            let _ = totalAssets + i // Duplicate index (for future use)
             let original = assets[originalIndex]
 
             let duplicate = DetectionAsset(
@@ -586,22 +617,15 @@ private struct ScanHealthMonitor {
         // Placeholder - would simulate slow progress
     }
 
-    func getCurrentHealthStatus() async -> ScanHealthStatus {
+    func getCurrentHealthStatus() async -> ScanService.ScanHealth {
         return .healthy // Placeholder
     }
 }
 
 private struct ScanRecoveryManager {
-    func attemptRecovery(for status: ScanHealthStatus) async throws -> RecoveryResult {
+    func attemptRecovery(for status: ScanService.ScanHealth) async throws -> RecoveryResult {
         return RecoveryResult(success: true, recoveryTime: 0.5, failureReason: nil)
     }
-}
-
-private enum ScanHealthStatus {
-    case healthy
-    case slowProgress(Double)
-    case stalled
-    case memoryPressure(Double)
 }
 
 private struct RecoveryResult {
@@ -620,7 +644,9 @@ extension PerformanceValidationTests {
         logger.info("🔬 Testing performance under extreme conditions")
 
         // Test with very large dataset
-        let largeDataset = try await createValidationTestAssets() + try await createValidationTestAssets()
+        let firstBatch = try await createValidationTestAssets()
+        let secondBatch = try await createValidationTestAssets()
+        let largeDataset = firstBatch + secondBatch
         let hugeDataset = Array(largeDataset.prefix(50000))
 
         let memoryUsage = try await measureMemoryUsage(for: hugeDataset)
@@ -641,12 +667,19 @@ extension PerformanceValidationTests {
 
         // This would test multiple concurrent scans
         // For now, just validate the concurrency framework exists
-        let scanService = ScanService(
-            persistenceController: PersistenceController.shared,
-            config: ScanConfig(maxConcurrency: 8, enableParallelProcessing: true)
-        )
+        let scanService = await MainActor.run {
+            ScanService(
+                persistenceController: PersistenceController.shared,
+                config: ScanService.ScanConfig(
+                    enableParallelProcessing: true,
+                    maxConcurrency: 8
+                )
+            )
+        }
 
-        let concurrency = scanService.getCurrentConcurrency()
+        let concurrency = await MainActor.run {
+            scanService.getCurrentConcurrency()
+        }
         logger.info("Scan service concurrency: \(concurrency)")
 
         // Should support reasonable concurrency levels

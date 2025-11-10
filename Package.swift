@@ -48,7 +48,7 @@ let package = Package(
         ),
         .testTarget(
             name: "DeduperCoreTests",
-            dependencies: ["DeduperCore"],
+            dependencies: ["DeduperCore", "DeduperUI"],
             path: "Tests/DeduperCoreTests"
         ),
     ]
