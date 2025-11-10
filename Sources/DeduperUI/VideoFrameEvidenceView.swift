@@ -288,32 +288,6 @@ private func extractIntFromRationale(_ rationale: String, pattern: String) -> In
     return Int(matchedString)
 }
 
-private func makeSampleVideoSimilarity() -> VideoSimilarity {
-    var sampleFrames: [VideoFrameDistance] = []
-    for index in 0..<10 {
-        sampleFrames.append(VideoFrameDistance(
-            index: index,
-            timeA: Double(index) * 2.0,
-            timeB: Double(index) * 2.0,
-            hashA: UInt64(index * 1000),
-            hashB: UInt64(index * 1000 + (index % 3)),
-            distance: index % 3
-        ))
-    }
-    
-    return VideoSimilarity(
-        verdict: .similar,
-        durationDelta: 0.5,
-        durationDeltaRatio: 0.01,
-        frameDistances: sampleFrames,
-        averageDistance: 1.5,
-        maxDistance: 3,
-        mismatchedFrameCount: 2
-    )
-}
-
-#Preview {
-    VideoFrameEvidenceView(similarity: makeSampleVideoSimilarity(), threshold: 5)
-        .padding()
-}
+// Preview removed - VideoSimilarity and VideoFrameDistance initializers are internal
+// Preview can be added when public initializers are available or via test data
 

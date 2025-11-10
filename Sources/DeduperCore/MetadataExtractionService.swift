@@ -260,7 +260,7 @@ public final class MetadataExtractionService: @unchecked Sendable {
     private func setupMemoryPressureMonitoring() {
         logger.info("Setting up memory pressure monitoring for metadata extraction")
 
-        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: [])
+        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .all)
         memoryPressureSource?.setEventHandler { [weak self] in
             self?.handleMemoryPressureEvent()
         }

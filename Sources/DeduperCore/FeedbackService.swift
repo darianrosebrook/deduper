@@ -300,7 +300,7 @@ public final class FeedbackService: ObservableObject {
     private func setupMemoryPressureHandling() {
         guard config.enableMemoryMonitoring else { return }
 
-        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: [])
+        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .all)
         memoryPressureSource?.setEventHandler { [weak self] in
             self?.handleMemoryPressureEvent()
         }

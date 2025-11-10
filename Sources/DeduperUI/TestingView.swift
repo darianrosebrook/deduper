@@ -414,7 +414,8 @@ public final class TestingViewModel: ObservableObject {
             let avgDuration = testResults.map { $0.duration }.reduce(0, +) / Double(max(testResults.count, 1))
             
             // Note: TestFrameworkIntegration.QualityMetrics has different structure
-            // Using placeholder values for now
+            // flakyTests and regressionCount are not available from current integration
+            // These would require additional analysis beyond basic test execution
             self.qualityMetrics = QualityMetrics(
                 testCount: testCount,
                 passCount: passedCount,
@@ -422,8 +423,8 @@ public final class TestingViewModel: ObservableObject {
                 skipCount: testCount - passedCount - failedCount,
                 coveragePercentage: coverageData?.coveragePercentage ?? 0,
                 averageTestDuration: avgDuration,
-                flakyTests: 0,
-                regressionCount: 0
+                flakyTests: 0, // Not available from current test framework integration
+                regressionCount: 0 // Not available from current test framework integration
             )
 
             logger.info("✅ Real quality analysis completed: Maintainability \(String(format: "%.1f", qualityMetrics.maintainabilityIndex))%")

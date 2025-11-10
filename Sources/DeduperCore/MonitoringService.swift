@@ -162,12 +162,18 @@ public final class MonitoringService: @unchecked Sendable {
         
         // Create file descriptor for monitoring
         let fileDescriptor = open(url.path, O_EVTONLY)
-        guard fileDescriptor >= 0 else {
-            logger.error("Failed to open file descriptor for \(url.path, privacy: .public)")
+        guard fileDescriptor > 0 else {
+            if fileDescriptor < 0 {
+                logger.error("Failed to open file descriptor for \(url.path, privacy: .public)")
+            } else {
+                logger.error("Invalid file descriptor (0) for \(url.path, privacy: .public)")
+            }
             return
         }
         
         // Create dispatch source for file system events
+        // Note: makeFileSystemObjectSource can fail internally if fileDescriptor is invalid
+        // We've already validated fileDescriptor > 0 above
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fileDescriptor,
             eventMask: [.write, .delete, .rename, .extend],

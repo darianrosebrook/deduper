@@ -64,6 +64,20 @@ public struct FolderSelectionView: View {
                     }
                 }
             }
+            
+            // Session Picker Section (show when not scanning and has saved sessions)
+            if !viewModel.isScanning && viewModel.hasSavedSessions {
+                SessionPickerView(sessionStore: viewModel.sessionStore) { session in
+                    Task {
+                        await viewModel.resumeSession(session)
+                    }
+                }
+            }
+            
+            // Enhanced Metrics Display (show when session has metrics)
+            if let session = viewModel.activeSession, session.metrics.itemsProcessed > 0 {
+                SessionMetricsView(metrics: session.metrics)
+            }
 
             // Folder Selection and Scan Controls Section
             VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
@@ -160,7 +174,7 @@ public struct FolderSelectionView: View {
             if viewModel.isScanning {
                 VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
                     HStack {
-                        Text("Scan Progress:")
+                        Text("Scan Progress")
                             .font(DesignToken.fontFamilyHeading)
 
                         Spacer()
@@ -170,37 +184,56 @@ public struct FolderSelectionView: View {
                             .foregroundColor(.red)
                     }
 
-                    VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
-                        if viewModel.hasStartedScan {
-                            ProgressView(value: viewModel.progress, total: 1.0)
-                                .progressViewStyle(.linear)
-                                .frame(height: 6)
-                        } else {
-                            ProgressView()
-                                .progressViewStyle(.circular)
-                                .controlSize(.regular)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                        }
+                    // Enhanced timeline view showing phase progression
+                    if let currentPhase = viewModel.currentScanPhase {
+                        ScanTimelineView(
+                            currentPhase: currentPhase,
+                            metrics: viewModel.activeSession?.metrics
+                        )
+                    } else {
+                        // Fallback to simple progress view if phase not available
+                        VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
+                            if viewModel.hasStartedScan {
+                                ProgressView(value: viewModel.progress, total: 1.0)
+                                    .progressViewStyle(.linear)
+                                    .frame(height: 6)
+                            } else {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .controlSize(.regular)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                            }
 
-                        if let currentFolder = viewModel.currentScanningFolder {
-                            Text("Scanning \(currentFolder.lastPathComponent)...")
+                            if let currentFolder = viewModel.currentScanningFolder {
+                                Text("Scanning \(currentFolder.lastPathComponent)...")
+                                    .font(DesignToken.fontFamilyCaption)
+                                    .foregroundStyle(DesignToken.colorForegroundSecondary)
+                            }
+
+                            Text("\(viewModel.processedItems) items processed")
                                 .font(DesignToken.fontFamilyCaption)
                                 .foregroundStyle(DesignToken.colorForegroundSecondary)
                         }
-
-                        Text("\(viewModel.processedItems) items processed")
-                            .font(DesignToken.fontFamilyCaption)
-                            .foregroundStyle(DesignToken.colorForegroundSecondary)
+                        .padding(DesignToken.spacingMD)
+                        .background(DesignToken.colorBackgroundSecondary)
+                        .cornerRadius(DesignToken.cornerRadiusMD)
                     }
-                    .padding(DesignToken.spacingMD)
-                    .background(DesignToken.colorBackgroundSecondary)
-                    .cornerRadius(DesignToken.cornerRadiusMD)
                 }
             }
 
             // Results Section (show when complete)
             if viewModel.hasResults {
                 VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
+                    // Enhanced Results Summary
+                    if let session = viewModel.activeSession {
+                        EnhancedResultsSummaryView(
+                            metrics: session.metrics,
+                            duplicateGroups: viewModel.duplicateGroups,
+                            duplicateSummaries: session.duplicateSummaries
+                        )
+                    }
+                    
+                    // Quick action button
                     VStack(alignment: .leading, spacing: DesignToken.spacingSM) {
                         HStack {
                             Image(systemName: "checkmark.circle.fill")
@@ -836,7 +869,7 @@ FolderSelectionViewModel manages folder selection and integrated scanning.
 public class FolderSelectionViewModel: ObservableObject {
     private let folderSelectionService = ServiceManager.shared.folderSelection
     private let permissionsService = ServiceManager.shared.permissionsService
-    private let sessionStore = ServiceManager.shared.sessionStore
+    private let sessionStoreInstance = ServiceManager.shared.sessionStore
     private let duplicateEngine = ServiceManager.shared.duplicateEngine
     private let persistenceController = ServiceManager.shared.persistence
     private let similaritySettingsStore = SimilaritySettingsStore.shared
@@ -860,6 +893,7 @@ public class FolderSelectionViewModel: ObservableObject {
     @Published public var hasResults = false
     @Published public var duplicateGroups: [DuplicateGroupResult] = []
     @Published public var activeSession: ScanSession?
+    @Published public var hasSavedSessions = false
 
     // Recovery state
     @Published public var recoveryDecision: RecoveryDecision?
@@ -868,6 +902,11 @@ public class FolderSelectionViewModel: ObservableObject {
     @Published public var error: String?
 
     private var scanTask: Task<Void, Never>?
+    
+    /// Expose sessionStore for session picker access
+    public var sessionStore: SessionStore {
+        sessionStoreInstance
+    }
 
     public enum ScanStatus {
         case idle
@@ -877,7 +916,7 @@ public class FolderSelectionViewModel: ObservableObject {
     }
 
     public init() {
-        sessionStore.$activeSession
+        sessionStoreInstance.$activeSession
             .receive(on: RunLoop.main)
             .sink { [weak self] session in
                 self?.activeSession = session
@@ -885,7 +924,7 @@ public class FolderSelectionViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        sessionStore.$recoveryDecision
+        sessionStoreInstance.$recoveryDecision
             .receive(on: RunLoop.main)
             .sink { [weak self] decision in
                 self?.recoveryDecision = decision
@@ -894,16 +933,44 @@ public class FolderSelectionViewModel: ObservableObject {
 
         Task { [sessionStore] in
             await sessionStore.restoreMostRecentSession()
+            await checkForSavedSessions()
+        }
+    }
+    
+    /// Check if there are saved sessions available
+    private func checkForSavedSessions() async {
+        let sessions = await sessionStoreInstance.loadAllSessions(limit: 1)
+        await MainActor.run {
+            hasSavedSessions = !sessions.isEmpty
+        }
+    }
+    
+    /// Resume a selected session
+    public func resumeSession(_ session: ScanSession) async {
+        // Set the session as active
+        await MainActor.run {
+            activeSession = session
+        }
+        
+        // If session was interrupted, offer to resume scanning
+        if session.status == .failed || session.status == .cancelled {
+            // Restore folder selection from session
+            await MainActor.run {
+                selectedFolders = session.folders.map { $0.url }
+            }
+            
+            // Optionally restart scan from where it left off
+            // For now, just restore the session state
         }
     }
 
     public func handleRecoveryDecision(_ action: RecoveryDecision.RecoveryStrategy) async {
         guard let recoveryDecision = recoveryDecision else { return }
-        await sessionStore.handleRecoveryDecision(recoveryDecision, action: action)
+        await sessionStoreInstance.handleRecoveryDecision(recoveryDecision, action: action)
     }
 
     public func dismissRecoveryDecision() {
-        sessionStore.dismissRecoveryDecision()
+        sessionStoreInstance.dismissRecoveryDecision()
     }
 
     public func addFolder() {
@@ -948,6 +1015,11 @@ public class FolderSelectionViewModel: ObservableObject {
         }
     }
 
+    /// Current scan phase extracted from active session
+    public var currentScanPhase: SessionPhase? {
+        activeSession?.phase
+    }
+    
     private func synchronizeWithSession(_ session: ScanSession?) {
         guard let session else { return }
         processedItems = session.metrics.itemsProcessed
@@ -994,7 +1066,7 @@ public class FolderSelectionViewModel: ObservableObject {
         // Start the scan via the session store so state persists across navigation.
         scanTask = Task { [weak self] in
             guard let self else { return }
-            let stream = await self.sessionStore.startSession(urls: self.selectedFolders)
+            let stream = await self.sessionStoreInstance.startSession(urls: self.selectedFolders)
 
             var eventCount = 0
             for await event in stream {
@@ -1022,8 +1094,8 @@ public class FolderSelectionViewModel: ObservableObject {
         isScanning = false
         scanStatusText = "Scan stopped"
 
-        Task { [sessionStore] in
-            await sessionStore.cancelActiveSession()
+        Task { [sessionStoreInstance] in
+            await sessionStoreInstance.cancelActiveSession()
         }
 
         // Mark remaining folders as error
@@ -1528,6 +1600,9 @@ public struct GroupsListView: View {
     @State private var searchText = ""
     @State private var selectedGroupIndex = 0
     @FocusState private var isFocused: Bool
+    @State private var showMergePlanSheet = false
+    @State private var mergePlanGroup: DuplicateGroupResult?
+    @State private var mergePlanKeeperId: UUID?
 
     // Performance monitoring - addresses critical gap in skeptical review
     // Note: UIPerformanceValidator implementation pending
@@ -1606,6 +1681,15 @@ public struct GroupsListView: View {
         .sheet(item: $selectedGroup) { group in
             GroupDetailView(group: group)
         }
+        .sheet(isPresented: $showMergePlanSheet) {
+            if let group = mergePlanGroup, let keeperId = mergePlanKeeperId {
+                MergePlanSheet(
+                    isPresented: $showMergePlanSheet,
+                    group: group,
+                    keeperFileId: keeperId
+                )
+            }
+        }
         .sheet(isPresented: $showSimilarityControls) {
             SimilarityControlsView()
         }
@@ -1671,9 +1755,16 @@ public struct GroupsListView: View {
                     viewModel.mergeGroup(group)
                 }
                 Button("Preview Merge") {
-                    // TODO: Show merge plan sheet from GroupsListView
-                    print("Preview merge for group: \(group.groupId)")
+                    let keeperId = group.keeperSuggestion ?? group.members.first?.fileId
+                    guard let keeperId = keeperId else {
+                        // No keeper available - cannot preview merge
+                        return
+                    }
+                    mergePlanGroup = group
+                    mergePlanKeeperId = keeperId
+                    showMergePlanSheet = true
                 }
+                .disabled(group.keeperSuggestion == nil && group.members.first == nil)
                 Divider()
                 Button("Show in Finder") {
                     viewModel.showInFinder(group)
@@ -1825,18 +1916,20 @@ private extension View {
                 }
                 .onKeyPress(.return) {
                     guard let current = selectedGroup.wrappedValue else { return .ignored }
-                    selectedGroup.wrappedValue = current
+                    // Show merge plan sheet on Return key
+                    let keeperId = current.keeperSuggestion ?? current.members.first?.fileId
+                    guard let keeperId = keeperId else {
+                        // No keeper available - cannot preview merge
+                        return .ignored
+                    }
+                    mergePlanGroup = current
+                    mergePlanKeeperId = keeperId
+                    showMergePlanSheet = true
                     return .handled
                 }
                 .onKeyPress(" ") {
                     guard let current = selectedGroup.wrappedValue else { return .ignored }
                     viewModel.setKeeper(for: current)
-                    return .handled
-                }
-                .onKeyPress(.return) {
-                    guard let current = selectedGroup.wrappedValue else { return .ignored }
-                    // TODO: Show merge plan sheet from GroupsListView
-                    print("Show merge plan for group: \(current.groupId)")
                     return .handled
                 }
                 .onKeyPress(.delete, phases: .down) { keyPress in
@@ -2317,6 +2410,29 @@ public final class GroupDetailViewModel: ObservableObject {
             await self.loadMergePlan()
         }
     }
+    
+    /// Applies a selection preset to the current group
+    public func applyPreset(_ preset: SelectionPreset) async {
+        guard let group = selectedGroup else { return }
+        
+        guard preset != .custom else {
+            infoMessage = "Select a file manually to use custom selection"
+            return
+        }
+        
+        let service = SelectionPresetService(metadataService: ServiceManager.shared.metadataService)
+        
+        if let keeperId = await service.applyPreset(preset, to: group) {
+            await MainActor.run {
+                updateKeeperSelection(to: keeperId)
+                infoMessage = "Applied \(preset.displayName) preset"
+            }
+        } else {
+            await MainActor.run {
+                error = "Failed to apply preset: \(preset.displayName)"
+            }
+        }
+    }
 }
 
 // MARK: - Group Detail View
@@ -2330,6 +2446,7 @@ public final class GroupDetailViewModel: ObservableObject {
 public struct GroupDetailView: View {
     public let group: DuplicateGroupResult
     @StateObject private var viewModel: GroupDetailViewModel
+    @State private var selectedPreset: SelectionPreset = .intelligent
 
     public init(group: DuplicateGroupResult) {
         self.group = group
@@ -2356,6 +2473,18 @@ public struct GroupDetailView: View {
             }
             .padding(DesignToken.spacingMD)
 
+            // Selection Preset Picker
+            SelectionPresetView(selectedPreset: $selectedPreset) { preset in
+                Task {
+                    await viewModel.applyPreset(preset)
+                }
+            }
+            .padding(.horizontal, DesignToken.spacingMD)
+            
+            // Preview of preset selection
+            SelectionPresetPreview(group: currentGroup, preset: selectedPreset)
+                .padding(.horizontal, DesignToken.spacingMD)
+            
             if let firstMember = currentGroup.members.first {
                 let keeperBinding = Binding<UUID>(
                     get: {

@@ -30,6 +30,16 @@ public final class SessionStore: ObservableObject {
             activeSession = session
         }
     }
+    
+    /// Loads all saved sessions for display in session picker.
+    public func loadAllSessions(limit: Int? = nil) async -> [ScanSession] {
+        await persistence.loadAllSessions(limit: limit)
+    }
+    
+    /// Deletes a specific session.
+    public func deleteSession(_ sessionId: UUID) async {
+        await persistence.delete(sessionID: sessionId)
+    }
 
     /// Checks for recovery opportunities and presents them to the user.
     public func checkForRecoveryOpportunities() async {

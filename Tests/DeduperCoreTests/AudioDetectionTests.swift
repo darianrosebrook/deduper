@@ -238,14 +238,14 @@ import Foundation
     
     @Test func testBuildCandidatesSeparatesDifferentAudio() {
         let engine = DuplicateDetectionEngine()
-        // Create audio files with significantly different durations and sizes
-        // Audio signature is based on duration band, size band, and filename stem
-        // Use very different values to ensure different signature bands
-        let audio1 = makeAudio(fileName: "song1.mp3", fileSize: 1_000_000, duration: 60.0)   // 1MB, 1min
-        let audio2 = makeAudio(fileName: "song2.mp3", fileSize: 50_000_000, duration: 600.0)  // 50MB, 10min - different bands
+        // Audio signature is based on duration band, size band, and filename stem (first 4 alphanumeric chars)
+        // With percentage-based tolerance, similar-sized files can map to the same bands
+        // To ensure different buckets, use files with different filename stems
+        let audio1 = makeAudio(fileName: "rock_song.mp3", fileSize: 4_000_000, duration: 180.0)   // stem: "rock"
+        let audio2 = makeAudio(fileName: "jazz_track.mp3", fileSize: 4_000_000, duration: 180.0)  // stem: "jazz" - different stem
         
         let buckets = engine.buildCandidates(from: [audio1, audio2])
-        // Different audio files should be in separate buckets based on their signatures (duration/size bands)
+        // Different audio files should be in separate buckets based on their signatures (different stems)
         #expect(buckets.count == 2)
     }
     

@@ -378,9 +378,52 @@ public final class PerformanceService: ObservableObject {
     }
 
     private func getCurrentCPUUsage() -> Double {
-        // This is a simplified implementation
-        // Real CPU monitoring would require more complex system calls
-        return 0.0 // Placeholder
+        var processorInfo: processor_info_array_t?
+        var processorMsgCount: mach_msg_type_number_t = 0
+        var processorCount: mach_msg_type_number_t = 0
+
+        let result = host_processor_info(
+            mach_host_self(),
+            PROCESSOR_CPU_LOAD_INFO,
+            &processorCount,
+            &processorInfo,
+            &processorMsgCount
+        )
+
+        guard result == KERN_SUCCESS,
+              let processorInfo = processorInfo,
+              processorCount > 0 else {
+            logger.debug("Failed to get CPU usage: \(result)")
+            return 0.0
+        }
+
+        defer {
+            vm_deallocate(
+                mach_task_self_,
+                vm_address_t(bitPattern: processorInfo),
+                vm_size_t(Int(processorMsgCount) * MemoryLayout<integer_t>.size)
+            )
+        }
+
+        var totalUsage: Double = 0
+        let cpuInfoPointer = processorInfo.withMemoryRebound(to: processor_cpu_load_info_t.self, capacity: Int(processorCount)) { $0 }
+        
+        for i in 0..<Int(processorCount) {
+            let cpuInfo = cpuInfoPointer[i].pointee
+            // CPU tick constants - cpu_ticks is a tuple (user, system, idle, nice)
+            let user = Double(cpuInfo.cpu_ticks.0)
+            let sys = Double(cpuInfo.cpu_ticks.1)
+            let idle = Double(cpuInfo.cpu_ticks.2)
+            let nice = Double(cpuInfo.cpu_ticks.3)
+            let total = user + sys + idle + nice
+
+            if total > 0 {
+                totalUsage += (user + sys) / total
+            }
+        }
+
+        let averageUsage = totalUsage / Double(processorCount) * 100.0
+        return min(100.0, max(0.0, averageUsage))
     }
 
     private func loadPerformanceHistory() {

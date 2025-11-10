@@ -17,11 +17,11 @@ import Foundation
     
     // MARK: - File System Failure Scenarios
     
-    @Test func testScanOrchestrator_FileSystemFailure_DuringScan() async throws {
+    @Test @MainActor func testScanOrchestrator_FileSystemFailure_DuringScan() async throws {
         // Scenario: File system becomes unavailable during scan
         // Expected: Scan should handle errors gracefully, report failures, continue with available files
         
-        let orchestrator = ServiceManager.shared.scanOrchestrator
+        let orchestrator = await MainActor.run { ServiceManager.shared.scanOrchestrator }
         let chaosFramework = ChaosTestingFramework()
         
         // Create temporary directory with some files
@@ -48,18 +48,18 @@ import Foundation
         do {
             // Attempt scan - should handle errors gracefully
             // In real implementation, chaos framework would inject failures
-            _ = try await orchestrator.scan(folder: tempDir)
+            _ = try await orchestrator.performScan(urls: [tempDir])
         } catch {
             // Expected - verify error is handled appropriately
             #expect(error is Error)
         }
     }
     
-    @Test func testPersistenceController_DatabaseCorruption_DuringWrite() async throws {
+    @Test @MainActor func testPersistenceController_DatabaseCorruption_DuringWrite() async throws {
         // Scenario: Database corruption occurs during persistence write
         // Expected: Transaction should rollback, error reported, data consistency maintained
         
-        let persistence = PersistenceController(inMemory: true)
+        let persistence = await PersistenceController(inMemory: true)
         let chaosFramework = ChaosTestingFramework()
         
         // Create test group
@@ -103,11 +103,12 @@ import Foundation
         }
     }
     
-    @Test func testMemoryPressure_DuringHashing() async throws {
+    @Test @MainActor func testMemoryPressure_DuringHashing() async throws {
         // Scenario: Memory pressure during image/video hashing
         // Expected: System should handle memory pressure, possibly reduce concurrency, continue operation
         
-        let hashingService = ServiceManager.shared.imageHashingService
+        // ImageHashingService is accessed through duplicateEngine
+        let duplicateEngine = await MainActor.run { ServiceManager.shared.duplicateEngine }
         let chaosFramework = ChaosTestingFramework()
         
         // Create large test image data (simulated)
@@ -120,17 +121,17 @@ import Foundation
             parameters: ["pressureLevel": 0.8]
         )
         
-        // Verify hashing service handles memory pressure
+        // Verify duplicate engine handles memory pressure
         // In real implementation, chaos framework would inject memory pressure
         // For now, verify service exists and can be called
-        #expect(hashingService != nil)
+        #expect(duplicateEngine != nil)
     }
     
-    @Test func testConcurrentAccess_DuplicateGroupUpdates() async throws {
+    @Test @MainActor func testConcurrentAccess_DuplicateGroupUpdates() async throws {
         // Scenario: Multiple concurrent updates to same duplicate group
         // Expected: Updates should be serialized, no data corruption, last write wins or proper conflict resolution
         
-        let persistence = PersistenceController(inMemory: true)
+        let persistence = await PersistenceController(inMemory: true)
         
         let groupId = UUID()
         let member1 = DuplicateGroupMember(
@@ -187,14 +188,14 @@ import Foundation
         #expect(matchingGroups.count <= 1) // Should not have duplicates
     }
     
-    @Test func testNetworkInterruption_DuringMetadataFetch() async throws {
+    @Test @MainActor func testNetworkInterruption_DuringMetadataFetch() async throws {
         // Scenario: Network interruption during metadata fetch (if applicable)
         // Expected: Should handle network errors gracefully, use cached data if available, report error
         
         // Note: This test is placeholder - Deduper is primarily local, but may fetch metadata from network
         // Verify error handling exists for network operations
         
-        let metadataService = ServiceManager.shared.metadataService
+        let metadataService = await MainActor.run { ServiceManager.shared.metadataService }
         
         // Create test file
         let tempURL = FileManager.default.temporaryDirectory
@@ -209,11 +210,11 @@ import Foundation
     
     // MARK: - Recovery Verification
     
-    @Test func testRecovery_AfterFileSystemFailure() async throws {
+    @Test @MainActor func testRecovery_AfterFileSystemFailure() async throws {
         // Scenario: System recovers after file system failure
         // Expected: System should resume normal operation, retry failed operations if appropriate
         
-        let orchestrator = ServiceManager.shared.scanOrchestrator
+        let orchestrator = await MainActor.run { ServiceManager.shared.scanOrchestrator }
         
         // Create test directory
         let tempDir = FileManager.default.temporaryDirectory
@@ -227,7 +228,7 @@ import Foundation
         
         // Verify system can recover and continue operation
         do {
-            _ = try await orchestrator.scan(folder: tempDir)
+            _ = try await orchestrator.performScan(urls: [tempDir])
             // If scan succeeds, recovery is working
         } catch {
             // If error, verify it's a recoverable error type
@@ -235,11 +236,11 @@ import Foundation
         }
     }
     
-    @Test func testDataConsistency_AfterPartialFailure() async throws {
+    @Test @MainActor func testDataConsistency_AfterPartialFailure() async throws {
         // Scenario: Partial failure during multi-file operation
         // Expected: Completed operations should persist, failed operations should rollback, overall consistency maintained
         
-        let persistence = PersistenceController(inMemory: true)
+        let persistence = await PersistenceController(inMemory: true)
         
         // Create multiple groups
         let group1 = DuplicateGroupResult(

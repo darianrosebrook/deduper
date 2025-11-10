@@ -368,7 +368,7 @@ public final class PersistenceController: ObservableObject {
     private func setupMemoryPressureMonitoring() {
         logger.info("Setting up memory pressure monitoring for persistence operations")
 
-        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: [])
+        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .all)
         memoryPressureSource?.setEventHandler { [weak self] in
             self?.handleMemoryPressureEvent()
         }

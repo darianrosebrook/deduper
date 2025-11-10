@@ -3,6 +3,7 @@ import DeduperCore
 import OSLog
 import Combine
 import AppKit
+import ApplicationServices
 
 /**
  * AccessibilityView provides comprehensive accessibility features and localization settings.
@@ -58,6 +59,7 @@ public final class AccessibilityViewModel: ObservableObject {
         loadSettings()
         setupBindings()
         setupAccessibilityNotifications()
+        checkVoiceOverStatusSync()
     }
 
     private func loadSettings() {
@@ -203,11 +205,65 @@ public final class AccessibilityViewModel: ObservableObject {
 
     @objc private func voiceOverStatusChanged() {
         logger.info("VoiceOver status changed")
-        // For macOS, VoiceOver status detection requires AppleScript or system APIs
-        // This is a placeholder implementation
-        enableVoiceOver = false
-        // Note: For more comprehensive VoiceOver detection, we'd need to check
-        // the Accessibility Inspector or use AppleScript to query VoiceOver status
+        Task { @MainActor in
+            enableVoiceOver = await checkVoiceOverStatus()
+        }
+    }
+    
+    /// Check if VoiceOver is currently running on macOS
+    /// Uses AppleScript to query VoiceOver status, which is the standard approach on macOS
+    private func checkVoiceOverStatus() async -> Bool {
+        // First check if VoiceOver application is running
+        let runningApps = NSWorkspace.shared.runningApplications
+        let voiceOverRunning = runningApps.contains { app in
+            app.bundleIdentifier == "com.apple.VoiceOver" || 
+            app.localizedName?.lowercased().contains("voiceover") == true
+        }
+        
+        guard voiceOverRunning else {
+            logger.debug("VoiceOver application not running")
+            return false
+        }
+        
+        // Use AppleScript to query VoiceOver status more accurately
+        let script = """
+        tell application "System Events"
+            set voEnabled to false
+            try
+                set voEnabled to (value of attribute "AXEnhancedUserInterface" of application process "VoiceOver")
+            end try
+            return voEnabled
+        end tell
+        """
+        
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                if let appleScript = NSAppleScript(source: script) {
+                    var error: NSDictionary?
+                    let result = appleScript.executeAndReturnError(&error)
+                    
+                    if let error = error {
+                        self.logger.debug("AppleScript error checking VoiceOver: \(error.description, privacy: .public)")
+                        // Fallback: if VoiceOver app is running, assume it's enabled
+                        continuation.resume(returning: true)
+                    } else {
+                        let isEnabled = result?.booleanValue ?? false
+                        continuation.resume(returning: isEnabled)
+                    }
+                } else {
+                    self.logger.debug("Failed to create AppleScript for VoiceOver check")
+                    // Fallback: if VoiceOver app is running, assume it's enabled
+                    continuation.resume(returning: true)
+                }
+            }
+        }
+    }
+    
+    /// Check VoiceOver status synchronously (for initial load)
+    public func checkVoiceOverStatusSync() {
+        Task { @MainActor in
+            enableVoiceOver = await checkVoiceOverStatus()
+        }
     }
 
     public func resetToDefaults() {

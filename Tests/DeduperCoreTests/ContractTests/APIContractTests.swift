@@ -88,13 +88,13 @@ import Foundation
     
     // MARK: - MergeService Contract Tests
     
-    @Test func testMergeService_planMerge_Contract() async throws {
+    @Test @MainActor func testMergeService_planMerge_Contract() async throws {
         // Contract: planMerge(groupId:keeperId:) returns MergePlan
         // - MergePlan has valid keeperId
         // - Field changes are non-empty for non-empty groups
         // - Throws error for invalid groupId
         
-        let mergeService = ServiceManager.shared.mergeService
+        let mergeService = await MainActor.run { ServiceManager.shared.mergeService }
         let groupId = UUID()
         let keeperId = UUID()
         
@@ -108,12 +108,12 @@ import Foundation
         }
     }
     
-    @Test func testMergeService_suggestKeeper_Contract() async throws {
+    @Test @MainActor func testMergeService_suggestKeeper_Contract() async throws {
         // Contract: suggestKeeper(for:) returns UUID
         // - Returned UUID is valid
         // - Throws error for invalid groupId
         
-        let mergeService = ServiceManager.shared.mergeService
+        let mergeService = await MainActor.run { ServiceManager.shared.mergeService }
         let groupId = UUID()
         
         // Should throw error for non-existent group
@@ -128,13 +128,13 @@ import Foundation
     
     // MARK: - MetadataExtractionService Contract Tests
     
-    @Test func testMetadataExtractionService_readFor_Contract() async throws {
+    @Test @MainActor func testMetadataExtractionService_readFor_Contract() async throws {
         // Contract: readFor(url:mediaType:) returns MediaMetadata
         // - MediaMetadata has valid fileName
         // - File size is non-negative
         // - Media type matches input
         
-        let service = ServiceManager.shared.metadataService
+        let service = await ServiceManager.shared.metadataService
         
         // Create temporary test file
         let tempURL = FileManager.default.temporaryDirectory
@@ -157,12 +157,12 @@ import Foundation
     
     // MARK: - PersistenceController Contract Tests
     
-    @Test func testPersistenceController_fetchAllGroups_Contract() async throws {
+    @Test @MainActor func testPersistenceController_fetchAllGroups_Contract() async throws {
         // Contract: fetchAllGroups() returns [DuplicateGroupResult]
         // - Returns empty array when no groups exist
         // - All returned groups have valid structure
         
-        let persistence = ServiceManager.shared.persistence
+        let persistence = await ServiceManager.shared.persistence
         
         let groups = try await persistence.fetchAllGroups()
         
@@ -178,12 +178,12 @@ import Foundation
         }
     }
     
-    @Test func testPersistenceController_fetchGroupsByMediaType_Contract() async throws {
+    @Test @MainActor func testPersistenceController_fetchGroupsByMediaType_Contract() async throws {
         // Contract: fetchGroupsByMediaType(_:) returns [DuplicateGroupResult]
         // - All returned groups match the specified media type
         // - Returns empty array when no matching groups exist
         
-        let persistence = ServiceManager.shared.persistence
+        let persistence = await ServiceManager.shared.persistence
         
         let photoGroups = try await persistence.fetchGroupsByMediaType(.photo)
         let videoGroups = try await persistence.fetchGroupsByMediaType(.video)

@@ -872,7 +872,7 @@ public struct RealTimeMetricsView: View {
 
     public var body: some View {
         HStack(spacing: DesignToken.spacingXXXL) {
-            MetricCard(
+            BenchmarkMetricCard(
                 title: "Memory Usage",
                 value: String(format: "%.1f MB", Double(memoryUsage) / 1024 / 1024),
                 icon: "memorychip",
@@ -880,7 +880,7 @@ public struct RealTimeMetricsView: View {
                 progress: Double(memoryUsage) / (200 * 1024 * 1024) // 200MB max
             )
 
-            MetricCard(
+            BenchmarkMetricCard(
                 title: "CPU Usage",
                 value: String(format: "%.1f%%", cpuUsage * 100),
                 icon: "cpu",
@@ -888,7 +888,7 @@ public struct RealTimeMetricsView: View {
                 progress: cpuUsage
             )
 
-            MetricCard(
+            BenchmarkMetricCard(
                 title: "Operations",
                 value: "\(operationsCompleted)",
                 icon: "speedometer",
@@ -900,9 +900,9 @@ public struct RealTimeMetricsView: View {
 }
 
 /**
- * Individual metric card component
+ * Individual metric card component for benchmark view
  */
-public struct MetricCard: View {
+public struct BenchmarkMetricCard: View {
     public let title: String
     public let value: String
     public let icon: String
@@ -980,28 +980,28 @@ public struct BenchmarkResultView: View {
 
                 // Performance Metrics
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: DesignToken.spacingMD) {
-                    MetricCard(
+                    BenchmarkMetricCard(
                         title: "Duration",
                         value: String(format: "%.1f sec", result.duration),
                         icon: "clock",
                         color: .blue
                     )
 
-                    MetricCard(
+                    BenchmarkMetricCard(
                         title: "Success Rate",
                         value: String(format: "%.1f%%", result.successRate * 100),
                         icon: "checkmark.circle",
                         color: result.successRate > 0.9 ? .green : result.successRate > 0.7 ? .yellow : .red
                     )
 
-                    MetricCard(
+                    BenchmarkMetricCard(
                         title: "Memory Usage",
                         value: String(format: "%.1f MB", Double(result.peakMemoryUsage) / 1024 / 1024),
                         icon: "memorychip",
                         color: .purple
                     )
 
-                    MetricCard(
+                    BenchmarkMetricCard(
                         title: "CPU Usage",
                         value: String(format: "%.1f%%", result.averageCPUUsage * 100),
                         icon: "cpu",

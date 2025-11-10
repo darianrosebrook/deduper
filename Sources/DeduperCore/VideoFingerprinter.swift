@@ -266,7 +266,7 @@ public final class VideoFingerprinter: @unchecked Sendable {
     private func setupMemoryPressureMonitoring() {
         logger.info("Setting up memory pressure monitoring for video fingerprinting")
 
-        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: [])
+        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .all)
         memoryPressureSource?.setEventHandler { [weak self] in
             self?.handleMemoryPressureEvent()
         }

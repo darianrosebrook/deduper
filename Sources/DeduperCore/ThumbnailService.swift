@@ -852,33 +852,41 @@ public final class ThumbnailService {
             return
         }
 
-        do {
-            let fileManager = FileManager.default
-            let fileIds = Set(try fileManager.contentsOfDirectory(atPath: cacheDir.path))
+        Task {
+            do {
+                let fileManager = FileManager.default
+                let fileIds = Set(try fileManager.contentsOfDirectory(atPath: cacheDir.path))
 
-            // Get all known file IDs from persistence
-            let knownFileIds = getKnownFileIds()
+                // Get all known file IDs from persistence
+                let knownFileIds = await getKnownFileIds()
 
-            var cleanedCount = 0
-            for fileId in fileIds {
-                if !knownFileIds.contains(fileId) {
-                    let filePath = cacheDir.appendingPathComponent(fileId)
-                    try fileManager.removeItem(at: filePath)
-                    cleanedCount += 1
+                var cleanedCount = 0
+                for fileId in fileIds {
+                    if !knownFileIds.contains(fileId) {
+                        let filePath = cacheDir.appendingPathComponent(fileId)
+                        try fileManager.removeItem(at: filePath)
+                        cleanedCount += 1
+                    }
                 }
-            }
 
-            logger.info("Orphan cleanup completed: removed \(cleanedCount) orphaned thumbnail directories")
-        } catch {
-            logger.error("Orphan cleanup failed: \(error.localizedDescription)")
+                logger.info("Orphan cleanup completed: removed \(cleanedCount) orphaned thumbnail directories")
+            } catch {
+                logger.error("Orphan cleanup failed: \(error.localizedDescription)")
+            }
         }
     }
 
-    private func getKnownFileIds() -> Set<String> {
-        // This would need to be implemented to query the persistence layer
-        // For now, return empty set to avoid over-cleanup
-        logger.info("getKnownFileIds not yet implemented - skipping orphan cleanup")
-        return Set()
+    private func getKnownFileIds() async -> Set<String> {
+        do {
+            // Query persistence for all file records
+            let files = try await PersistenceController.shared.getFileRecords()
+            // Convert UUIDs to strings for comparison with cache directory names
+            return Set(files.map { $0.id.uuidString })
+        } catch {
+            logger.warning("Failed to get known file IDs from persistence: \(error.localizedDescription)")
+            // Return empty set to avoid over-cleanup if query fails
+            return Set()
+        }
     }
 }
 
@@ -938,10 +946,15 @@ private class PredictivePrefetcher {
 
             // Limit total patterns stored
             if self.accessPatterns.count > self.maxPatterns {
-                let oldestKey = self.accessPatterns.keys.sorted { fileId1, fileId2 in
-                    self.accessPatterns[fileId1]!.last! < self.accessPatterns[fileId2]!.last!
-                }.first!
-                self.accessPatterns.removeValue(forKey: oldestKey)
+                // Find oldest key by comparing last access times
+                let oldestKey = self.accessPatterns.compactMap { (key, patterns) -> (String, Date)? in
+                    guard let lastAccess = patterns.last else { return nil }
+                    return (key, lastAccess)
+                }.min(by: { $0.1 < $1.1 })?.0
+                
+                if let keyToRemove = oldestKey {
+                    self.accessPatterns.removeValue(forKey: keyToRemove)
+                }
             }
         }
     }
