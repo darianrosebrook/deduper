@@ -449,11 +449,34 @@ public struct VisualDifferenceAnalysis: Sendable, Equatable {
     public let differenceMap: DifferenceMap
     public let overallSimilarity: Double // 0.0 = identical, 1.0 = completely different
     public let verdict: VisualDifferenceVerdict
+    
+    public init(
+        hashDistance: HashDistance,
+        pixelDifference: PixelDifference,
+        structuralSimilarity: Double?,
+        colorHistogramDistance: Double,
+        differenceMap: DifferenceMap,
+        overallSimilarity: Double,
+        verdict: VisualDifferenceVerdict
+    ) {
+        self.hashDistance = hashDistance
+        self.pixelDifference = pixelDifference
+        self.structuralSimilarity = structuralSimilarity
+        self.colorHistogramDistance = colorHistogramDistance
+        self.differenceMap = differenceMap
+        self.overallSimilarity = overallSimilarity
+        self.verdict = verdict
+    }
 }
 
 public struct HashDistance: Sendable, Equatable {
     public let dHash: Int?
     public let pHash: Int?
+    
+    public init(dHash: Int?, pHash: Int?) {
+        self.dHash = dHash
+        self.pHash = pHash
+    }
 }
 
 public struct PixelDifference: Sendable, Equatable {
@@ -461,6 +484,18 @@ public struct PixelDifference: Sendable, Equatable {
     public let maxDifference: Double?
     public let differentPixelCount: Int?
     public let totalPixels: Int?
+    
+    public init(
+        meanDifference: Double?,
+        maxDifference: Double?,
+        differentPixelCount: Int?,
+        totalPixels: Int?
+    ) {
+        self.meanDifference = meanDifference
+        self.maxDifference = maxDifference
+        self.differentPixelCount = differentPixelCount
+        self.totalPixels = totalPixels
+    }
     
     public var differentPixelPercentage: Double? {
         guard let different = differentPixelCount, let total = totalPixels, total > 0 else {
@@ -474,6 +509,12 @@ public struct DifferenceMap: Sendable, Equatable {
     public let width: Int
     public let height: Int
     public let data: [Double] // Difference values per pixel
+    
+    public init(width: Int, height: Int, data: [Double]) {
+        self.width = width
+        self.height = height
+        self.data = data
+    }
     
     public func getDifference(x: Int, y: Int) -> Double? {
         guard x >= 0, x < width, y >= 0, y < height else {

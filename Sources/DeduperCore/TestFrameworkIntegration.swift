@@ -17,9 +17,11 @@ import OSLog
  *
  * - Author: @darianrosebrook
  */
-final class TestFrameworkIntegration {
+public final class TestFrameworkIntegration: @unchecked Sendable {
     private let logger = Logger(subsystem: "com.deduper", category: "test-framework")
     private let fileManager = FileManager.default
+    
+    public init() {}
 
     // MARK: - Test Framework Integration
 
@@ -100,7 +102,7 @@ final class TestFrameworkIntegration {
                             fileName: fileName,
                             filePath: "\(directory)/\(fileName)",
                             lastModified: Date(),
-                            testCount: estimateTestCount(in: fileName),
+                            testCount: 0, // Will be determined during execution
                             isValid: true
                         )
                     }
@@ -124,8 +126,23 @@ final class TestFrameworkIntegration {
         var results: [TestFrameworkResult] = []
 
         for testFile in testFiles {
-            let fileResults = try await executeTestFile(testFile)
-            results.append(contentsOf: fileResults)
+            do {
+                let fileResults = try await executeTestFile(testFile)
+                results.append(contentsOf: fileResults)
+            } catch {
+                logger.error("Failed to execute test file \(testFile.fileName): \(error.localizedDescription)")
+                // Add error result
+                results.append(TestFrameworkResult(
+                    testSuite: testFile.fileName,
+                    testName: "Test Execution",
+                    status: .error,
+                    duration: 0.0,
+                    errorMessage: error.localizedDescription,
+                    filePath: testFile.filePath,
+                    lineNumber: nil,
+                    timestamp: Date()
+                ))
+            }
         }
 
         logger.info("✅ Executed \(results.count) real tests")
@@ -206,7 +223,7 @@ final class TestFrameworkIntegration {
         )
     }
 
-    private struct TestFileInfo {
+    public struct TestFileInfo {
         let fileName: String
         let filePath: String
         let lastModified: Date

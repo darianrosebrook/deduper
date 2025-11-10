@@ -161,7 +161,7 @@ public enum CandidateScope: Sendable, Equatable {
     case bucket(CandidateKey)
 }
 
-public struct CandidateKey: Sendable, Hashable, Equatable {
+public struct CandidateKey: Sendable, Hashable, Equatable, Codable {
     public let mediaType: MediaType
     public let signature: String
 
@@ -171,7 +171,7 @@ public struct CandidateKey: Sendable, Hashable, Equatable {
     }
 }
 
-public struct BucketStats: Sendable, Equatable {
+public struct BucketStats: Sendable, Equatable, Codable {
     public let size: Int
     public let skippedByPolicy: Int
     public let estimatedComparisons: Int
@@ -183,7 +183,7 @@ public struct BucketStats: Sendable, Equatable {
     }
 }
 
-public struct CandidateBucket: Sendable, Equatable {
+public struct CandidateBucket: Sendable, Equatable, Codable {
     public let key: CandidateKey
     public let fileIds: [UUID]
     public let heuristic: String
@@ -341,7 +341,7 @@ public struct GroupRationale: Sendable, Equatable {
     }
 }
 
-public struct PixelSize: Sendable, Equatable {
+public struct PixelSize: Sendable, Equatable, Codable {
     public let width: Int
     public let height: Int
 
@@ -351,7 +351,7 @@ public struct PixelSize: Sendable, Equatable {
     }
 }
 
-public struct DetectionAsset: Sendable, Equatable {
+public struct DetectionAsset: Sendable, Equatable, Codable {
     public let id: UUID
     public let url: URL?
     public let mediaType: MediaType

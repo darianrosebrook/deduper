@@ -260,14 +260,14 @@ public final class ThumbnailService {
     private func setupMemoryCache() {
         memoryCache.name = "ThumbnailCache"
         memoryCache.totalCostLimit = config.memoryCacheLimitMB * 1024 * 1024  // Convert MB to bytes
-        logger.info("Memory cache initialized with \(config.memoryCacheLimitMB)MB limit")
+        logger.info("Memory cache initialized with \(self.config.memoryCacheLimitMB)MB limit")
     }
 
     private func setupTaskPooling() {
         guard config.enableTaskPooling else { return }
 
         generationTaskPool = TaskPool(maxConcurrentTasks: config.maxConcurrentGenerations)
-        logger.info("Task pooling enabled with max \(config.maxConcurrentGenerations) concurrent generations")
+        logger.info("Task pooling enabled with max \(self.config.maxConcurrentGenerations) concurrent generations")
     }
 
     private func setupPredictivePrefetching() {
@@ -287,7 +287,7 @@ public final class ThumbnailService {
         }
 
         healthCheckTimer?.resume()
-        logger.info("Health monitoring enabled with \(config.healthCheckInterval)s interval")
+        logger.info("Health monitoring enabled with \(self.config.healthCheckInterval)s interval")
     }
 
     private func performHealthCheck() {
@@ -319,14 +319,15 @@ public final class ThumbnailService {
     private func calculateCurrentMemoryPressure() -> Double {
         var stats = vm_statistics64()
         var size = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<Int>.size)
-        let result = withUnsafeMutablePointer(to: &stats) {
-            $0.withMemoryRebounded(to: Int.self, capacity: Int(size)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &size)
+        let result = withUnsafeMutablePointer(to: &stats) { ptr in
+            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(size)) { intPtr in
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, intPtr, &size)
             }
         }
 
         if result == KERN_SUCCESS {
-            let used = Double(stats.active_count + stats.inactive_count + stats.wire_count) * Double(PAGE_SIZE)
+            let pageSize = 4096 // Standard page size on macOS
+            let used = Double(stats.active_count + stats.inactive_count + stats.wire_count) * Double(pageSize)
             let total = Double(ProcessInfo.processInfo.physicalMemory)
             return min(used / total, 1.0)
         }
@@ -415,7 +416,7 @@ public final class ThumbnailService {
      3. Generate new thumbnail
      4. Store in both caches
      */
-    public func image(for fileId: UUID, targetSize: CGSize) -> NSImage? {
+    public func image(for fileId: UUID, targetSize: CGSize) async -> NSImage? {
         let startTime = Date()
         let operationId = UUID().uuidString
 
@@ -477,7 +478,7 @@ public final class ThumbnailService {
 
         return await generationTask.value
     }
-
+    
     private func validateThumbnailRequest(fileId: UUID, targetSize: CGSize) -> Bool {
         // Validate size constraints
         if targetSize.width > config.maxThumbnailSize.width || targetSize.height > config.maxThumbnailSize.height {
@@ -1117,7 +1118,6 @@ extension ThumbnailService {
         var report = """
         # Thumbnail Service Health Report
         Generated: \(Date().formatted(.iso8601))
-        """
 
         ## System Status
         - Health: \(healthStatus.description)
@@ -1128,11 +1128,11 @@ extension ThumbnailService {
         - Total Operations: \(metrics.count)
         - Success Rate: \(String(format: "%.1f", metrics.filter { $0.success }.count > 0 ? Double(metrics.filter { $0.success }.count) / Double(metrics.count) * 100 : 0))%
         - Cache Hit Rate: \(String(format: "%.1f", metrics.filter { $0.cacheHit }.count > 0 ? Double(metrics.filter { $0.cacheHit }.count) / Double(metrics.count) * 100 : 0))%
-        - Average Execution Time: \(String(format: "%.2f", metrics.map { $0.executionTimeMs }.reduce(0, +) / Double(max(1, metrics.count)))ms
+        - Average Execution Time: \(String(format: "%.2f", metrics.map { $0.executionTimeMs }.reduce(0, +) / Double(max(1, metrics.count))))ms
 
         ## Security Events (Recent)
         - Total Security Events: \(securityEvents.count)
-        - Security Compliance: \(String(format: "%.1f", securityEvents.filter { $0.success }.count > 0 ? Double(securityEvents.filter { $0.success }.count) / Double(securityEvents.count) * 100 : 0)%
+        - Security Compliance: \(String(format: "%.1f", securityEvents.filter { $0.success }.count > 0 ? Double(securityEvents.filter { $0.success }.count) / Double(securityEvents.count) * 100 : 0))%
         - Last Events:
         """
 

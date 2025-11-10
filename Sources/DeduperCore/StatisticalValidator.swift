@@ -16,8 +16,9 @@ import Accelerate
  *
  * - Author: @darianrosebrook
  */
-final class StatisticalValidator {
-    public struct StatisticalResult {
+public final class StatisticalValidator: @unchecked Sendable {
+    public init() {}
+    public struct StatisticalResult: Sendable {
         public let mean: Double
         public let standardDeviation: Double
         public let confidenceInterval: (lower: Double, upper: Double)
@@ -35,14 +36,28 @@ final class StatisticalValidator {
         }
     }
 
-    public struct PerformanceClaim {
+    public struct PerformanceClaim: Sendable {
         public let metric: String
         public let claim: Double
-        public let operator: ComparisonOperator
+        public let comparisonOperator: ComparisonOperator
         public let description: String
         public let riskLevel: RiskLevel
+        
+        public init(
+            metric: String,
+            claim: Double,
+            comparisonOperator: ComparisonOperator,
+            description: String,
+            riskLevel: RiskLevel
+        ) {
+            self.metric = metric
+            self.claim = claim
+            self.comparisonOperator = comparisonOperator
+            self.description = description
+            self.riskLevel = riskLevel
+        }
 
-        public enum ComparisonOperator: String {
+        public enum ComparisonOperator: String, Sendable {
             case lessThan = "<"
             case lessThanOrEqual = "<="
             case greaterThan = ">"
@@ -50,7 +65,7 @@ final class StatisticalValidator {
             case equal = "=="
         }
 
-        public enum RiskLevel {
+        public enum RiskLevel: Sendable {
             case low
             case medium
             case high
@@ -258,7 +273,7 @@ final class StatisticalValidator {
         \(results.enumerated().map { (index, result) in
             let claim = claims[index]
             return """
-            #### \(claim.metric) Claim: \(claim.claim) \(claim.operator.rawValue)
+            #### \(claim.metric) Claim: \(claim.claim) \(claim.comparisonOperator.rawValue)
             - **Measurement**: \(result.description)
             - **Statistical Significance**: \(result.isStatisticallySignificant ? "✅ YES" : "❌ NO")
             - **Sample Size**: \(result.sampleSize) (Required: ≥1000)
@@ -316,35 +331,35 @@ final class StatisticalValidator {
         PerformanceClaim(
             metric: "Time to First Group (TTFG)",
             claim: 3.0,
-            operator: .lessThanOrEqual,
+            comparisonOperator: .lessThanOrEqual,
             description: "Time from navigation to first duplicate group display",
             riskLevel: .medium
         ),
         PerformanceClaim(
             metric: "Scroll Performance",
             claim: 60.0,
-            operator: .greaterThanOrEqual,
+            comparisonOperator: .greaterThanOrEqual,
             description: "Frame rate during list scrolling",
             riskLevel: .medium
         ),
         PerformanceClaim(
             metric: "Memory Usage",
             claim: 50.0,
-            operator: .lessThanOrEqual,
+            comparisonOperator: .lessThanOrEqual,
             description: "Additional memory usage for UI components",
             riskLevel: .high
         ),
         PerformanceClaim(
             metric: "Test Execution Time",
             claim: 30.0,
-            operator: .lessThanOrEqual,
+            comparisonOperator: .lessThanOrEqual,
             description: "Average time per test execution",
             riskLevel: .low
         ),
         PerformanceClaim(
             metric: "Comparison Reduction",
             claim: 90.0,
-            operator: .greaterThanOrEqual,
+            comparisonOperator: .greaterThanOrEqual,
             description: "Percentage reduction in naive comparisons",
             riskLevel: .high
         )

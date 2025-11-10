@@ -921,9 +921,10 @@ public final class MergeService: @unchecked Sendable {
     }
 
     private func checkPermissions(for plan: MergePlan) async throws {
-        let keeperURL = await MainActor.run { persistenceController.resolveFileURL(id: plan.keeperId) }
+        let keeperId = plan.keeperId
+        let keeperURL = await MainActor.run { persistenceController.resolveFileURL(id: keeperId) }
         guard let keeperURL = keeperURL else {
-            throw MergeError.keeperNotFound(plan.keeperId)
+            throw MergeError.keeperNotFound(keeperId)
         }
 
         // Check write permission for keeper
@@ -968,9 +969,10 @@ public final class MergeService: @unchecked Sendable {
 
     private func executeMerge(plan: MergePlan) async throws {
         // Write metadata to keeper
-        let keeperURL = await MainActor.run { persistenceController.resolveFileURL(id: plan.keeperId) }
+        let keeperId = plan.keeperId
+        let keeperURL = await MainActor.run { persistenceController.resolveFileURL(id: keeperId) }
         guard let keeperURL = keeperURL else {
-            throw MergeError.keeperNotFound(plan.keeperId)
+            throw MergeError.keeperNotFound(keeperId)
         }
 
         try await writeEXIFAtomically(to: keeperURL, fields: plan.exifWrites)
@@ -1577,14 +1579,18 @@ public final class MergeService: @unchecked Sendable {
         
         var urlsToMonitor: Set<URL> = []
         
+        // Extract values from plan before async operations
+        let keeperId = plan.keeperId
+        let trashList = plan.trashList
+        
         // Monitor keeper file
-        let keeperURL = await MainActor.run { persistenceController.resolveFileURL(id: plan.keeperId) }
+        let keeperURL = await MainActor.run { persistenceController.resolveFileURL(id: keeperId) }
         if let keeperURL = keeperURL {
             urlsToMonitor.insert(keeperURL)
         }
         
         // Monitor files to be moved to trash
-        for fileId in plan.trashList {
+        for fileId in trashList {
             let url = await MainActor.run { persistenceController.resolveFileURL(id: fileId) }
             if let url = url {
                 urlsToMonitor.insert(url)
@@ -1598,9 +1604,9 @@ public final class MergeService: @unchecked Sendable {
         
         // Set up event handler to detect external changes
         let eventStream = monitoringService.watch(urls: Array(urlsToMonitor))
-        Task {
+        Task { [keeperId, trashList] in
             for await event in eventStream {
-                await handleExternalFileChange(event: event, transactionId: transactionId, plan: plan)
+                await handleExternalFileChange(event: event, transactionId: transactionId, keeperId: keeperId, trashList: trashList)
             }
         }
         
@@ -1614,18 +1620,19 @@ public final class MergeService: @unchecked Sendable {
     private func handleExternalFileChange(
         event: MonitoringService.FileSystemEvent,
         transactionId: UUID,
-        plan: MergePlan
+        keeperId: UUID,
+        trashList: [UUID]
     ) async {
         logger.warning("External file system change detected during merge \(transactionId): \(event)")
         
         // Check if the changed file is part of the merge operation
         let changedURL = event.url
-        let keeperURL = await MainActor.run { persistenceController.resolveFileURL(id: plan.keeperId) }
+        let keeperURL = await MainActor.run { persistenceController.resolveFileURL(id: keeperId) }
         let isKeeper = keeperURL == changedURL
         
         // Check if any trash file matches (async check)
         var isTrashFile = false
-        for fileId in plan.trashList {
+        for fileId in trashList {
             let fileURL = await MainActor.run { persistenceController.resolveFileURL(id: fileId) }
             if fileURL == changedURL {
                 isTrashFile = true

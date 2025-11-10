@@ -291,16 +291,15 @@ public final class PerformanceMonitoringService: @unchecked Sendable {
 
         // Collect current index performance metrics
         let endTime = DispatchTime.now()
-        let collectionTime = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
+        _ = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
 
         return IndexPerformanceMetrics(
-            timestamp: Date(),
-            indexBuildTime: 2500.0, // ms
-            indexQueryTime: 25.0, // ms
-            indexSize: 150.0, // MB
+            totalQueries: 0,
+            averageQueryTime: 25.0, // ms
             cacheHitRate: 0.90,
+            indexLoadTime: 2500.0, // ms
             memoryUsage: 200.0, // MB
-            collectionTime: collectionTime
+            diskUsage: 150.0 // MB
         )
     }
 
@@ -939,7 +938,7 @@ private final class PerformanceMetricsCollector: @unchecked Sendable {
 
     func recordIndexMetrics(_ metrics: IndexPerformanceMetrics) async throws {
         // Placeholder - would save to persistent storage
-        print("Recording index metrics: \(metrics.indexQueryTime)ms average query time")
+        print("Recording index metrics: \(metrics.averageQueryTime)ms average query time")
     }
 
     func recordSystemMetrics(_ metrics: SystemPerformanceMetrics) async throws {

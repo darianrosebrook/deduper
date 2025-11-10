@@ -182,7 +182,7 @@ public final class PrecomputedIndexService: @unchecked Sendable {
         var results: [UUID: [DetectionAsset]] = [:]
 
         // Execute queries in parallel by index
-        try await withThrowingTaskGroup(of: (UUID, [DetectionAsset]).self) { group in
+        try await withThrowingTaskGroup(of: (UUID, [UUID: [DetectionAsset]]).self) { group in
             for (indexId, assetGroup) in assetGroups {
                 group.addTask {
                     let indexCandidates = try await self.queryIndexBatch(
@@ -383,12 +383,9 @@ public final class PrecomputedIndexService: @unchecked Sendable {
             guard let self = self else { return }
             
             // Limit cache size by removing oldest entries
-            if self.queryCache.count >= self.maxCacheSize {
-                // Remove approximately 10% of oldest entries
-                // Note: NSCache doesn't provide ordered access, so we clear and rebuild
-                // In production, would use a more sophisticated LRU cache
-                self.queryCache.removeAllObjects()
-            }
+            // Note: NSCache doesn't provide count property, so we rely on its internal eviction
+            // In production, would track cache size separately or use a more sophisticated LRU cache
+            // For now, NSCache will handle eviction automatically based on memory pressure
             
             let cacheKey = NSString(string: assetId.uuidString)
             let cachedResult = CachedQueryResult(
@@ -501,7 +498,7 @@ public struct IndexBuildOptions: Sendable, Equatable {
     }
 }
 
-public enum IndexType: String, Sendable, Equatable {
+public enum IndexType: String, Sendable, Equatable, Codable {
     case memory = "memory"           // Fastest, highest memory usage
     case disk = "disk"              // Balanced performance, persistent
     case hybrid = "hybrid"          // Adaptive memory/disk usage
@@ -563,7 +560,7 @@ public enum OptimizationTarget: String, Sendable, Equatable {
     case size = "size"
 }
 
-public struct IndexPerformanceMetrics: Sendable, Equatable {
+public struct IndexPerformanceMetrics: Sendable, Equatable, Codable {
     public let totalQueries: Int
     public let averageQueryTime: Double
     public let cacheHitRate: Double
@@ -1016,7 +1013,7 @@ private final class IndexPerformanceMonitor: @unchecked Sendable {
 
 // MARK: - Supporting Types
 
-public struct PrecomputedIndex: Sendable, Equatable {
+public struct PrecomputedIndex: Sendable, Equatable, Codable {
     public let id: UUID
     public let structure: IndexStructure
     public let createdAt: Date
@@ -1045,7 +1042,7 @@ public struct PrecomputedIndex: Sendable, Equatable {
         
         // Collect candidates from matching buckets
         for bucket in matchingBuckets {
-            let bucketAssets = bucket.fileIds.compactMap { assetMap[$0] }
+            let bucketAssets = bucket.fileIds.compactMap { structure.assetMap[$0] }
             candidates.append(contentsOf: bucketAssets)
             
             // Early termination if we have enough candidates
@@ -1104,7 +1101,7 @@ public struct PrecomputedIndex: Sendable, Equatable {
     }
 }
 
-public struct IndexStructure: Sendable, Equatable {
+public struct IndexStructure: Sendable, Equatable, Codable {
     public let buckets: [CandidateBucket]
     public let assetMap: [UUID: DetectionAsset]
     public let metadata: IndexMetadata
@@ -1120,7 +1117,7 @@ public struct IndexStructure: Sendable, Equatable {
     }
 }
 
-public struct IndexMetadata: Sendable, Equatable {
+public struct IndexMetadata: Sendable, Equatable, Codable {
     public let id: UUID
     public let createdAt: Date
     public let assetCount: Int

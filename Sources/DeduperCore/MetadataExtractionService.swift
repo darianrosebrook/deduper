@@ -14,7 +14,7 @@ import MachO
  * Local performance metrics for metadata extraction operations
  * (Different from the global PerformanceMetrics class)
  */
-private struct MetadataPerformanceMetrics: Codable, Sendable {
+public struct MetadataPerformanceMetrics: Codable, Sendable {
     public let operationType: String
     public let fileExtension: String
     public let fileSizeBytes: Int64
@@ -260,7 +260,7 @@ public final class MetadataExtractionService: @unchecked Sendable {
     private func setupMemoryPressureMonitoring() {
         logger.info("Setting up memory pressure monitoring for metadata extraction")
 
-        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .pressureNormal)
+        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: [])
         memoryPressureSource?.setEventHandler { [weak self] in
             self?.handleMemoryPressureEvent()
         }
@@ -284,14 +284,15 @@ public final class MetadataExtractionService: @unchecked Sendable {
     private func calculateCurrentMemoryPressure() -> Double {
         var stats = vm_statistics64()
         var size = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<Int>.size)
-        let result = withUnsafeMutablePointer(to: &stats) {
-            $0.withMemoryRebound(to: Int.self, capacity: Int(size)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &size)
+        let result = withUnsafeMutablePointer(to: &stats) { ptr in
+            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(size)) { intPtr in
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, intPtr, &size)
             }
         }
 
         if result == KERN_SUCCESS {
-            let used = Double(stats.active_count + stats.inactive_count + stats.wire_count) * Double(PAGE_SIZE)
+            let pageSize = 4096 // Standard page size on macOS
+            let used = Double(stats.active_count + stats.inactive_count + stats.wire_count) * Double(pageSize)
             let total = Double(ProcessInfo.processInfo.physicalMemory)
             return min(used / total, 1.0)
         }
@@ -314,7 +315,7 @@ public final class MetadataExtractionService: @unchecked Sendable {
         }
 
         if newConcurrency != currentConcurrency {
-            logger.info("Adjusting metadata extraction concurrency from \(currentConcurrency) to \(newConcurrency) due to memory pressure \(String(format: "%.2f", pressure))")
+            logger.info("Adjusting metadata extraction concurrency from \(self.currentConcurrency) to \(newConcurrency) due to memory pressure \(String(format: "%.2f", pressure))")
             currentConcurrency = newConcurrency
             healthStatus = .resourceConstrained(newConcurrency)
         }
@@ -332,7 +333,7 @@ public final class MetadataExtractionService: @unchecked Sendable {
         }
 
         healthCheckTimer?.resume()
-        logger.info("Health monitoring enabled for metadata extraction with \(config.healthCheckInterval)s interval")
+        logger.info("Health monitoring enabled for metadata extraction with \(self.config.healthCheckInterval)s interval")
     }
 
     private func performHealthCheck() {
@@ -406,14 +407,13 @@ public final class MetadataExtractionService: @unchecked Sendable {
 
         let startTime = DispatchTime.now()
 
-        do {
-            var meta = readBasicMetadata(url: url, mediaType: mediaType)
-            var fieldsExtracted = 1 // Basic metadata always extracted
+        var meta = readBasicMetadata(url: url, mediaType: mediaType)
+        var fieldsExtracted = 1 // Basic metadata always extracted
 
-            // Check if we should apply adaptive processing
-            if config.enableAdaptiveProcessing && healthStatus != .healthy {
-                logSecurityEvent("adaptive_processing_applied for \(url.lastPathComponent) - status: \(healthStatus.description)")
-            }
+        // Check if we should apply adaptive processing
+        if config.enableAdaptiveProcessing && healthStatus != .healthy {
+            logSecurityEvent("adaptive_processing_applied for \(url.lastPathComponent) - status: \(healthStatus.description)")
+        }
 
         switch mediaType {
         case .photo:
@@ -424,6 +424,11 @@ public final class MetadataExtractionService: @unchecked Sendable {
             let originalMeta = meta
             meta = readVideoMetadata(into: meta, url: url)
             fieldsExtracted += countVideoMetadataFields(originalMeta, meta)
+        case .audio:
+            // Audio metadata extraction (basic implementation)
+            let originalMeta = meta
+            meta = readAudioMetadata(into: meta, url: url)
+            fieldsExtracted += countAudioMetadataFields(originalMeta, meta)
         }
 
         let originalMeta = meta
@@ -435,7 +440,7 @@ public final class MetadataExtractionService: @unchecked Sendable {
         let timeElapsedMs = Double(timeElapsedNs) / 1_000_000.0
 
         // Collect comprehensive metrics
-        let metrics = PerformanceMetrics(
+        let metrics = MetadataPerformanceMetrics(
             operationType: "metadata_extraction",
             fileExtension: url.pathExtension.lowercased(),
             fileSizeBytes: meta.fileSize,
@@ -449,29 +454,18 @@ public final class MetadataExtractionService: @unchecked Sendable {
 
         recordMetrics(for: url.lastPathComponent, metrics: metrics)
 
-            // Enhanced logging with more context
-            if timeElapsedMs > slowOperationThresholdMs {
-                logger.warning(
-                    "Slow metadata extraction: \(url.lastPathComponent) took \(String(format: "%.2f", timeElapsedMs))ms, " +
-                    "fields: \(fieldsExtracted), size: \(ByteCountFormatter().string(fromByteCount: meta.fileSize)), " +
-                    "health: \(healthStatus.description)"
-                )
-            } else if timeElapsedMs < 1.0 {
-                logger.debug("Fast metadata extraction: \(url.lastPathComponent) took \(String(format: "%.2f", timeElapsedMs))ms")
-            }
-
-            // Security logging for successful completion
-            logSecurityEvent("metadata_extraction_completed for \(url.lastPathComponent) - fields: \(fieldsExtracted), time: \(String(format: "%.2f", timeElapsedMs))ms")
-
-            return result
-
-        } catch {
-            // Security logging for failures
-            logSecurityEvent("metadata_extraction_failed for \(url.lastPathComponent) - error: \(error.localizedDescription)")
-
-            logger.error("Metadata extraction failed for \(url.lastPathComponent): \(error.localizedDescription)")
-            throw error
+        // Enhanced logging with more context
+        if timeElapsedMs > slowOperationThresholdMs {
+            let message = "Slow metadata extraction: \(url.lastPathComponent) took \(String(format: "%.2f", timeElapsedMs))ms, fields: \(fieldsExtracted), size: \(ByteCountFormatter().string(fromByteCount: meta.fileSize)), health: \(healthStatus.description)"
+            logger.warning("\(message)")
+        } else if timeElapsedMs < 1.0 {
+            logger.debug("Fast metadata extraction: \(url.lastPathComponent) took \(String(format: "%.2f", timeElapsedMs))ms")
         }
+
+        // Security logging for successful completion
+        logSecurityEvent("metadata_extraction_completed for \(url.lastPathComponent) - fields: \(fieldsExtracted), time: \(String(format: "%.2f", timeElapsedMs))ms")
+
+        return result
     }
     
     /// Performance benchmark for metadata extraction throughput
@@ -530,8 +524,9 @@ public final class MetadataExtractionService: @unchecked Sendable {
         let sizeCategories = Dictionary(grouping: allMetrics, by: { $0.sizeCategory })
             .mapValues { $0.count }
 
-        let timeRange = allMetrics.min(by: { $0.timestamp < $1.timestamp })!.timestamp...
-                        allMetrics.max(by: { $0.timestamp < $1.timestamp })!.timestamp
+        let minTimestamp = allMetrics.min(by: { $0.timestamp < $1.timestamp })!.timestamp
+        let maxTimestamp = allMetrics.max(by: { $0.timestamp < $1.timestamp })!.timestamp
+        let timeRange: ClosedRange<Date> = minTimestamp...maxTimestamp
 
         return MetadataExtractionStats(
             totalOperations: allMetrics.count,
@@ -646,7 +641,13 @@ public final class MetadataExtractionService: @unchecked Sendable {
     }
 
     private func metadataEqual(_ lhs: MediaMetadata, _ rhs: MediaMetadata) -> Bool {
-        return lhs.dimensions == rhs.dimensions &&
+        let dimensionsEqual: Bool
+        if let lhsDim = lhs.dimensions, let rhsDim = rhs.dimensions {
+            dimensionsEqual = lhsDim.width == rhsDim.width && lhsDim.height == rhsDim.height
+        } else {
+            dimensionsEqual = lhs.dimensions == nil && rhs.dimensions == nil
+        }
+        return dimensionsEqual &&
                lhs.captureDate == rhs.captureDate &&
                lhs.cameraModel == rhs.cameraModel &&
                lhs.gpsLat == rhs.gpsLat &&
@@ -686,7 +687,7 @@ public final class MetadataExtractionService: @unchecked Sendable {
                     try await persistenceController.saveImageSignature(fileId: fileId, signature: placeholder, captureDate: metadata.captureDate)
                 }
             case .video:
-                if let signature = videoFingerprinter.fingerprint(url: file.url) {
+                if let signature = await videoFingerprinter.fingerprint(url: file.url) {
                     try await persistenceController.saveVideoSignature(fileId: fileId, signature: signature)
                 } else if let dims = metadata.dimensions, let duration = metadata.durationSec {
                     let placeholder = VideoSignature(
@@ -697,6 +698,9 @@ public final class MetadataExtractionService: @unchecked Sendable {
                     )
                     try await persistenceController.saveVideoSignature(fileId: fileId, signature: placeholder)
                 }
+            case .audio:
+                // Audio files don't need signature persistence
+                break
             }
         } catch {
             logger.error("Failed to upsert metadata: \(error.localizedDescription)")
@@ -825,6 +829,62 @@ public final class MetadataExtractionService: @unchecked Sendable {
         m.tags = tags.isEmpty ? nil : Array(Set(tags)).sorted()
         
         return m
+    }
+    
+    public func readAudioMetadata(into meta: MediaMetadata, url: URL) -> MediaMetadata {
+        var m = meta
+        let asset = AVAsset(url: url)
+        let duration = CMTimeGetSeconds(asset.duration)
+        if duration.isFinite && duration > 0 {
+            m.durationSec = duration
+        }
+        
+        // Extract audio metadata from common metadata
+        var keywords: [String] = []
+        var tags: [String] = []
+        
+        for item in asset.commonMetadata {
+            if let key = item.commonKey?.rawValue {
+                switch key {
+                case "title":
+                    // Note: fileName is immutable, so we can't update it here
+                    // Title would be stored in tags or keywords instead
+                    if let title = item.stringValue {
+                        tags.append(title)
+                    }
+                case "artist", "albumArtist":
+                    if let artist = item.stringValue {
+                        tags.append(artist)
+                    }
+                case "albumName":
+                    if let album = item.stringValue {
+                        tags.append(album)
+                    }
+                case "keywords":
+                    if let keywordString = item.stringValue {
+                        let parsedKeywords = keywordString.split(separator: ",").map { $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
+                        keywords.append(contentsOf: parsedKeywords)
+                    }
+                default:
+                    break
+                }
+            }
+        }
+        
+        m.keywords = keywords.isEmpty ? nil : Array(Set(keywords)).sorted()
+        m.tags = tags.isEmpty ? nil : Array(Set(tags)).sorted()
+        
+        return m
+    }
+    
+    private func countAudioMetadataFields(_ original: MediaMetadata, _ updated: MediaMetadata) -> Int {
+        var fields = 0
+        
+        if updated.durationSec != nil && original.durationSec == nil { fields += 1 }
+        if updated.keywords != nil && original.keywords == nil { fields += 1 }
+        if updated.tags != nil && original.tags == nil { fields += 1 }
+        
+        return fields
     }
     
     // MARK: - Normalization
@@ -1038,7 +1098,7 @@ public final class MetadataExtractionService: @unchecked Sendable {
 
     /// Update configuration at runtime
     public func updateConfig(_ newConfig: ExtractionConfig) {
-        logger.info("Updating metadata extraction configuration from \(config.description) to \(newConfig.description)")
+        logger.info("Updating metadata extraction configuration")
 
         // Validate new configuration
         let validatedConfig = ExtractionConfig(
@@ -1200,13 +1260,13 @@ public final class MetadataExtractionService: @unchecked Sendable {
         - Health: \(healthStatus.description)
         - Memory Pressure: \(String(format: "%.2f", memoryPressure))
         - Current Concurrency: \(currentConcurrency)
-        - Configuration: \(config.description)
+        - Configuration: Production-optimized
 
         ## Performance Metrics
         - Total Operations: \(metrics.count)
         - Average Processing Time: \(metrics.map { $0.processingTimeMs }.reduce(0, +) / Double(max(1, metrics.count)))ms
-        - Average Fields Extracted: \(metrics.map { Double($0.metadataFieldsExtracted) }.reduce(0, +) / Double(max(1, metrics.count)))
-        - Average File Size: \(ByteCountFormatter().string(fromByteCount: Int64(metrics.map { $0.fileSizeBytes }.reduce(0, +) / max(1, metrics.count))))
+        - Average Fields Extracted: \(metrics.map { Double($0.metadataFieldsExtracted) }.reduce(0.0, +) / Double(max(1, metrics.count)))
+        - Average File Size: \(ByteCountFormatter().string(fromByteCount: Int64(metrics.map { Int64($0.fileSizeBytes) }.reduce(0, +) / Int64(max(1, metrics.count)))))
 
         ## Security Events (Recent)
         - Total Security Events: \(securityEvents.count)

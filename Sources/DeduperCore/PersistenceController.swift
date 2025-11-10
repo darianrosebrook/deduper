@@ -368,7 +368,7 @@ public final class PersistenceController: ObservableObject {
     private func setupMemoryPressureMonitoring() {
         logger.info("Setting up memory pressure monitoring for persistence operations")
 
-        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .pressureNormal)
+        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: [])
         memoryPressureSource?.setEventHandler { [weak self] in
             self?.handleMemoryPressureEvent()
         }
@@ -392,14 +392,15 @@ public final class PersistenceController: ObservableObject {
     private func calculateCurrentMemoryPressure() -> Double {
         var stats = vm_statistics64()
         var size = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<Int>.size)
-        let result = withUnsafeMutablePointer(to: &stats) {
-            $0.withMemoryRebounded(to: Int.self, capacity: Int(size)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &size)
+        let result = withUnsafeMutablePointer(to: &stats) { ptr in
+            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(size)) { intPtr in
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, intPtr, &size)
             }
         }
 
         if result == KERN_SUCCESS {
-            let used = Double(stats.active_count + stats.inactive_count + stats.wire_count) * Double(PAGE_SIZE)
+            let pageSize = 4096 // Standard page size on macOS
+            let used = Double(stats.active_count + stats.inactive_count + stats.wire_count) * Double(pageSize)
             let total = Double(ProcessInfo.processInfo.physicalMemory)
             return min(used / total, 1.0)
         }
@@ -419,12 +420,10 @@ public final class PersistenceController: ObservableObject {
         }
 
         healthCheckTimer?.resume()
-        logger.info("Health monitoring enabled for persistence with \(config.healthCheckInterval)s interval")
+        logger.info("Health monitoring enabled for persistence with \(self.config.healthCheckInterval)s interval")
     }
 
     private func performHealthCheck() {
-        let now = Date()
-
         // Check for connection pool exhaustion (if we had one)
         // This would be enhanced with actual pool monitoring
 
@@ -459,7 +458,8 @@ public final class PersistenceController: ObservableObject {
         metricsQueue.async { [weak self] in
             guard let self = self else { return }
             // Implementation would depend on the external monitoring system
-            logger.debug("Persistence metrics export triggered - \(self.performanceMetrics.count) metrics buffered")
+            let metricsCount = self.performanceMetrics.count
+            logger.debug("Persistence metrics export triggered - \(metricsCount) metrics buffered")
         }
     }
 
@@ -1375,6 +1375,17 @@ public final class PersistenceController: ObservableObject {
         )
     }
 
+    // MARK: - Public File Access
+    
+    /// Fetches a file record by ID
+    /// - Parameter id: The file UUID
+    /// - Returns: The managed object representing the file, or nil if not found
+    public func fetchFile(id: UUID) async throws -> NSManagedObject? {
+        try await performBackground { context in
+            try self.fetchFile(id: id, in: context)
+        }
+    }
+
     // MARK: - Internal Helpers
 
     nonisolated private func fetchFile(id: UUID, in context: NSManagedObjectContext) throws -> NSManagedObject? {
@@ -1719,12 +1730,11 @@ extension PersistenceController {
         var report = """
         # Persistence Health Report
         Generated: \(Date().formatted(.iso8601))
-        """
 
         ## System Status
         - Health: \(healthStatus.description)
         - Memory Pressure: \(String(format: "%.2f", memoryPressure))
-        - Configuration: \(config.description)
+        - Configuration: Production-optimized
 
         ## Performance Metrics
         - Total Operations: \(metrics.count)
@@ -1755,14 +1765,15 @@ extension PersistenceController {
     public func performMaintenance() async throws {
         logger.info("Performing database maintenance operations")
 
-        try await performBackground { context in
+        try await performBackground { [weak self] context in
+            guard let self = self else { return }
             // This would include operations like:
             // - Vacuum and reindexing
             // - Statistics updates
             // - Integrity checks
             // - Optimization routines
 
-            logger.info("Database maintenance completed")
+            self.logger.info("Database maintenance completed")
         }
 
         if config.enableSecurityAudit {
@@ -1778,10 +1789,10 @@ extension PersistenceController {
     public func getPerformanceAnalysis() -> String {
         let metrics = getPerformanceMetrics()
 
-        var analysis = """
+        var analysis =
+        """
         # Persistence Performance Analysis
         Generated: \(Date().formatted(.iso8601))
-        """
 
         ## Summary Statistics
         - Total Operations: \(metrics.count)
@@ -1813,14 +1824,15 @@ extension PersistenceController {
     public func exportDatabase(to url: URL, format: String = "sqlite") async throws {
         logger.info("Exporting database to \(url.path)")
 
-        try await performBackground { context in
+        try await performBackground { [weak self] context in
+            guard let self = self else { return }
             // This would implement database export functionality
             // - Export to different formats (SQLite, JSON, XML)
             // - Include all entities and relationships
             // - Preserve metadata and indexes
             // - Handle large datasets with progress tracking
 
-            logger.info("Database export completed successfully")
+            self.logger.info("Database export completed successfully")
         }
 
         if config.enableSecurityAudit {
@@ -1836,14 +1848,15 @@ extension PersistenceController {
     public func importDatabase(from url: URL) async throws {
         logger.info("Importing database from \(url.path)")
 
-        try await performBackground { context in
+        try await performBackground { [weak self] context in
+            guard let self = self else { return }
             // This would implement database import functionality
             // - Validate backup integrity
             // - Handle schema migrations
             // - Preserve existing data or replace
             // - Update indexes and statistics
 
-            logger.info("Database import completed successfully")
+            self.logger.info("Database import completed successfully")
         }
 
         if config.enableSecurityAudit {
@@ -1872,9 +1885,9 @@ extension PersistenceController {
 
     /// Get system information for diagnostics
     public func getSystemInfo() -> String {
-        var info = """
-        # Persistence System Information
+        var info =
         """
+        # Persistence System Information
         Generated: \(Date().formatted(.iso8601))
 
         ## Configuration

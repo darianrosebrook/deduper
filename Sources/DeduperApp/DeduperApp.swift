@@ -103,10 +103,11 @@ public struct MainView: View {
         }
     }
     
+    @MainActor
     private func checkForCrashRecovery() async {
-        let core = DeduperCore.shared
+        let manager = ServiceManager.shared
         do {
-            let detected = try await core.mergeService.detectIncompleteTransactions()
+            let detected = try await manager.mergeService.detectIncompleteTransactions()
             if !detected.isEmpty {
                 incompleteTransactions = detected
                 showRecoveryDialog = true
@@ -117,13 +118,14 @@ public struct MainView: View {
         }
     }
     
+    @MainActor
     private func recoverIncompleteTransactions() async {
         recoveryInProgress = true
-        let core = DeduperCore.shared
+        let manager = ServiceManager.shared
         do {
             let autoRecoverable = incompleteTransactions.filter { $0.canAutoRecover }
             let transactionIds = autoRecoverable.map { $0.transaction.id }
-            let recovered = try await core.mergeService.recoverIncompleteTransactions(transactionIds)
+            let recovered = try await manager.mergeService.recoverIncompleteTransactions(transactionIds)
             recoveryInProgress = false
             if recovered.count == transactionIds.count {
                 incompleteTransactions.removeAll { recovered.contains($0.transaction.id) }
@@ -221,33 +223,111 @@ public struct MainWorkflowView: View {
             }
         }
         // Keyboard shortcuts for main workflow
-        .onKeyPress(.return) {
-            if let group = selectedGroupForMerge, let keeperId = selectedKeeperForMerge {
-                showMergePlan = true
-                return .handled
-            }
-            return .ignored
+        .applyMainWorkflowKeyboardShortcuts(
+            folderViewModel: folderViewModel,
+            selectedGroupForMerge: $selectedGroupForMerge,
+            selectedKeeperForMerge: $selectedKeeperForMerge,
+            showMergePlan: $showMergePlan
+        )
+    }
+}
+
+// MARK: - Keyboard Support
+
+private extension View {
+    @ViewBuilder
+    func applyGroupPreviewKeyboardShortcuts(
+        group: DuplicateGroupResult,
+        selectedKeeperId: UUID?,
+        onSelectKeeper: @escaping (DuplicateGroupResult, UUID?) -> Void,
+        onShowMergePlan: @escaping (DuplicateGroupResult) -> Void
+    ) -> some View {
+        if #available(macOS 14.0, *) {
+            self
+                .onKeyPress(" ") {
+                    // Select first unselected file as keeper
+                    if selectedKeeperId == nil, let firstFile = group.members.first {
+                        onSelectKeeper(group, firstFile.fileId)
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .onKeyPress(.tab) {
+                    // Navigate to next group or show merge plan
+                    onShowMergePlan(group)
+                    return .handled
+                }
+                .onKeyPress(.return) {
+                    onShowMergePlan(group)
+                    return .handled
+                }
+        } else {
+            self
         }
-        .onKeyPress("r", modifiers: .command) {
-            if !folderViewModel.isScanning {
-                folderViewModel.rescanForDuplicates()
-                return .handled
-            }
-            return .ignored
+    }
+    
+    @ViewBuilder
+    func applyFilePreviewKeyboardShortcuts(
+        group: DuplicateGroupResult,
+        member: DuplicateGroupMember,
+        onSelectKeeper: @escaping (DuplicateGroupResult, UUID?) -> Void
+    ) -> some View {
+        if #available(macOS 14.0, *) {
+            self
+                .onKeyPress(" ") {
+                    onSelectKeeper(group, member.fileId)
+                    return .handled
+                }
+                .onKeyPress(.return) {
+                    onSelectKeeper(group, member.fileId)
+                    return .handled
+                }
+        } else {
+            self
         }
-        .onKeyPress(.delete, modifiers: .command) {
-            if let group = selectedGroupForMerge, let keeperId = selectedKeeperForMerge {
-                showMergePlan = true
-                return .handled
-            }
-            return .ignored
-        }
-        .onKeyPress(.escape) {
-            if showMergePlan {
-                showMergePlan = false
-                return .handled
-            }
-            return .ignored
+    }
+    
+    @ViewBuilder
+    func applyMainWorkflowKeyboardShortcuts(
+        folderViewModel: FolderSelectionViewModel,
+        selectedGroupForMerge: Binding<DuplicateGroupResult?>,
+        selectedKeeperForMerge: Binding<UUID?>,
+        showMergePlan: Binding<Bool>
+    ) -> some View {
+        if #available(macOS 14.0, *) {
+            self
+                .onKeyPress(.return) {
+                    if selectedGroupForMerge.wrappedValue != nil, selectedKeeperForMerge.wrappedValue != nil {
+                        showMergePlan.wrappedValue = true
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .onKeyPress(.init("r"), phases: .down) { keyPress in
+                    guard keyPress.modifiers.contains(.command) else { return .ignored }
+                    if !folderViewModel.isScanning {
+                        folderViewModel.rescanForDuplicates()
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .onKeyPress(.delete, phases: .down) { keyPress in
+                    guard keyPress.modifiers.contains(.command) else { return .ignored }
+                    if selectedGroupForMerge.wrappedValue != nil, selectedKeeperForMerge.wrappedValue != nil {
+                        showMergePlan.wrappedValue = true
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .onKeyPress(.escape) {
+                    if showMergePlan.wrappedValue {
+                        showMergePlan.wrappedValue = false
+                        return .handled
+                    }
+                    return .ignored
+                }
+        } else {
+            self
         }
     }
 }
@@ -322,23 +402,12 @@ public struct GroupPreviewCard: View {
         .cornerRadius(DesignToken.cornerRadiusMD)
         .accessibilityElement(children: .combine)
         // Keyboard shortcuts for group preview card
-        .onKeyPress(" ") {
-            // Select first unselected file as keeper
-            if selectedKeeperId == nil, let firstFile = group.members.first {
-                onSelectKeeper(group, firstFile.fileId)
-                return .handled
-            }
-            return .ignored
-        }
-        .onKeyPress(.tab) {
-            // Navigate to next group or show merge plan
-            onShowMergePlan(group)
-            return .handled
-        }
-        .onKeyPress(.return) {
-            onShowMergePlan(group)
-            return .handled
-        }
+        .applyGroupPreviewKeyboardShortcuts(
+            group: group,
+            selectedKeeperId: selectedKeeperId,
+            onSelectKeeper: onSelectKeeper,
+            onShowMergePlan: onShowMergePlan
+        )
     }
 }
 
@@ -360,13 +429,13 @@ public struct FilePreviewItem: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(DesignToken.colorBackgroundTertiary)
-                .cornerRadius(DesignToken.cornerRadiusXS)
+                .cornerRadius(DesignToken.radiusXS)
 
             // Keeper indicator overlay
             if isSelectedAsKeeper {
                 ZStack {
                     Color.green.opacity(0.8)
-                        .cornerRadius(DesignToken.cornerRadiusXS)
+                        .cornerRadius(DesignToken.radiusXS)
 
                     Image(systemName: "star.fill")
                         .foregroundColor(.white)
@@ -385,21 +454,18 @@ public struct FilePreviewItem: View {
         }
         .frame(height: 50)
         .overlay(
-            RoundedRectangle(cornerRadius: DesignToken.cornerRadiusXS)
+            RoundedRectangle(cornerRadius: DesignToken.radiusXS)
                 .stroke(isSelectedAsKeeper ? DesignToken.colorStatusSuccess : Color.clear, lineWidth: 2)
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("File preview, confidence: \(Int(member.confidence * 100))%")
         .accessibilityHint(isSelectedAsKeeper ? "Selected as keeper" : "Tap to select as keeper")
         // Keyboard shortcuts for file selection
-        .onKeyPress(" ") {
-            onSelectKeeper(group, member.fileId)
-            return .handled
-        }
-        .onKeyPress(.return) {
-            onSelectKeeper(group, member.fileId)
-            return .handled
-        }
+        .applyFilePreviewKeyboardShortcuts(
+            group: group,
+            member: member,
+            onSelectKeeper: onSelectKeeper
+        )
     }
 }
 

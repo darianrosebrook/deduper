@@ -16,11 +16,16 @@ import Foundation
  *
  * - Author: @darianrosebrook
  */
+@MainActor
 final class UIPerformanceValidator: ObservableObject {
     private let logger = Logger(subsystem: "com.deduper", category: "ui-performance")
 
     // Statistical validator - addresses critical gap in skeptical review
     private let statisticalValidator: StatisticalValidator
+    
+    public init() {
+        self.statisticalValidator = StatisticalValidator()
+    }
 
     @Published public var ttfgResult: PerformanceResult?
     @Published public var scrollPerformanceResult: PerformanceResult?
@@ -42,7 +47,7 @@ final class UIPerformanceValidator: ObservableObject {
 
         public var description: String {
             let status = isValid ? "✅ VALID" : "❌ INVALID"
-            let ciText = confidenceInterval.map { " (CI: \($0.lower.formatted())-\($0.upper.formatted()) \($1))" } ?? ""
+            let ciText = confidenceInterval.map { " (CI: \($0.lower.formatted())-\($0.upper.formatted()))" } ?? ""
             return "\(metric): \(actual.formatted())/\(claim.formatted()) \(unit) \(status)\(ciText)"
         }
     }
@@ -50,7 +55,6 @@ final class UIPerformanceValidator: ObservableObject {
     public func validateTTFG() async {
         logger.info("🔬 Validating Time to First Group (TTFG) performance with statistical analysis")
 
-        let navigationStart = Date()
         var ttfgMeasurements: [Double] = []
 
         // Collect multiple measurements for statistical significance
@@ -76,13 +80,15 @@ final class UIPerformanceValidator: ObservableObject {
         let claim = StatisticalValidator.PerformanceClaim(
             metric: "Time to First Group (TTFG)",
             claim: 3.0,
-            operator: .lessThanOrEqual,
+            comparisonOperator: .lessThanOrEqual,
             description: "Time from navigation to first duplicate group display",
             riskLevel: .medium
         )
 
         do {
-            let statisticalResult = try await statisticalValidator.validatePerformanceClaim(
+            // Access statisticalValidator in nonisolated context to avoid data race
+            let validator = statisticalValidator
+            let statisticalResult = try await validator.validatePerformanceClaim(
                 measurements: ttfgMeasurements,
                 claim: claim,
                 minimumSampleSize: 100
@@ -101,28 +107,27 @@ final class UIPerformanceValidator: ObservableObject {
                 statisticalResult: statisticalResult
             )
 
-            await MainActor.run {
-                self.ttfgResult = result
-                logger.info("TTFG Statistical Result: \(result.description)")
-                logger.info("Statistical analysis: \(statisticalResult.description)")
-            }
+            let resultValue = result
+            let statResult = statisticalResult
+            logger.info("TTFG Statistical Result: \(resultValue.description)")
+            logger.info("Statistical analysis: \(statResult.description)")
+            ttfgResult = resultValue
 
         } catch {
             logger.error("TTFG statistical validation failed: \(error.localizedDescription)")
-            await MainActor.run {
-                self.ttfgResult = PerformanceResult(
-                    metric: "Time to First Group (ERROR)",
-                    actual: Double.infinity,
-                    claim: 3.0,
-                    unit: "seconds",
-                    timestamp: Date(),
-                    isValid: false,
-                    confidenceInterval: nil,
-                    sampleSize: 0,
-                    pValue: nil,
-                    statisticalResult: nil
-                )
-            }
+            let errorResult = PerformanceResult(
+                metric: "Time to First Group (ERROR)",
+                actual: Double.infinity,
+                claim: 3.0,
+                unit: "seconds",
+                timestamp: Date(),
+                isValid: false,
+                confidenceInterval: nil,
+                sampleSize: 0,
+                pValue: nil,
+                statisticalResult: nil
+            )
+            ttfgResult = errorResult
         }
     }
 
@@ -145,13 +150,15 @@ final class UIPerformanceValidator: ObservableObject {
         let claim = StatisticalValidator.PerformanceClaim(
             metric: "Scroll Performance",
             claim: 60.0,
-            operator: .greaterThanOrEqual,
+            comparisonOperator: .greaterThanOrEqual,
             description: "Frame rate during list scrolling",
             riskLevel: .medium
         )
 
         do {
-            let statisticalResult = try await statisticalValidator.validatePerformanceClaim(
+            // Access statisticalValidator in nonisolated context to avoid data race
+            let validator = statisticalValidator
+            let statisticalResult = try await validator.validatePerformanceClaim(
                 measurements: scrollMeasurements,
                 claim: claim,
                 minimumSampleSize: 50
@@ -170,28 +177,25 @@ final class UIPerformanceValidator: ObservableObject {
                 statisticalResult: statisticalResult
             )
 
-            await MainActor.run {
-                self.scrollPerformanceResult = result
-                logger.info("Scroll Performance Statistical Result: \(result.description)")
-                logger.info("Statistical analysis: \(statisticalResult.description)")
-            }
+            scrollPerformanceResult = result
+            logger.info("Scroll Performance Statistical Result: \(result.description)")
+            logger.info("Statistical analysis: \(statisticalResult.description)")
 
         } catch {
             logger.error("Scroll performance statistical validation failed: \(error.localizedDescription)")
-            await MainActor.run {
-                self.scrollPerformanceResult = PerformanceResult(
-                    metric: "Scroll Performance (ERROR)",
-                    actual: 0.0,
-                    claim: 60.0,
-                    unit: "fps",
-                    timestamp: Date(),
-                    isValid: false,
-                    confidenceInterval: nil,
-                    sampleSize: 0,
-                    pValue: nil,
-                    statisticalResult: nil
-                )
-            }
+            let errorResult = PerformanceResult(
+                metric: "Scroll Performance (ERROR)",
+                actual: 0.0,
+                claim: 60.0,
+                unit: "fps",
+                timestamp: Date(),
+                isValid: false,
+                confidenceInterval: nil,
+                sampleSize: 0,
+                pValue: nil,
+                statisticalResult: nil
+            )
+            scrollPerformanceResult = errorResult
         }
     }
 
@@ -214,13 +218,15 @@ final class UIPerformanceValidator: ObservableObject {
         let claim = StatisticalValidator.PerformanceClaim(
             metric: "Memory Usage",
             claim: 50.0,
-            operator: .lessThanOrEqual,
+            comparisonOperator: .lessThanOrEqual,
             description: "Additional memory usage for UI components",
             riskLevel: .high
         )
 
         do {
-            let statisticalResult = try await statisticalValidator.validatePerformanceClaim(
+            // Access statisticalValidator in nonisolated context to avoid data race
+            let validator = statisticalValidator
+            let statisticalResult = try await validator.validatePerformanceClaim(
                 measurements: memoryMeasurements,
                 claim: claim,
                 minimumSampleSize: 100
@@ -239,35 +245,32 @@ final class UIPerformanceValidator: ObservableObject {
                 statisticalResult: statisticalResult
             )
 
-            await MainActor.run {
-                self.memoryUsageResult = result
-                logger.info("Memory Usage Statistical Result: \(result.description)")
-                logger.info("Statistical analysis: \(statisticalResult.description)")
-            }
+            let resultValue = result
+            let statResult = statisticalResult
+            logger.info("Memory Usage Statistical Result: \(resultValue.description)")
+            logger.info("Statistical analysis: \(statResult.description)")
+            memoryUsageResult = resultValue
 
         } catch {
             logger.error("Memory usage statistical validation failed: \(error.localizedDescription)")
-            await MainActor.run {
-                self.memoryUsageResult = PerformanceResult(
-                    metric: "Memory Usage (ERROR)",
-                    actual: Double.infinity,
-                    claim: 50.0,
-                    unit: "MB",
-                    timestamp: Date(),
-                    isValid: false,
-                    confidenceInterval: nil,
-                    sampleSize: 0,
-                    pValue: nil,
-                    statisticalResult: nil
-                )
-            }
+            let errorResult = PerformanceResult(
+                metric: "Memory Usage (ERROR)",
+                actual: Double.infinity,
+                claim: 50.0,
+                unit: "MB",
+                timestamp: Date(),
+                isValid: false,
+                confidenceInterval: nil,
+                sampleSize: 0,
+                pValue: nil,
+                statisticalResult: nil
+            )
+            memoryUsageResult = errorResult
         }
     }
 
     public func runAllValidations() async {
-        await MainActor.run {
-            self.isValidating = true
-        }
+        isValidating = true
 
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.validateTTFG() }
@@ -275,9 +278,7 @@ final class UIPerformanceValidator: ObservableObject {
             group.addTask { await self.validateMemoryUsage() }
         }
 
-        await MainActor.run {
-            self.isValidating = false
-        }
+        isValidating = false
 
         logger.info("✅ All UI performance validations completed")
 
@@ -319,7 +320,7 @@ final class UIPerformanceValidator: ObservableObject {
             frameRates.append(fps)
 
             // Small delay between measurements
-            try await Task.sleep(nanoseconds: UInt64(16_000_000)) // ~60fps sampling
+            try? await Task.sleep(nanoseconds: UInt64(16_000_000)) // ~60fps sampling
         }
 
         let averageFPS = frameRates.reduce(0.0, +) / Double(frameRates.count)
@@ -347,7 +348,7 @@ final class UIPerformanceValidator: ObservableObject {
             memorySamples.append(memoryUsage)
 
             // Small delay between measurements
-            try await Task.sleep(nanoseconds: UInt64(100_000_000)) // 10Hz sampling
+            try? await Task.sleep(nanoseconds: UInt64(100_000_000)) // 10Hz sampling
         }
 
         let peakUsage = memorySamples.max() ?? 0.0

@@ -262,7 +262,6 @@ public final class FeedbackService: ObservableObject {
 
     // MARK: - Properties
 
-    private let logger = Logger(subsystem: "com.deduper", category: "feedback")
     private let persistence: PersistenceController
     private let userDefaults = UserDefaults.standard
 
@@ -301,7 +300,7 @@ public final class FeedbackService: ObservableObject {
     private func setupMemoryPressureHandling() {
         guard config.enableMemoryMonitoring else { return }
 
-        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .pressureNormal)
+        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: [])
         memoryPressureSource?.setEventHandler { [weak self] in
             self?.handleMemoryPressureEvent()
         }
@@ -325,14 +324,15 @@ public final class FeedbackService: ObservableObject {
     private func calculateCurrentMemoryPressure() -> Double {
         var stats = vm_statistics64()
         var size = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<Int>.size)
-        let result = withUnsafeMutablePointer(to: &stats) {
-            $0.withMemoryRebounded(to: Int.self, capacity: Int(size)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &size)
+        let result = withUnsafeMutablePointer(to: &stats) { ptr in
+            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(size)) { intPtr in
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, intPtr, &size)
             }
         }
 
         if result == KERN_SUCCESS {
-            let used = Double(stats.active_count + stats.inactive_count + stats.wire_count) * Double(PAGE_SIZE)
+            let pageSize = 4096 // Standard page size on macOS
+            let used = Double(stats.active_count + stats.inactive_count + stats.wire_count) * Double(pageSize)
             let total = Double(ProcessInfo.processInfo.physicalMemory)
             return min(used / total, 1.0)
         }
@@ -350,16 +350,18 @@ public final class FeedbackService: ObservableObject {
         }
 
         healthCheckTimer?.resume()
-        logger.info("Health monitoring enabled for learning with \(config.healthCheckInterval)s interval")
+        logger.info("Health monitoring enabled for learning with \(self.config.healthCheckInterval)s interval")
     }
 
     private func performHealthCheck() {
         // Check for data corruption by validating stored metrics
-        do {
-            let _ = try calculateCurrentMetrics()
-        } catch {
-            healthStatus = .dataCorrupted
-            logger.error("Learning data corruption detected: \(error.localizedDescription)")
+        Task {
+            do {
+                let _ = try await calculateCurrentMetrics()
+            } catch {
+                healthStatus = .dataCorrupted
+                logger.error("Learning data corruption detected: \(error.localizedDescription)")
+            }
         }
 
         // Check metrics accuracy by comparing calculations
@@ -394,7 +396,7 @@ public final class FeedbackService: ObservableObject {
                 await self?.updateLearningMetrics()
             }
         }
-        logger.info("Metrics collection enabled with \(config.metricsUpdateInterval)s interval")
+        logger.info("Metrics collection enabled with \(self.config.metricsUpdateInterval)s interval")
     }
 
     // MARK: - Public API
@@ -553,20 +555,26 @@ public final class FeedbackService: ObservableObject {
         guard config.enableMLBasedLearning else { return metrics }
 
         // Simple ML-based analysis - in a real implementation this would use trained models
-        var enhancedMetrics = metrics
+        var updatedThresholds = metrics.preferredThresholds
 
         // Apply basic statistical adjustments
         if metrics.falsePositiveRate > 0.1 {
             // Suggest threshold adjustments
-            enhancedMetrics.preferredThresholds["similarity_threshold"] = 0.85
-            enhancedMetrics.preferredThresholds["confidence_threshold"] = 0.9
+            updatedThresholds["similarity_threshold"] = 0.85
+            updatedThresholds["confidence_threshold"] = 0.9
         } else if metrics.correctDetectionRate < 0.8 {
             // Suggest more aggressive detection
-            enhancedMetrics.preferredThresholds["similarity_threshold"] = 0.75
-            enhancedMetrics.preferredThresholds["confidence_threshold"] = 0.7
+            updatedThresholds["similarity_threshold"] = 0.75
+            updatedThresholds["confidence_threshold"] = 0.7
         }
 
-        return enhancedMetrics
+        return LearningMetrics(
+            falsePositiveRate: metrics.falsePositiveRate,
+            correctDetectionRate: metrics.correctDetectionRate,
+            averageUserConfidence: metrics.averageUserConfidence,
+            preferredThresholds: updatedThresholds,
+            lastUpdated: metrics.lastUpdated
+        )
     }
 
     /**
@@ -906,7 +914,6 @@ public final class FeedbackService: ObservableObject {
         var report = """
         # Learning & Refinement Health Report
         Generated: \(Date().formatted(.iso8601))
-        """
 
         ## System Status
         - Health: \(healthStatus.description)
@@ -928,7 +935,7 @@ public final class FeedbackService: ObservableObject {
 
         ## Security Events (Recent)
         - Total Security Events: \(securityEvents.count)
-        - Privacy Compliance: \(String(format: "%.1f", securityEvents.filter { $0.privacyCompliance }.count > 0 ? Double(securityEvents.filter { $0.privacyCompliance }.count) / Double(securityEvents.count) * 100 : 0)%
+        - Privacy Compliance: \(String(format: "%.1f", securityEvents.filter { $0.privacyCompliance }.count > 0 ? Double(securityEvents.filter { $0.privacyCompliance }.count) / Double(securityEvents.count) * 100 : 0))%
         - Last Events:
         """
 
@@ -946,11 +953,9 @@ public final class FeedbackService: ObservableObject {
         let averageTime = metrics.map { $0.executionTimeMs }.reduce(0, +) / Double(max(1, metrics.count))
         let successRate = metrics.filter { $0.success }.count > 0 ? Double(metrics.filter { $0.success }.count) / Double(metrics.count) * 100 : 0
 
-        return
-        """
+        return """
         # Learning & Refinement System Information
         Generated: \(Date().formatted(.iso8601))
-        """
 
         ## Configuration
         - Memory Monitoring: \(config.enableMemoryMonitoring ? "ENABLED" : "DISABLED")
@@ -1048,14 +1053,13 @@ public final class FeedbackService: ObservableObject {
         var analysis = """
         # Learning & Refinement Performance Analysis
         Generated: \(Date().formatted(.iso8601))
-        """
 
         ## Summary Statistics
         - Total Operations: \(metrics.count)
         - Success Rate: \(String(format: "%.1f", metrics.filter { $0.success }.count > 0 ? Double(metrics.filter { $0.success }.count) / Double(metrics.count) * 100 : 0))%
         - Average Execution Time: \(String(format: "%.2f", metrics.map { $0.executionTimeMs }.reduce(0, +) / Double(max(1, metrics.count))))ms
         - Average Metrics Accuracy: \(String(format: "%.2f", metrics.map { $0.metricsAccuracy }.reduce(0, +) / Double(max(1, metrics.count))))%
-        - Average Recommendation Quality: \(String(format: "%.2f", metrics.map { $0.recommendationQuality }.reduce(0, +) / Double(max(1, metrics.count)))%
+        - Average Recommendation Quality: \(String(format: "%.2f", metrics.map { $0.recommendationQuality }.reduce(0, +) / Double(max(1, metrics.count))))%
 
         ## Current Learning Metrics
         - False Positive Rate: \(String(format: "%.3f", learningMetrics.falsePositiveRate))
@@ -1064,8 +1068,6 @@ public final class FeedbackService: ObservableObject {
 
         ## Recommendations
         """
-
-        return analysis
 
         if learningMetrics.falsePositiveRate > 0.1 {
             analysis += "- Consider increasing similarity thresholds to reduce false positives\n"

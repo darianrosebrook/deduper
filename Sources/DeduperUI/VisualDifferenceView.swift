@@ -49,7 +49,7 @@ public struct VisualDifferenceView: View {
                             .cornerRadius(DesignToken.cornerRadiusSM)
                             .overlay(
                                 RoundedRectangle(cornerRadius: DesignToken.cornerRadiusSM)
-                                    .stroke(DesignToken.colorBorderPrimary, lineWidth: 1)
+                                    .stroke(DesignToken.colorForegroundSecondary.opacity(0.3), lineWidth: 1)
                             )
                     } else {
                         ProgressView()
@@ -72,7 +72,7 @@ public struct VisualDifferenceView: View {
                                 .cornerRadius(DesignToken.cornerRadiusSM)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: DesignToken.cornerRadiusSM)
-                                        .stroke(DesignToken.colorBorderPrimary, lineWidth: 1)
+                                        .stroke(DesignToken.colorForegroundSecondary.opacity(0.3), lineWidth: 1)
                                 )
                             
                             // Difference map overlay
@@ -103,7 +103,8 @@ public struct VisualDifferenceView: View {
                         .font(DesignToken.fontFamilyBody)
                     Spacer()
                     Text("\(Int(analysis.overallSimilarity * 100))%")
-                        .font(DesignToken.fontFamilyBodyBold)
+                        .font(DesignToken.fontFamilyBody)
+                        .fontWeight(.bold)
                         .foregroundStyle(similarityColor(analysis.overallSimilarity))
                 }
                 
@@ -113,7 +114,8 @@ public struct VisualDifferenceView: View {
                         .font(DesignToken.fontFamilyBody)
                     Spacer()
                     Text(analysis.verdict.description)
-                        .font(DesignToken.fontFamilyBodyBold)
+                        .font(DesignToken.fontFamilyBody)
+                        .fontWeight(.bold)
                         .foregroundStyle(verdictColor(analysis.verdict))
                 }
                 
@@ -121,7 +123,11 @@ public struct VisualDifferenceView: View {
                 
                 // Detailed metrics
                 VStack(alignment: .leading, spacing: DesignToken.spacingXS) {
-                    MetricRow(label: "Hash Distance", value: "\(analysis.hashDistance.distance)/\(analysis.hashDistance.maxDistance)", verdict: analysis.hashDistance.distance <= 5 ? .pass : .fail)
+                    MetricRow(
+                        label: "Hash Distance",
+                        value: hashDistanceString,
+                        verdict: hashDistanceVerdict
+                    )
                     
                     if let ssim = analysis.structuralSimilarity {
                         MetricRow(label: "Structural Similarity", value: String(format: "%.3f", ssim), verdict: ssim > 0.9 ? .pass : ssim > 0.7 ? .warn : .fail)
@@ -129,7 +135,11 @@ public struct VisualDifferenceView: View {
                     
                     MetricRow(label: "Color Histogram Distance", value: String(format: "%.3f", analysis.colorHistogramDistance), verdict: analysis.colorHistogramDistance < 0.1 ? .pass : analysis.colorHistogramDistance < 0.3 ? .warn : .fail)
                     
-                    MetricRow(label: "Pixel Difference", value: "\(Int(analysis.pixelDifference.differentPixels)) pixels (\(String(format: "%.1f", analysis.pixelDifference.percentage))%)", verdict: analysis.pixelDifference.percentage < 1.0 ? .pass : analysis.pixelDifference.percentage < 5.0 ? .warn : .fail)
+                    MetricRow(
+                        label: "Pixel Difference",
+                        value: pixelDifferenceString,
+                        verdict: pixelDifferenceVerdict
+                    )
                 }
             }
             .padding(DesignToken.spacingSM)
@@ -151,7 +161,7 @@ public struct VisualDifferenceView: View {
     
     private func createDifferenceMapImage() -> NSImage? {
         // Create a visual representation of the difference map
-        guard let diffMap = analysis.differenceMap else { return nil }
+        let diffMap = analysis.differenceMap
         
         let width = Int(diffMap.width)
         let height = Int(diffMap.height)
@@ -164,9 +174,9 @@ public struct VisualDifferenceView: View {
         for y in 0..<height {
             for x in 0..<width {
                 let index = y * width + x
-                guard index < diffMap.differences.count else { continue }
+                guard index < diffMap.data.count else { continue }
                 
-                let diff = diffMap.differences[index]
+                let diff = diffMap.data[index]
                 let color = diff > 0.5 ? NSColor.red.withAlphaComponent(0.8) : NSColor.clear
                 color.setFill()
                 NSRect(x: x, y: height - y - 1, width: 1, height: 1).fill()
@@ -175,6 +185,30 @@ public struct VisualDifferenceView: View {
         
         image.unlockFocus()
         return image
+    }
+    
+    private var hashDistanceString: String {
+        let hashValue = analysis.hashDistance.dHash ?? analysis.hashDistance.pHash ?? 0
+        return "\(hashValue)"
+    }
+    
+    private var hashDistanceVerdict: EvidenceItem.Verdict {
+        let hashValue = analysis.hashDistance.dHash ?? analysis.hashDistance.pHash ?? 0
+        return hashValue <= 5 ? .pass : .fail
+    }
+    
+    private var pixelDifferenceString: String {
+        let count = analysis.pixelDifference.differentPixelCount ?? 0
+        let total = analysis.pixelDifference.totalPixels ?? 1
+        let percentage = total > 0 ? Double(count) / Double(total) * 100.0 : 0.0
+        return "\(count) pixels (\(String(format: "%.1f", percentage))%)"
+    }
+    
+    private var pixelDifferenceVerdict: EvidenceItem.Verdict {
+        let count = analysis.pixelDifference.differentPixelCount ?? 0
+        let total = analysis.pixelDifference.totalPixels ?? 1
+        let percentage = total > 0 ? Double(count) / Double(total) * 100.0 : 0.0
+        return percentage < 1.0 ? .pass : percentage < 5.0 ? .warn : .fail
     }
     
     private func similarityColor(_ similarity: Double) -> Color {
@@ -193,9 +227,11 @@ public struct VisualDifferenceView: View {
             return .green
         case .nearlyIdentical:
             return .green
+        case .verySimilar:
+            return .green
         case .similar:
             return .orange
-        case .different:
+        case .somewhatDifferent:
             return .red
         case .veryDifferent:
             return .red
@@ -206,7 +242,7 @@ public struct VisualDifferenceView: View {
 private struct MetricRow: View {
     let label: String
     let value: String
-    let verdict: EvidencePanel.Verdict
+    let verdict: EvidenceItem.Verdict
     
     var body: some View {
         HStack {
@@ -241,11 +277,11 @@ private struct MetricRow: View {
         keeperURL: URL(fileURLWithPath: "/tmp/keeper.jpg"),
         duplicateURL: URL(fileURLWithPath: "/tmp/duplicate.jpg"),
         analysis: VisualDifferenceAnalysis(
-            hashDistance: HashDistance(distance: 3, maxDistance: 64),
-            pixelDifference: PixelDifference(differentPixels: 1000, totalPixels: 1000000, percentage: 0.1),
+            hashDistance: HashDistance(dHash: 3, pHash: 5),
+            pixelDifference: PixelDifference(meanDifference: 0.1, maxDifference: 0.5, differentPixelCount: 1000, totalPixels: 1000000),
             structuralSimilarity: 0.95,
             colorHistogramDistance: 0.05,
-            differenceMap: DifferenceMap(width: 100, height: 100, differences: Array(repeating: 0.0, count: 10000)),
+            differenceMap: DifferenceMap(width: 100, height: 100, data: Array(repeating: 0.0, count: 10000)),
             overallSimilarity: 0.92,
             verdict: .nearlyIdentical
         )

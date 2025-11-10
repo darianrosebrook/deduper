@@ -19,6 +19,7 @@ import Foundation
  *
  * - Author: @darianrosebrook
  */
+@MainActor
 final class RealTestingSystem: ObservableObject {
     private let logger = Logger(subsystem: "com.deduper", category: "real-testing")
 
@@ -122,10 +123,10 @@ final class RealTestingSystem: ObservableObject {
             )
         ]
 
-        await MainActor.run {
-            self.testSuites = mockTestSuites
-            logger.info("✅ Discovered \(mockTestSuites.count) test suites")
-        }
+        let suites = mockTestSuites
+        let suiteCount = suites.count
+        logger.info("✅ Discovered \(suiteCount) test suites")
+        testSuites = suites
     }
 
     public func runRealTests(suite: TestSuiteInfo) async {
@@ -136,12 +137,10 @@ final class RealTestingSystem: ObservableObject {
             return
         }
 
-        await MainActor.run {
-            self.isRunningTests = true
-            self.currentProgress = 0.0
-            self.currentTestName = ""
-            self.testResults = []
-        }
+        isRunningTests = true
+        currentProgress = 0.0
+        currentTestName = ""
+        testResults = []
 
         do {
             // In real implementation, this would execute actual test framework
@@ -153,9 +152,7 @@ final class RealTestingSystem: ObservableObject {
             logger.error("❌ Real test execution failed: \(error.localizedDescription)")
         }
 
-        await MainActor.run {
-            self.isRunningTests = false
-        }
+        isRunningTests = false
     }
 
     private func executeRealTestSuite(_ suite: TestSuiteInfo) async throws {
@@ -172,15 +169,13 @@ final class RealTestingSystem: ObservableObject {
         for (index, testMethod) in testMethods.enumerated() {
             guard isRunningTests else { break }
 
-            await MainActor.run {
-                self.currentTestName = testMethod.name
-                self.currentProgress = Double(index) / Double(testMethods.count)
-            }
+            let testName = testMethod.name
+            let progress = Double(index) / Double(testMethods.count)
+            currentTestName = testName
+            currentProgress = progress
 
             let result = try await runRealTestMethod(testMethod)
-            await MainActor.run {
-                self.testResults.append(result)
-            }
+            testResults.append(result)
 
             // Small delay to simulate real test execution
             try await Task.sleep(nanoseconds: UInt64.random(in: 50_000_000...200_000_000))

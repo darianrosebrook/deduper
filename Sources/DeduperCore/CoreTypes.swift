@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /**
  * Media types supported by the deduplication system
  */
-public enum MediaType: Int16, CaseIterable, Sendable {
+public enum MediaType: Int16, CaseIterable, Sendable, Codable {
     case photo = 0
     case video = 1
     case audio = 2
@@ -263,7 +263,7 @@ extension URL {
  * 
  * - Author: @darianrosebrook
  */
-public enum HashAlgorithm: Int16, CaseIterable, Sendable {
+public enum HashAlgorithm: Int16, CaseIterable, Sendable, Codable {
     case dHash = 0  // Difference hash (fast, good for near-duplicates)
     case pHash = 1  // Perceptual hash (slower, more robust to transformations)
     
@@ -347,11 +347,43 @@ public struct MediaMetadata: Sendable, Equatable {
     public var keywords: [String]?
     public var tags: [String]?
     public var inferredUTType: String?
+    
+    public init(
+        fileName: String,
+        fileSize: Int64,
+        mediaType: MediaType,
+        createdAt: Date? = nil,
+        modifiedAt: Date? = nil,
+        dimensions: (width: Int, height: Int)? = nil,
+        captureDate: Date? = nil,
+        cameraModel: String? = nil,
+        gpsLat: Double? = nil,
+        gpsLon: Double? = nil,
+        durationSec: Double? = nil,
+        keywords: [String]? = nil,
+        tags: [String]? = nil,
+        inferredUTType: String? = nil
+    ) {
+        self.fileName = fileName
+        self.fileSize = fileSize
+        self.mediaType = mediaType
+        self.createdAt = createdAt
+        self.modifiedAt = modifiedAt
+        self.dimensions = dimensions
+        self.captureDate = captureDate
+        self.cameraModel = cameraModel
+        self.gpsLat = gpsLat
+        self.gpsLon = gpsLon
+        self.durationSec = durationSec
+        self.keywords = keywords
+        self.tags = tags
+        self.inferredUTType = inferredUTType
+    }
 }
 
 // MARK: - Video Signatures (Module 04)
 
-public struct VideoSignature: Sendable, Equatable {
+public struct VideoSignature: Sendable, Equatable, Codable {
     public let durationSec: Double
     public let width: Int
     public let height: Int

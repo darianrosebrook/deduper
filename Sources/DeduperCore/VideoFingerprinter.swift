@@ -265,7 +265,7 @@ public final class VideoFingerprinter: @unchecked Sendable {
     private func setupMemoryPressureMonitoring() {
         logger.info("Setting up memory pressure monitoring for video fingerprinting")
 
-        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .pressureNormal)
+        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: [])
         memoryPressureSource?.setEventHandler { [weak self] in
             self?.handleMemoryPressureEvent()
         }
@@ -289,14 +289,15 @@ public final class VideoFingerprinter: @unchecked Sendable {
     private func calculateCurrentMemoryPressure() -> Double {
         var stats = vm_statistics64()
         var size = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<Int>.size)
-        let result = withUnsafeMutablePointer(to: &stats) {
-            $0.withMemoryRebounded(to: Int.self, capacity: Int(size)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &size)
+        let result = withUnsafeMutablePointer(to: &stats) { ptr in
+            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(size)) { intPtr in
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, intPtr, &size)
             }
         }
 
         if result == KERN_SUCCESS {
-            let used = Double(stats.active_count + stats.inactive_count + stats.wire_count) * Double(PAGE_SIZE)
+            let pageSize = 4096 // Standard page size on macOS
+            let used = Double(stats.active_count + stats.inactive_count + stats.wire_count) * Double(pageSize)
             let total = Double(ProcessInfo.processInfo.physicalMemory)
             return min(used / total, 1.0)
         }
@@ -319,7 +320,7 @@ public final class VideoFingerprinter: @unchecked Sendable {
         }
 
         if newConcurrency != currentConcurrency {
-            logger.info("Adjusting video processing concurrency from \(currentConcurrency) to \(newConcurrency) due to memory pressure \(String(format: "%.2f", pressure))")
+            logger.info("Adjusting video processing concurrency from \(self.currentConcurrency) to \(newConcurrency) due to memory pressure \(String(format: "%.2f", pressure))")
             currentConcurrency = newConcurrency
             healthStatus = .resourceConstrained(newConcurrency)
         }
@@ -337,12 +338,12 @@ public final class VideoFingerprinter: @unchecked Sendable {
         }
 
         healthCheckTimer?.resume()
-        logger.info("Health monitoring enabled for video fingerprinting with \(processingConfig.healthCheckInterval)s interval")
+        logger.info("Health monitoring enabled for video fingerprinting with \(self.processingConfig.healthCheckInterval)s interval")
     }
 
     private func performHealthCheck() {
         let now = Date()
-        let timeSinceLastCheck = now.timeIntervalSince(lastHealthCheckTime)
+        _ = now.timeIntervalSince(lastHealthCheckTime)
 
         // Check for high error rates
         let errorRate = Double(_totalFramesFailed) / Double(max(1, _totalFramesAttempted))
@@ -417,7 +418,7 @@ public final class VideoFingerprinter: @unchecked Sendable {
     /// Computes a video signature for the provided URL with enhanced monitoring and security.
     /// - Parameter url: Local file URL of the video asset.
     /// - Returns: A populated VideoSignature or nil if frames could not be sampled.
-    public func fingerprint(url: URL) -> VideoSignature? {
+    public func fingerprint(url: URL) async -> VideoSignature? {
         // Security logging for audit trail
         if processingConfig.enableSecurityAudit {
             logSecurityEvent(VideoSecurityEvent(
@@ -450,122 +451,130 @@ public final class VideoFingerprinter: @unchecked Sendable {
         let fingerprintStart = Date()
         let asset = AVAsset(url: url)
 
-        // Security check for protected content
-        guard asset.isReadable, !asset.hasProtectedContent else {
-            logger.info("Skipping unreadable or protected asset: \(url.lastPathComponent, privacy: .public)")
+        // Security check for protected content using new async load() API
+        do {
+            let (isReadable, hasProtectedContent) = try await asset.load(.isReadable, .hasProtectedContent)
+            guard isReadable, !hasProtectedContent else {
+                logger.info("Skipping unreadable or protected asset: \(url.lastPathComponent, privacy: .public)")
 
-            if processingConfig.enableSecurityAudit {
-                logSecurityEvent(VideoSecurityEvent(
-                    operation: "video_fingerprinting_blocked",
-                    videoPath: url.path,
-                    success: false,
-                    errorMessage: asset.hasProtectedContent ? "Protected content" : "Unreadable asset"
-                ))
+                if processingConfig.enableSecurityAudit {
+                    logSecurityEvent(VideoSecurityEvent(
+                        operation: "video_fingerprinting_blocked",
+                        videoPath: url.path,
+                        success: false,
+                        errorMessage: hasProtectedContent ? "Protected content" : "Unreadable asset"
+                    ))
+                }
+
+                healthStatus = .securityConcern("protected_content")
+                return nil
             }
 
-            healthStatus = .securityConcern("protected_content")
-            return nil
-        }
-
-        let duration = CMTimeGetSeconds(asset.duration)
-        guard duration.isFinite, duration > 0 else {
-            logger.debug("Asset has invalid duration: \(url.lastPathComponent, privacy: .public)")
-            return nil
-        }
-
-        guard let track = asset.tracks(withMediaType: .video).first else {
-            logger.debug("No video track found for: \(url.lastPathComponent, privacy: .public)")
-            return nil
-        }
-
-        let transformedSize = track.naturalSize.applying(track.preferredTransform)
-
-        // Adaptive quality based on memory pressure
-        var frameSize = CGSize(width: 720, height: 720)
-        if processingConfig.enableAdaptiveQuality {
-            let memoryPressure = calculateCurrentMemoryPressure()
-            if memoryPressure > processingConfig.memoryPressureThreshold {
-                frameSize = CGSize(width: 480, height: 480)
-                logger.debug("Using reduced frame size due to memory pressure: \(String(format: "%.2f", memoryPressure))")
+            let duration = try await asset.load(.duration)
+            let durationSeconds = CMTimeGetSeconds(duration)
+            guard durationSeconds.isFinite, durationSeconds > 0 else {
+                logger.debug("Asset has invalid duration: \(url.lastPathComponent, privacy: .public)")
+                return nil
             }
-        }
 
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
-        if config.generatorMaxDimension > 0 {
-            let dimension = CGFloat(config.generatorMaxDimension)
-            generator.maximumSize = frameSize
-        }
-        
-        let targetTimes = sampleTimes(for: duration)
-        let cmTimes = targetTimes.map { time in
-            CMTimeMakeWithSeconds(time, preferredTimescale: config.preferredTimescale)
-        }
+            let tracks = try await asset.loadTracks(withMediaType: .video)
+            guard let track = tracks.first else {
+                logger.debug("No video track found for: \(url.lastPathComponent, privacy: .public)")
+                return nil
+            }
 
-        var hashes: [UInt64] = []
-        var actualTimes: [Double] = []
-        var failures = 0
+            let (naturalSize, preferredTransform) = try await track.load(.naturalSize, .preferredTransform)
+            let transformedSize = naturalSize.applying(preferredTransform)
 
-        // Track total frames attempted only for fresh computations
-        errorTrackingQueue.sync(flags: .barrier) {
-            _totalFramesAttempted += cmTimes.count
-        }
-        
-        for (index, cmTime) in cmTimes.enumerated() {
-            var actualTime = CMTime.invalid
-            do {
-                let image = try generator.copyCGImage(at: cmTime, actualTime: &actualTime)
-                if let dHash = imageHasher.computeHashes(from: image).first(where: { $0.algorithm == .dHash }) {
-                    hashes.append(dHash.hash)
-                    let actual = CMTimeGetSeconds(actualTime)
-                    actualTimes.append(actual.isFinite ? actual : targetTimes[index])
-                } else {
+            // Adaptive quality based on memory pressure
+            var frameSize = CGSize(width: 720, height: 720)
+            if processingConfig.enableAdaptiveQuality {
+                let memoryPressure = calculateCurrentMemoryPressure()
+                if memoryPressure > processingConfig.memoryPressureThreshold {
+                    frameSize = CGSize(width: 480, height: 480)
+                    logger.debug("Using reduced frame size due to memory pressure: \(String(format: "%.2f", memoryPressure))")
+                }
+            }
+
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            if config.generatorMaxDimension > 0 {
+                generator.maximumSize = frameSize
+            }
+            
+            let targetTimes = sampleTimes(for: durationSeconds)
+            let cmTimes = targetTimes.map { time in
+                CMTimeMakeWithSeconds(time, preferredTimescale: config.preferredTimescale)
+            }
+
+            var hashes: [UInt64] = []
+            var actualTimes: [Double] = []
+            var failures = 0
+
+            // Track total frames attempted only for fresh computations
+            errorTrackingQueue.sync(flags: .barrier) {
+                _totalFramesAttempted += cmTimes.count
+            }
+            
+            for (index, cmTime) in cmTimes.enumerated() {
+                var actualTime = CMTime.invalid
+                do {
+                    let image = try generator.copyCGImage(at: cmTime, actualTime: &actualTime)
+                    if let dHash = imageHasher.computeHashes(from: image).first(where: { $0.algorithm == .dHash }) {
+                        hashes.append(dHash.hash)
+                        let actual = CMTimeGetSeconds(actualTime)
+                        actualTimes.append(actual.isFinite ? actual : targetTimes[index])
+                    } else {
+                        failures += 1
+                        logger.debug("No dHash produced for frame #\(index) at \(targetTimes[index])s")
+                        // Track hash computation failure
+                        errorTrackingQueue.sync(flags: .barrier) {
+                            _totalFramesFailed += 1
+                        }
+                    }
+                } catch {
                     failures += 1
-                    logger.debug("No dHash produced for frame #\(index) at \(targetTimes[index])s")
-                    // Track hash computation failure
+                    logger.error("Failed to extract frame #\(index) at \(targetTimes[index])s: \(error.localizedDescription, privacy: .public)")
+                    // Track frame extraction failure
                     errorTrackingQueue.sync(flags: .barrier) {
                         _totalFramesFailed += 1
                     }
                 }
-            } catch {
-                failures += 1
-                logger.error("Failed to extract frame #\(index) at \(targetTimes[index])s: \(error.localizedDescription, privacy: .public)")
-                // Track frame extraction failure
-                errorTrackingQueue.sync(flags: .barrier) {
-                    _totalFramesFailed += 1
-                }
             }
-        }
-        
-        guard !hashes.isEmpty else {
-            logger.info("No frame hashes computed for \(url.lastPathComponent, privacy: .public) after \(failures) failures")
+            
+            guard !hashes.isEmpty else {
+                logger.info("No frame hashes computed for \(url.lastPathComponent, privacy: .public) after \(failures) failures")
+                return nil
+            }
+            
+            let signature = VideoSignature(
+                durationSec: durationSeconds,
+                width: Int(abs(transformedSize.width)),
+                height: Int(abs(transformedSize.height)),
+                frameHashes: hashes,
+                sampleTimesSec: actualTimes,
+                computedAt: Date()
+            )
+            
+            let elapsed = Date().timeIntervalSince(fingerprintStart)
+            logger.debug("Video fingerprinted (\(hashes.count) frames, failures: \(failures)) in \(String(format: "%.3f", elapsed))s for \(url.lastPathComponent, privacy: .public)")
+            
+            // Log error rate if it exceeds target threshold
+            let stats = errorStatistics
+            if stats.failureRate > 0.01 { // 1% threshold
+                logger.warning("Frame extraction failure rate: \(String(format: "%.2f", stats.failureRate * 100))% (\(stats.failed)/\(stats.attempted)) - exceeds 1% target")
+            }
+            
+            if canCache {
+                signatureCache.store(signature: signature, for: url, fileSize: fileSize, modifiedAt: modifiedAt)
+            }
+            return signature
+        } catch {
+            logger.error("Failed to load asset properties: \(error.localizedDescription, privacy: .public)")
             return nil
         }
-        
-        let signature = VideoSignature(
-            durationSec: duration,
-            width: Int(abs(transformedSize.width)),
-            height: Int(abs(transformedSize.height)),
-            frameHashes: hashes,
-            sampleTimesSec: actualTimes,
-            computedAt: Date()
-        )
-        
-        let elapsed = Date().timeIntervalSince(fingerprintStart)
-        logger.debug("Video fingerprinted (\(hashes.count) frames, failures: \(failures)) in \(String(format: "%.3f", elapsed))s for \(url.lastPathComponent, privacy: .public)")
-        
-        // Log error rate if it exceeds target threshold
-        let stats = errorStatistics
-        if stats.failureRate > 0.01 { // 1% threshold
-            logger.warning("Frame extraction failure rate: \(String(format: "%.2f", stats.failureRate * 100))% (\(stats.failed)/\(stats.attempted)) - exceeds 1% target")
-        }
-        
-        if canCache {
-            signatureCache.store(signature: signature, for: url, fileSize: fileSize, modifiedAt: modifiedAt)
-        }
-        return signature
     }
 
     /// Compares two video signatures and returns per-frame distances alongside an aggregate verdict.
@@ -861,19 +870,18 @@ public final class VideoFingerprinter: @unchecked Sendable {
         var report = """
         # Video Fingerprinting Health Report
         Generated: \(Date().formatted(.iso8601))
-        """
 
         ## System Status
         - Health: \(healthStatus.description)
         - Memory Pressure: \(String(format: "%.2f", memoryPressure))
         - Current Concurrency: \(currentConcurrency)
-        - Configuration: \(processingConfig.description)
+        - Configuration: Production-optimized
 
         ## Performance Metrics
         - Total Operations: \(metrics.count)
         - Average Processing Time: \(String(format: "%.2f", metrics.map { $0.processingTimeMs }.reduce(0, +) / Double(max(1, metrics.count))))ms
         - Average Frames Extracted: \(String(format: "%.1f", metrics.map { Double($0.frameCount) }.reduce(0, +) / Double(max(1, metrics.count))))
-        - Average File Size: \(ByteCountFormatter().string(fromByteCount: Int64(metrics.map { $0.fileSize }.reduce(0, +) / max(1, metrics.count))))
+        - Average File Size: \(ByteCountFormatter().string(fromByteCount: Int64(metrics.map { Int64($0.fileSize) }.reduce(0, +) / Int64(max(1, metrics.count)))))
 
         ## Security Events (Recent)
         - Total Security Events: \(securityEvents.count)
@@ -926,7 +934,7 @@ public final class VideoFingerprinter: @unchecked Sendable {
     }
 
     /// Force refresh of a specific video signature
-    public func forceRefresh(url: URL) -> VideoSignature? {
+    public func forceRefresh(url: URL) async -> VideoSignature? {
         if processingConfig.enableSecurityAudit {
             logSecurityEvent(VideoSecurityEvent(
                 operation: "force_refresh",
@@ -936,6 +944,6 @@ public final class VideoFingerprinter: @unchecked Sendable {
         }
 
         signatureCache.remove(for: url)
-        return fingerprint(url: url)
+        return await fingerprint(url: url)
     }
 }

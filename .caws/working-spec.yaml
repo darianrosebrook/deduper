@@ -1,6 +1,20 @@
 id: MERGE-001
 title: 'Safe file merging for duplicate groups'
+mode: feature
 risk_tier: 1
+blast_radius:
+  modules:
+    - 'DeduperCore/FileOperations'
+    - 'DeduperCore/MergeTransaction'
+    - 'DeduperUI/MergePreview'
+    - 'DeduperUI/MergeConfirmation'
+  data_migration: false
+  external_apis: false
+operational_rollback_slo: 5m
+change_budget:
+  max_files: 25
+  max_loc: 1000
+  max_days: 3
 scope:
   in:
     - 'Move duplicate files to trash while preserving selected keeper'

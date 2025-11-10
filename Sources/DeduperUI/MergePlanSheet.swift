@@ -34,7 +34,7 @@ public struct MergePlanField: Identifiable, Equatable {
     }
 }
 
-public struct MergePlanSheet: View {
+public struct SimpleMergePlanSheet: View {
     private let keeperName: String
     private let removals: [MergePlanItem]
     private let metadataMerges: [MergePlanField]
@@ -102,7 +102,7 @@ public struct MergePlanSheet: View {
 }
 
 #Preview {
-    MergePlanSheet(
+    SimpleMergePlanSheet(
         keeperName: "IMG_1234.JPG",
         removals: [MergePlanItem(displayName: "IMG_1234 (1).JPG"), MergePlanItem(displayName: "IMG_1234 copy.JPG")],
         metadataMerges: [MergePlanField(id: "gps", label: "GPS", from: "37.77,-122.41", into: nil), MergePlanField(id: "keywords", label: "Keywords", from: "vacation", into: "vacation; family")],

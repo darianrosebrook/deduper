@@ -246,3 +246,6 @@ export function resolveQualityGatesModule(moduleName) {
 3. Test exception creation via MCP (MEDIUM)
 4. Bundle quality gates in extension (LOW)
 
+
+
+

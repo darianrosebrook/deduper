@@ -23,6 +23,7 @@ public final class ChaosTestingFramework: @unchecked Sendable {
     private var activeScenarios: [ChaosScenario] = []
     private let metricsCollector = ChaosMetricsCollector()
     private let recoveryManager = ChaosRecoveryManager()
+    private let duplicateEngine = DuplicateDetectionEngine()
 
     public init() {}
 
@@ -61,9 +62,20 @@ public final class ChaosTestingFramework: @unchecked Sendable {
 
         logger.info("Chaos test completed successfully")
 
+        // Create metrics from test result
+        let metrics = ChaosMetrics(
+            scenariosExecuted: scenarios.count,
+            totalFailures: testResult.operationResults.filter { !$0.success }.count,
+            recoverySuccessRate: testResult.operationResults.filter { $0.success }.count > 0 ? Double(testResult.operationResults.filter { $0.success }.count) / Double(testResult.operationResults.count) : 0.0,
+            performanceDegradation: 0.0, // Would calculate from execution times
+            meanTimeToRecovery: testResult.executionTime,
+            maxRecoveryTime: testResult.executionTime,
+            systemStabilityScore: testResult.operationResults.filter { $0.success }.count > 0 ? Double(testResult.operationResults.filter { $0.success }.count) / Double(testResult.operationResults.count) : 0.0
+        )
+        
         return ChaosTestResult(
             scenarios: scenarios,
-            metrics: testResult.metrics,
+            metrics: metrics,
             report: report
         )
     }
@@ -95,10 +107,12 @@ public final class ChaosTestingFramework: @unchecked Sendable {
         )
 
         let report = await generateScenarioReport(result, monitor: monitor)
+        let monitoringData = await monitor.getMonitoringData()
+        let metrics = metricsCollector.collectMetrics(from: result, monitoringData: monitoringData)
 
         return ScenarioTestResult(
             scenario: scenario,
-            metrics: result.metrics,
+            metrics: metrics,
             report: report
         )
     }
@@ -232,7 +246,7 @@ public final class ChaosTestingFramework: @unchecked Sendable {
 
         do {
             // Execute duplicate detection with chaos injection
-            let groups = try await duplicateEngine.buildGroups(for: environment.assets.map { $0.id })
+            let groups = try await duplicateEngine.buildGroups(for: environment.assets.map { $0.id }, assets: environment.assets)
 
             let endTime = DispatchTime.now()
             let duration = Double(endTime.uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
@@ -372,7 +386,7 @@ public final class ChaosTestingFramework: @unchecked Sendable {
                 captureDate: Date().addingTimeInterval(Double(-i * 3600)), // Spread over time
                 createdAt: Date(),
                 modifiedAt: Date(),
-                imageHashes: [HashAlgorithm.dhash: UInt64(i)],
+                imageHashes: [HashAlgorithm.dHash: UInt64(i)],
                 videoSignature: nil
             )
             assets.append(asset)
@@ -401,7 +415,7 @@ public enum ChaosScenarioType: String, Sendable, Equatable {
     case concurrentAccess = "concurrent_access"
 }
 
-public struct ChaosScenario: Sendable, Equatable {
+public struct ChaosScenario: @unchecked Sendable {
     public let type: ChaosScenarioType
     public let severity: ChaosSeverity
     public let parameters: [String: Any]
@@ -410,6 +424,12 @@ public struct ChaosScenario: Sendable, Equatable {
         self.type = type
         self.severity = severity
         self.parameters = parameters
+    }
+}
+
+extension ChaosScenario: Equatable {
+    public static func == (lhs: ChaosScenario, rhs: ChaosScenario) -> Bool {
+        return lhs.type == rhs.type && lhs.severity == rhs.severity
     }
 }
 
@@ -462,13 +482,19 @@ public struct RecoveryTestConfiguration: Sendable, Equatable {
     }
 }
 
-public struct RecoveryValidationResult: Sendable, Equatable {
+public struct RecoveryValidationResult: @unchecked Sendable {
     public let configuration: RecoveryTestConfiguration
     public let results: [String: Any]
 
     public init(configuration: RecoveryTestConfiguration, results: [String: Any]) {
         self.configuration = configuration
         self.results = results
+    }
+}
+
+extension RecoveryValidationResult: Equatable {
+    public static func == (lhs: RecoveryValidationResult, rhs: RecoveryValidationResult) -> Bool {
+        return lhs.configuration == rhs.configuration
     }
 }
 
@@ -479,60 +505,122 @@ private struct TestEnvironment: Sendable, Equatable {
     let outputDirectory: URL
 }
 
-private struct TestExecutionResult: Sendable, Equatable {
-    let executionTime: Double
-    let operationResults: [OperationResult]
-    let chaosEvents: [ChaosEvent]
+public struct TestExecutionResult: Sendable, Equatable {
+    public let executionTime: Double
+    public let operationResults: [OperationResult]
+    public let chaosEvents: [ChaosEvent]
+    
+    public init(executionTime: Double, operationResults: [OperationResult], chaosEvents: [ChaosEvent]) {
+        self.executionTime = executionTime
+        self.operationResults = operationResults
+        self.chaosEvents = chaosEvents
+    }
 }
 
-private struct OperationResult: Sendable, Equatable {
-    let success: Bool
-    let duration: Double
-    let groupsFound: Int
-    let error: String?
+public struct OperationResult: Sendable, Equatable {
+    public let success: Bool
+    public let duration: Double
+    public let groupsFound: Int
+    public let error: String?
+    
+    public init(success: Bool, duration: Double, groupsFound: Int, error: String?) {
+        self.success = success
+        self.duration = duration
+        self.groupsFound = groupsFound
+        self.error = error
+    }
 }
 
-private struct ChaosEvent: Sendable, Equatable {
-    let type: String
-    let timestamp: Date
-    let severity: ChaosSeverity
-    let metadata: [String: Any]
+public struct ChaosEvent: @unchecked Sendable {
+    public let type: String
+    public let timestamp: Date
+    public let severity: ChaosSeverity
+    public let metadata: [String: Any]
+    
+    public init(type: String, timestamp: Date, severity: ChaosSeverity, metadata: [String: Any]) {
+        self.type = type
+        self.timestamp = timestamp
+        self.severity = severity
+        self.metadata = metadata
+    }
 }
 
-private struct ChaosTestReport: Sendable, Equatable {
-    let executionResult: TestExecutionResult
-    let monitoringData: [String: Any]
-    let metrics: ChaosMetrics
-    let recommendations: [ChaosRecommendation]
+extension ChaosEvent: Equatable {
+    public static func == (lhs: ChaosEvent, rhs: ChaosEvent) -> Bool {
+        return lhs.type == rhs.type && lhs.timestamp == rhs.timestamp && lhs.severity == rhs.severity
+    }
 }
 
-private struct ScenarioTestReport: Sendable, Equatable {
-    let executionResult: TestExecutionResult
-    let monitoringData: [String: Any]
-    let metrics: ChaosMetrics
-    let recommendations: [ChaosRecommendation]
+public struct ChaosTestReport: @unchecked Sendable {
+    public let executionResult: TestExecutionResult
+    public let monitoringData: [String: Any]
+    public let metrics: ChaosMetrics
+    public let recommendations: [ChaosRecommendation]
+    
+    public init(executionResult: TestExecutionResult, monitoringData: [String: Any], metrics: ChaosMetrics, recommendations: [ChaosRecommendation]) {
+        self.executionResult = executionResult
+        self.monitoringData = monitoringData
+        self.metrics = metrics
+        self.recommendations = recommendations
+    }
 }
 
-private struct ChaosMetrics: Sendable, Equatable {
-    let scenariosExecuted: Int
-    let totalFailures: Int
-    let recoverySuccessRate: Double
-    let performanceDegradation: Double
-    let meanTimeToRecovery: TimeInterval
-    let maxRecoveryTime: TimeInterval
-    let systemStabilityScore: Double
+extension ChaosTestReport: Equatable {
+    public static func == (lhs: ChaosTestReport, rhs: ChaosTestReport) -> Bool {
+        return lhs.executionResult == rhs.executionResult && lhs.metrics == rhs.metrics
+    }
 }
 
-private struct ChaosRecommendation: Sendable, Equatable {
-    public let type: RecommendationType
-    public let priority: RecommendationPriority
+public struct ScenarioTestReport: @unchecked Sendable {
+    public let executionResult: TestExecutionResult
+    public let monitoringData: [String: Any]
+    public let metrics: ChaosMetrics
+    public let recommendations: [ChaosRecommendation]
+    
+    public init(executionResult: TestExecutionResult, monitoringData: [String: Any], metrics: ChaosMetrics, recommendations: [ChaosRecommendation]) {
+        self.executionResult = executionResult
+        self.monitoringData = monitoringData
+        self.metrics = metrics
+        self.recommendations = recommendations
+    }
+}
+
+extension ScenarioTestReport: Equatable {
+    public static func == (lhs: ScenarioTestReport, rhs: ScenarioTestReport) -> Bool {
+        return lhs.executionResult == rhs.executionResult && lhs.metrics == rhs.metrics
+    }
+}
+
+public struct ChaosMetrics: Sendable, Equatable {
+    public let scenariosExecuted: Int
+    public let totalFailures: Int
+    public let recoverySuccessRate: Double
+    public let performanceDegradation: Double
+    public let meanTimeToRecovery: TimeInterval
+    public let maxRecoveryTime: TimeInterval
+    public let systemStabilityScore: Double
+    
+    public init(scenariosExecuted: Int, totalFailures: Int, recoverySuccessRate: Double, performanceDegradation: Double, meanTimeToRecovery: TimeInterval, maxRecoveryTime: TimeInterval, systemStabilityScore: Double) {
+        self.scenariosExecuted = scenariosExecuted
+        self.totalFailures = totalFailures
+        self.recoverySuccessRate = recoverySuccessRate
+        self.performanceDegradation = performanceDegradation
+        self.meanTimeToRecovery = meanTimeToRecovery
+        self.maxRecoveryTime = maxRecoveryTime
+        self.systemStabilityScore = systemStabilityScore
+    }
+}
+
+public struct ChaosRecommendation: Sendable, Equatable {
+    public let type: ChaosRecommendationType
+    public let priority: ChaosRecommendationPriority
     public let title: String
     public let description: String
     public let actions: [String]
 
     public init(
-        type: RecommendationType,
-        priority: RecommendationPriority,
+        type: ChaosRecommendationType,
+        priority: ChaosRecommendationPriority,
         title: String,
         description: String,
         actions: [String]
@@ -545,14 +633,14 @@ private struct ChaosRecommendation: Sendable, Equatable {
     }
 }
 
-private enum RecommendationType: String, Sendable, Equatable {
+public enum ChaosRecommendationType: String, Sendable, Equatable {
     case improvement = "improvement"
     case optimization = "optimization"
     case monitoring = "monitoring"
     case testing = "testing"
 }
 
-private enum RecommendationPriority: String, Sendable, Equatable {
+public enum ChaosRecommendationPriority: String, Sendable, Equatable {
     case low = "low"
     case medium = "medium"
     case high = "high"

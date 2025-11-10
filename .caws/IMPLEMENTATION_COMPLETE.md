@@ -166,3 +166,6 @@ const result = addException(gate, exceptionData);
 - `caws/packages/caws-mcp-server/test-exception-creation.mjs` - Test script
 - `.caws/quality-exceptions.json` - Exception configuration
 
+
+
+
