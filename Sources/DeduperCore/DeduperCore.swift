@@ -110,8 +110,19 @@ public final class ServiceManager: ObservableObject {
 
     // MARK: - Properties
 
-    /// Shared instance
-    public static let shared = ServiceManager()
+    private static var _shared: ServiceManager?
+    
+    /// Shared instance - initialized on MainActor
+    @MainActor
+    public static var shared: ServiceManager {
+        if let existing = _shared {
+            return existing
+        }
+        
+        let instance = ServiceManager()
+        _shared = instance
+        return instance
+    }
 
     /// Folder selection service
     public let folderSelection: FolderSelectionService

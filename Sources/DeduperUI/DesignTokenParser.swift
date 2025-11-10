@@ -54,6 +54,20 @@ public final class DesignTokenParser: @unchecked Sendable {
             print("DEBUG: Successfully parsed designTokens.json")
             print("DEBUG: Core keys: \(Array(tokenData.core.keys))")
             print("DEBUG: Semantic keys: \(Array(tokenData.semantic.keys))")
+            
+            // Debug: Check if elevated token has extensions
+            #if DEBUG
+            if let color = tokenData.semantic["color"] as? [String: Any],
+               let background = color["background"] as? [String: Any],
+               let elevated = background["elevated"] as? [String: Any] {
+                print("DEBUG: Elevated token keys after parsing: \(Array(elevated.keys.sorted()))")
+                print("DEBUG: Elevated token has $extensions: \(elevated["$extensions"] != nil)")
+                if let extensions = elevated["$extensions"] {
+                    print("DEBUG: Elevated token $extensions type: \(type(of: extensions))")
+                    print("DEBUG: Elevated token $extensions value: \(extensions)")
+                }
+            }
+            #endif
         } catch {
             fatalError("Failed to parse designTokens.json: \(error)")
         }
@@ -126,14 +140,35 @@ public final class DesignTokenParser: @unchecked Sendable {
             let modeKey = colorScheme == .dark ? "dark" : "light"
 
             if let extensions = colorDict["$extensions"] as? [String: Any] {
+                #if DEBUG
+                let isElevated = (colorDict["$value"] as? String)?.contains("white") ?? false
+                if isElevated {
+                    print("DEBUG: resolveColorStringValue - extensions found: \(extensions.keys)")
+                }
+                #endif
+                
+                // Check for nested design.paths structure first
                 if let designPaths = extensions["design.paths"] as? [String: Any],
                    let modeColor = designPaths[modeKey] as? String {
+                    #if DEBUG
+                    print("DEBUG: Found nested design.paths.\(modeKey) = \(modeColor)")
+                    #endif
                     return resolveColorReference(modeColor, colorScheme: colorScheme)
                 }
 
+                // Check for flat design.paths.{mode} structure
                 if let flatModeColor = extensions["design.paths.\(modeKey)"] as? String {
+                    #if DEBUG
+                    print("DEBUG: Found flat design.paths.\(modeKey) = \(flatModeColor)")
+                    #endif
                     return resolveColorReference(flatModeColor, colorScheme: colorScheme)
                 }
+                
+                #if DEBUG
+                if (colorDict["$value"] as? String)?.contains("white") ?? false {
+                    print("DEBUG: Extensions found but no design.paths.\(modeKey), available keys: \(extensions.keys)")
+                }
+                #endif
             }
 
             if let rawValue = colorDict["$value"] {
@@ -162,15 +197,63 @@ public final class DesignTokenParser: @unchecked Sendable {
 
         if trimmed.hasPrefix("{") && trimmed.hasSuffix("}") {
             let referencePath = String(trimmed.dropFirst().dropLast())
-            return resolveColorTokenString(referencePath, for: colorScheme)
+            #if DEBUG
+            if referencePath.contains("neutral.800") {
+                print("DEBUG: resolveColorReference resolving \(referencePath) for \(colorScheme == .dark ? "dark" : "light")")
+            }
+            #endif
+            let result = resolveColorTokenString(referencePath, for: colorScheme)
+            #if DEBUG
+            if referencePath.contains("neutral.800") {
+                print("DEBUG: resolveColorReference result for \(referencePath): \(result ?? "nil")")
+            }
+            #endif
+            return result
         }
 
         return trimmed
     }
 
     public func resolveColorTokenString(_ tokenPath: String, for colorScheme: ColorScheme = .light) -> String? {
-        guard let current = tokenValue(for: tokenPath) else { return nil }
-        return resolveColorStringValue(current, colorScheme: colorScheme)
+        // Try the path as-is first
+        if let current = tokenValue(for: tokenPath) {
+            #if DEBUG
+            if tokenPath.contains("elevated") {
+                if let dict = current as? [String: Any] {
+                    print("DEBUG: resolveColorTokenString(\(tokenPath)) found token dict with keys: \(dict.keys.sorted())")
+                    print("DEBUG: Full dict contents: \(dict)")
+                    if let extensions = dict["$extensions"] as? [String: Any] {
+                        print("DEBUG: Extensions found with keys: \(extensions.keys)")
+                    } else {
+                        print("DEBUG: No extensions found in token dict")
+                        print("DEBUG: dict[\"$extensions\"] = \(dict["$extensions"] ?? "nil")")
+                    }
+                } else {
+                    print("DEBUG: resolveColorTokenString(\(tokenPath)) found token value (not dict): \(current)")
+                }
+            }
+            #endif
+            return resolveColorStringValue(current, colorScheme: colorScheme)
+        }
+        
+        // If not found and path doesn't start with "core." or "semantic.", try with "core." prefix
+        if !tokenPath.hasPrefix("core.") && !tokenPath.hasPrefix("semantic.") {
+            if let current = tokenValue(for: "core.\(tokenPath)") {
+                return resolveColorStringValue(current, colorScheme: colorScheme)
+            }
+            // Try with "semantic." prefix
+            if let current = tokenValue(for: "semantic.\(tokenPath)") {
+                return resolveColorStringValue(current, colorScheme: colorScheme)
+            }
+        }
+        
+        #if DEBUG
+        if tokenPath.contains("elevated") {
+            print("DEBUG: resolveColorTokenString(\(tokenPath)) returned nil - token not found")
+        }
+        #endif
+        
+        return nil
     }
 
     // MARK: - Dimension Resolution
@@ -341,7 +424,27 @@ private struct DesignTokenData: Decodable {
         core = try coreValue.toAny() as! [String: Any]
 
         let semanticValue = try container.decode(JSONValue.self, forKey: .semantic)
+        #if DEBUG
+        if case .object(let semanticDict) = semanticValue,
+           let colorValue = semanticDict["color"],
+           case .object(let colorDict) = colorValue,
+           let backgroundValue = colorDict["background"],
+           case .object(let backgroundDict) = backgroundValue,
+           let elevatedValue = backgroundDict["elevated"],
+           case .object(let elevatedDict) = elevatedValue {
+            print("DEBUG: Before toAny(), elevated dict keys: \(elevatedDict.keys.sorted())")
+            print("DEBUG: Before toAny(), elevated dict has $extensions: \(elevatedDict.keys.contains("$extensions"))")
+        }
+        #endif
         semantic = try semanticValue.toAny() as! [String: Any]
+        #if DEBUG
+        if let color = semantic["color"] as? [String: Any],
+           let background = color["background"] as? [String: Any],
+           let elevated = background["elevated"] as? [String: Any] {
+            print("DEBUG: After toAny(), elevated dict keys: \(elevated.keys.sorted())")
+            print("DEBUG: After toAny(), elevated dict has $extensions: \(elevated.keys.contains("$extensions"))")
+        }
+        #endif
 
         if let componentsValue = try container.decodeIfPresent(JSONValue.self, forKey: .components) {
             components = try componentsValue.toAny() as! [String: Any]
@@ -378,6 +481,11 @@ private enum JSONValue: Decodable {
         } else if container.decodeNil() {
             self = .null
         } else if let object = try? container.decode([String: JSONValue].self) {
+            #if DEBUG
+            if object.keys.contains("$extensions") {
+                print("DEBUG: JSONValue decoded object with $extensions, keys: \(object.keys.sorted())")
+            }
+            #endif
             self = .object(object)
         } else if let array = try? container.decode([JSONValue].self) {
             self = .array(array)
@@ -391,8 +499,18 @@ private enum JSONValue: Decodable {
         case .object(let dict):
             var result: [String: Any] = [:]
             for (key, value) in dict {
+                #if DEBUG
+                if key == "$extensions" {
+                    print("DEBUG: toAny() processing $extensions key, value type: \(type(of: value))")
+                }
+                #endif
                 result[key] = try value.toAny()
             }
+            #if DEBUG
+            if dict.keys.contains("$extensions") {
+                print("DEBUG: toAny() result keys: \(result.keys.sorted()), includes $extensions: \(result["$extensions"] != nil)")
+            }
+            #endif
             return result
         case .array(let array):
             return try array.map { try $0.toAny() }

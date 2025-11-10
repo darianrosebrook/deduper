@@ -147,12 +147,12 @@ public final class VideoFingerprinter: @unchecked Sendable {
         public let enablePerformanceProfiling: Bool
 
         public static let `default` = VideoProcessingConfig(
-            enableMemoryMonitoring: true,
+            enableMemoryMonitoring: false, // Disabled by default to prevent crashes during initialization
             enableAdaptiveQuality: true,
             enableParallelProcessing: true,
             maxConcurrentVideos: ProcessInfo.processInfo.activeProcessorCount,
             memoryPressureThreshold: 0.8,
-            healthCheckInterval: 30.0,
+            healthCheckInterval: 0, // Disabled by default to prevent crashes during initialization
             frameQualityThreshold: 0.9,
             enableSecurityAudit: true,
             enablePerformanceProfiling: true
@@ -268,7 +268,9 @@ public final class VideoFingerprinter: @unchecked Sendable {
 
         memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .all)
         memoryPressureSource?.setEventHandler { [weak self] in
-            self?.handleMemoryPressureEvent()
+            Task { @MainActor [weak self] in
+                self?.handleMemoryPressureEvent()
+            }
         }
 
         memoryPressureSource?.resume()
@@ -335,7 +337,9 @@ public final class VideoFingerprinter: @unchecked Sendable {
         healthCheckTimer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
         healthCheckTimer?.schedule(deadline: .now() + processingConfig.healthCheckInterval, repeating: processingConfig.healthCheckInterval)
         healthCheckTimer?.setEventHandler { [weak self] in
-            self?.performHealthCheck()
+            Task { @MainActor [weak self] in
+                self?.performHealthCheck()
+            }
         }
 
         healthCheckTimer?.resume()

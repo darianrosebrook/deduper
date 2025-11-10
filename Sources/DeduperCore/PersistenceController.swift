@@ -60,14 +60,14 @@ public struct PersistenceConfig: Sendable, Equatable {
     public let enableAuditLogging: Bool
 
     public static let `default` = PersistenceConfig(
-        enableMemoryMonitoring: true,
+        enableMemoryMonitoring: false,
         enablePerformanceProfiling: true,
         enableSecurityAudit: true,
         enableConnectionPooling: true,
         enableQueryOptimization: true,
         maxBatchSize: 500,
         queryCacheSize: 1000,
-        healthCheckInterval: 30.0,
+        healthCheckInterval: 0,
         memoryPressureThreshold: 0.8,
         enableAuditLogging: true
     )
@@ -317,7 +317,18 @@ private struct DetectionMetricsRecord: Codable {
 
 @MainActor
 public final class PersistenceController: ObservableObject {
-    public static let shared = PersistenceController()
+    private static var _shared: PersistenceController?
+    
+    @MainActor
+    public static var shared: PersistenceController {
+        if let existing = _shared {
+            return existing
+        }
+        
+        let instance = PersistenceController()
+        _shared = instance
+        return instance
+    }
 
     public let container: NSPersistentContainer
 
@@ -370,7 +381,9 @@ public final class PersistenceController: ObservableObject {
 
         memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .all)
         memoryPressureSource?.setEventHandler { [weak self] in
-            self?.handleMemoryPressureEvent()
+            Task { @MainActor [weak self] in
+                self?.handleMemoryPressureEvent()
+            }
         }
 
         memoryPressureSource?.resume()
@@ -381,7 +394,7 @@ public final class PersistenceController: ObservableObject {
         let pressure = calculateCurrentMemoryPressure()
         logger.info("Memory pressure event for persistence: \(String(format: "%.2f", pressure))")
 
-        // Update health status
+        // Update health status (already on MainActor)
         healthStatus = .memoryPressure(pressure)
 
         if pressure > config.memoryPressureThreshold {
@@ -416,7 +429,9 @@ public final class PersistenceController: ObservableObject {
         healthCheckTimer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
         healthCheckTimer?.schedule(deadline: .now() + config.healthCheckInterval, repeating: config.healthCheckInterval)
         healthCheckTimer?.setEventHandler { [weak self] in
-            self?.performHealthCheck()
+            Task { @MainActor [weak self] in
+                self?.performHealthCheck()
+            }
         }
 
         healthCheckTimer?.resume()
@@ -427,7 +442,7 @@ public final class PersistenceController: ObservableObject {
         // Check for connection pool exhaustion (if we had one)
         // This would be enhanced with actual pool monitoring
 
-        // Check for storage usage
+        // Check for storage usage (already on MainActor, safe to access container)
         if let storeURL = container.persistentStoreDescriptions.first?.url {
             let storageUsage = calculateStorageUsage(at: storeURL)
             if storageUsage > 0.9 { // More than 90% storage used
@@ -455,7 +470,7 @@ public final class PersistenceController: ObservableObject {
 
     private func exportMetricsIfNeeded() {
         // This would integrate with external monitoring systems like Prometheus, Datadog, etc.
-        metricsQueue.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self = self else { return }
             // Implementation would depend on the external monitoring system
             let metricsCount = self.performanceMetrics.count
@@ -466,7 +481,7 @@ public final class PersistenceController: ObservableObject {
     // MARK: - Security and Audit Logging
 
     private func logSecurityEvent(_ event: PersistenceSecurityEvent) {
-        securityQueue.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self = self else { return }
 
             self.securityEvents.append(event)

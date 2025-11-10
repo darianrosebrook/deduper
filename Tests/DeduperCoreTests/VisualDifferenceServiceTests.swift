@@ -138,7 +138,9 @@ import ImageIO
         #expect(analysis.pixelDifference.meanDifference != nil)
         if let meanDiff = analysis.pixelDifference.meanDifference {
             #expect(meanDiff > 0)
-            #expect(meanDiff <= 255.0 * sqrt(3)) // Maximum Euclidean distance in RGB space
+            // Maximum Euclidean distance in RGB space (with small tolerance for floating point precision)
+            let maxDistance = 255.0 * sqrt(3)
+            #expect(meanDiff <= maxDistance + 0.0001) // Add small tolerance for floating point precision
         }
         
         #expect(analysis.pixelDifference.maxDifference != nil)

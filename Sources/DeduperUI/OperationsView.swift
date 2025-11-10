@@ -267,8 +267,8 @@ public final class OperationsViewModel: ObservableObject {
 
     private func setupAutoRefresh() {
         Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
-            Task { [weak self] in
-                await self?.loadOperations()
+            Task { @MainActor [weak self] in
+                self?.loadOperations()
             }
         }
     }
@@ -330,14 +330,14 @@ public struct OperationsView: View {
                         title: "Total Space Freed",
                         value: ByteCountFormatter.string(fromByteCount: viewModel.totalSpaceFreed, countStyle: .file),
                         icon: "arrow.down.circle.fill",
-                        color: .green
+                        color: DesignToken.colorStatusSuccess
                     )
 
                     StatCard(
                         title: "Total Operations",
                         value: "\(viewModel.totalOperations)",
                         icon: "list.bullet.circle.fill",
-                        color: .blue
+                        color: DesignToken.colorStatusInfo
                     )
 
                     StatCard(

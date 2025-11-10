@@ -21,14 +21,14 @@ public struct LearningConfig: Sendable, Equatable {
     public let enableDataEncryption: Bool
 
     public static let `default` = LearningConfig(
-        enableMemoryMonitoring: true,
+        enableMemoryMonitoring: false,
         enablePerformanceProfiling: true,
         enableSecurityAudit: true,
         enableMLBasedLearning: true,
         enableAutomatedOptimization: true,
         maxFeedbackHistory: 10000,
         metricsUpdateInterval: 300.0,
-        healthCheckInterval: 60.0,
+        healthCheckInterval: 0,
         memoryPressureThreshold: 0.8,
         enableAuditLogging: true,
         enableDataEncryption: true
@@ -302,7 +302,9 @@ public final class FeedbackService: ObservableObject {
 
         memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .all)
         memoryPressureSource?.setEventHandler { [weak self] in
-            self?.handleMemoryPressureEvent()
+            Task { @MainActor [weak self] in
+                self?.handleMemoryPressureEvent()
+            }
         }
 
         memoryPressureSource?.resume()
@@ -313,7 +315,7 @@ public final class FeedbackService: ObservableObject {
         let pressure = calculateCurrentMemoryPressure()
         logger.info("Memory pressure event for learning: \(String(format: "%.2f", pressure))")
 
-        // Update health status
+        // Update health status (already on MainActor)
         healthStatus = .memoryPressure(pressure)
 
         if pressure > config.memoryPressureThreshold {
@@ -346,7 +348,9 @@ public final class FeedbackService: ObservableObject {
         healthCheckTimer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
         healthCheckTimer?.schedule(deadline: .now() + config.healthCheckInterval, repeating: config.healthCheckInterval)
         healthCheckTimer?.setEventHandler { [weak self] in
-            self?.performHealthCheck()
+            Task { @MainActor [weak self] in
+                self?.performHealthCheck()
+            }
         }
 
         healthCheckTimer?.resume()
@@ -359,6 +363,7 @@ public final class FeedbackService: ObservableObject {
             do {
                 let _ = try await calculateCurrentMetrics()
             } catch {
+                // Already on MainActor, safe to access healthStatus
                 healthStatus = .dataCorrupted
                 logger.error("Learning data corruption detected: \(error.localizedDescription)")
             }
@@ -367,6 +372,7 @@ public final class FeedbackService: ObservableObject {
         // Check metrics accuracy by comparing calculations
         let accuracy = validateMetricsAccuracy()
         if accuracy < 0.8 {
+            // Already on MainActor, safe to access healthStatus
             healthStatus = .metricsInaccuracy
             logger.warning("Metrics inaccuracy detected: \(String(format: "%.2f", accuracy))")
         }
@@ -382,7 +388,7 @@ public final class FeedbackService: ObservableObject {
 
     private func exportMetricsIfNeeded() {
         // This would integrate with external monitoring systems like Prometheus, Datadog, etc.
-        metricsQueue.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self = self else { return }
             // Implementation would depend on the external monitoring system
             logger.debug("Learning metrics export triggered - \(self.performanceMetrics.count) metrics buffered")
@@ -392,7 +398,7 @@ public final class FeedbackService: ObservableObject {
     private func setupMetricsCollection() {
         // Set up periodic metrics collection
         Timer.scheduledTimer(withTimeInterval: config.metricsUpdateInterval, repeats: true) { [weak self] _ in
-            Task { [weak self] in
+            Task { @MainActor [weak self] in
                 await self?.updateLearningMetrics()
             }
         }
@@ -434,7 +440,8 @@ public final class FeedbackService: ObservableObject {
             return
         }
 
-        let feedbackItem = FeedbackItem(
+        // TODO: Store feedbackItem when persistence layer is implemented
+        let _ = FeedbackItem(
             groupId: groupId,
             feedbackType: feedbackType,
             confidence: confidence,
@@ -489,7 +496,7 @@ public final class FeedbackService: ObservableObject {
     private func logSecurityEvent(_ event: LearningSecurityEvent) {
         guard config.enableSecurityAudit else { return }
 
-        securityQueue.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self = self else { return }
 
             self.securityEvents.append(event)
@@ -747,7 +754,7 @@ public final class FeedbackService: ObservableObject {
     private func setupPeriodicMetricsUpdate() {
         // Update metrics every hour
         Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
-            Task { [weak self] in
+            Task { @MainActor [weak self] in
                 await self?.updateLearningMetrics()
             }
         }

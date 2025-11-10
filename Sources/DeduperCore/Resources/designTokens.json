@@ -1704,7 +1704,11 @@
         },
         "elevated": {
           "$type": "color",
-          "$value": "{core.color.mode.white}"
+          "$value": "{color.mode.white}",
+          "$extensions": {
+            "design.paths.light": "{color.mode.white}",
+            "design.paths.dark": "{semantic.color.background.secondary}"
+          }
         },
         "inverse": {
           "$type": "color",

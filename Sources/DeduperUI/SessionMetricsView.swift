@@ -41,7 +41,7 @@ public struct SessionMetricsView: View {
                     title: "Items Processed",
                     value: "\(metrics.itemsProcessed)",
                     icon: "photo.stack",
-                    color: .blue
+                    color: DesignToken.colorStatusInfo
                 )
                 
                 MetricCard(

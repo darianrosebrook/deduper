@@ -250,7 +250,7 @@
         "$value": "{color.palette.neutral.100}",
         "$extensions": {
           "design.paths.light": "{color.palette.neutral.100}",
-          "design.paths.dark": "{color.palette.neutral.800}"
+          "design.paths.dark": "{core.color.palette.neutral.800}"
         }
       },
       "tertiary": {
@@ -261,7 +261,14 @@
           "design.paths.dark": "{color.palette.neutral.700}"
         }
       },
-      "elevated": { "$type": "color", "$value": "{color.mode.white}" },
+      "elevated": {
+        "$type": "color",
+        "$value": "{color.mode.white}",
+        "$extensions": {
+          "design.paths.light": "{color.mode.white}",
+          "design.paths.dark": "{semantic.color.background.secondary}"
+        }
+      },
       "inverse": {
         "$type": "color",
         "$value": "{color.mode.light}",
@@ -313,7 +320,7 @@
         "$value": "{color.palette.neutral.100}",
         "$extensions": {
           "design.paths.light": "{color.palette.neutral.100}",
-          "design.paths.dark": "{color.palette.neutral.800}"
+          "design.paths.dark": "{core.color.palette.neutral.800}"
         }
       },
       "readOnly": {

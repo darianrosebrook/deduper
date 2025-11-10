@@ -876,7 +876,7 @@ public struct RealTimeMetricsView: View {
                 title: "Memory Usage",
                 value: String(format: "%.1f MB", Double(memoryUsage) / 1024 / 1024),
                 icon: "memorychip",
-                color: .blue,
+                color: DesignToken.colorStatusInfo,
                 progress: Double(memoryUsage) / (200 * 1024 * 1024) // 200MB max
             )
 
@@ -884,7 +884,7 @@ public struct RealTimeMetricsView: View {
                 title: "CPU Usage",
                 value: String(format: "%.1f%%", cpuUsage * 100),
                 icon: "cpu",
-                color: .red,
+                color: DesignToken.colorStatusError,
                 progress: cpuUsage
             )
 
@@ -892,7 +892,7 @@ public struct RealTimeMetricsView: View {
                 title: "Operations",
                 value: "\(operationsCompleted)",
                 icon: "speedometer",
-                color: .green
+                color: DesignToken.colorStatusSuccess
             )
         }
         .padding(DesignToken.spacingMD)
@@ -969,11 +969,11 @@ public struct BenchmarkResultView: View {
                         if comparison.isImprovement {
                             Text("+\(comparison.formattedImprovement)")
                                 .font(DesignToken.fontFamilyCaption)
-                                .foregroundStyle(.green)
+                                .foregroundStyle(DesignToken.colorStatusSuccess)
                         } else {
                             Text(comparison.formattedImprovement)
                                 .font(DesignToken.fontFamilyCaption)
-                                .foregroundStyle(.red)
+                                .foregroundStyle(DesignToken.colorStatusError)
                         }
                     }
                 }
@@ -984,28 +984,28 @@ public struct BenchmarkResultView: View {
                         title: "Duration",
                         value: String(format: "%.1f sec", result.duration),
                         icon: "clock",
-                        color: .blue
+                        color: DesignToken.colorStatusInfo
                     )
 
                     BenchmarkMetricCard(
                         title: "Success Rate",
                         value: String(format: "%.1f%%", result.successRate * 100),
                         icon: "checkmark.circle",
-                        color: result.successRate > 0.9 ? .green : result.successRate > 0.7 ? .yellow : .red
+                        color: result.successRate > 0.9 ? DesignToken.colorStatusSuccess : result.successRate > 0.7 ? DesignToken.colorStatusWarning : DesignToken.colorStatusError
                     )
 
                     BenchmarkMetricCard(
                         title: "Memory Usage",
                         value: String(format: "%.1f MB", Double(result.peakMemoryUsage) / 1024 / 1024),
                         icon: "memorychip",
-                        color: .purple
+                        color: DesignToken.colorStatusInfo
                     )
 
                     BenchmarkMetricCard(
                         title: "CPU Usage",
                         value: String(format: "%.1f%%", result.averageCPUUsage * 100),
                         icon: "cpu",
-                        color: .orange
+                        color: DesignToken.colorStatusWarning
                     )
                 }
             }
@@ -1045,7 +1045,7 @@ public struct BenchmarkHistoryView: View {
 
                     Text(String(format: "%.1f%%", result.successRate * 100))
                         .font(DesignToken.fontFamilyCaption)
-                        .foregroundStyle(result.successRate > 0.9 ? .green : .yellow)
+                        .foregroundStyle(result.successRate > 0.9 ? DesignToken.colorStatusSuccess : DesignToken.colorStatusWarning)
                 }
             }
         }

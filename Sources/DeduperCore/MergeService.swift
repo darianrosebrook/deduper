@@ -1098,7 +1098,7 @@ public final class MergeService: @unchecked Sendable {
         // Fetch the transaction to understand what was attempted
         guard let transaction = try await getTransaction(id: id) else {
             logger.warning("Transaction \(id) not found for cleanup - may have been cleaned up already")
-            return
+            throw MergeError.transactionNotFound(id)
         }
         
         // Check if transaction was already marked as complete (shouldn't happen, but be safe)

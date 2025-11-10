@@ -97,7 +97,7 @@ public struct EnhancedResultsSummaryView: View {
                     value: "\(metrics.itemsProcessed)",
                     subtitle: formatDuration(metrics.duration),
                     icon: "photo.stack.fill",
-                    color: .blue,
+                    color: DesignToken.colorStatusInfo,
                     trend: nil
                 )
                 
@@ -488,7 +488,7 @@ struct ConfidenceStat: View {
                 .overlay(
                     Text("\(count)")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(DesignToken.colorForegroundOnBrand)
                 )
             
             Text(level.displayName)

@@ -261,13 +261,13 @@ private struct MetricRow: View {
         switch verdict {
         case .pass:
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(DesignToken.colorStatusSuccess)
         case .warn:
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(DesignToken.colorStatusWarning)
         case .fail:
             Image(systemName: "xmark.circle.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(DesignToken.colorStatusError)
         }
     }
 }

@@ -74,10 +74,10 @@ public struct MainView: View {
         }
         .frame(minWidth: 1000, minHeight: 600)
         .background(DesignToken.colorBackgroundPrimary)
-        .onAppear {
-            Task {
-                await checkForCrashRecovery()
-            }
+        .task {
+            // Eagerly initialize services on MainActor to prevent crashes
+            _ = ServiceManager.shared
+            await checkForCrashRecovery()
         }
         .alert("Incomplete Operations Detected", isPresented: $showRecoveryDialog) {
             Button("Recover Automatically") {
@@ -155,80 +155,116 @@ public struct MainWorkflowView: View {
     @State private var selectedKeeperForMerge: UUID?
 
     public var body: some View {
-        VStack {
-            // Main workflow content
-            FolderSelectionView(viewModel: folderViewModel)
+        Group {
+            switch selectedScreen {
+            case .onboarding, .scanStatus:
+                VStack {
+                    // Main workflow content
+                    FolderSelectionView(viewModel: folderViewModel)
 
-            // Show results panel when available
-            if folderViewModel.hasResults && !folderViewModel.isScanning {
-                Divider()
+                    // Show results panel when available
+                    if folderViewModel.hasResults && !folderViewModel.isScanning {
+                        Divider()
 
-                VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
-                    HStack {
-                        Text("Duplicate Groups")
-                            .font(DesignToken.fontFamilyHeading)
-                        Spacer()
-                        Button("View All", action: { selectedScreen = .groupsList })
-                            .buttonStyle(.bordered)
-                    }
+                        VStack(alignment: .leading, spacing: DesignToken.spacingMD) {
+                            HStack {
+                                Text("Duplicate Groups")
+                                    .font(DesignToken.fontFamilyHeading)
+                                Spacer()
+                                Button("View All", action: { selectedScreen = .groupsList })
+                                    .buttonStyle(.bordered)
+                            }
 
-                    // Show first few groups as preview
-                    if !folderViewModel.duplicateGroups.isEmpty {
-                        ScrollView {
-                            LazyVStack(spacing: DesignToken.spacingSM) {
-                                ForEach(folderViewModel.duplicateGroups.prefix(5), id: \.groupId) { group in
-                                    GroupPreviewCard(
-                                        group: group,
-                                        onShowInFinder: folderViewModel.showGroupInFinder,
-                                        onSelectKeeper: folderViewModel.selectKeeper,
-                                        onShowMergePlan: { group in
-                                            // Use existing keeper selection or first file as default
-                                            let keeperId = group.keeperSuggestion ?? group.members.first?.fileId ?? group.members[0].fileId
-                                            selectedGroupForMerge = group
-                                            selectedKeeperForMerge = keeperId
-                                            showMergePlan = true
-                                        },
-                                        selectedKeeperId: group.keeperSuggestion
-                                    )
-                                        .onTapGesture {
-                                            selectedScreen = .groupDetail(group: group)
+                            // Show first few groups as preview
+                            if !folderViewModel.duplicateGroups.isEmpty {
+                                ScrollView {
+                                    LazyVStack(spacing: DesignToken.spacingSM) {
+                                        ForEach(folderViewModel.duplicateGroups.prefix(5), id: \.groupId) { group in
+                                            GroupPreviewCard(
+                                                group: group,
+                                                onShowInFinder: folderViewModel.showGroupInFinder,
+                                                onSelectKeeper: folderViewModel.selectKeeper,
+                                                onShowMergePlan: { group in
+                                                    // Use existing keeper selection or first file as default
+                                                    let keeperId = group.keeperSuggestion ?? group.members.first?.fileId ?? group.members[0].fileId
+                                                    selectedGroupForMerge = group
+                                                    selectedKeeperForMerge = keeperId
+                                                    showMergePlan = true
+                                                },
+                                                selectedKeeperId: group.keeperSuggestion
+                                            )
+                                                .onTapGesture {
+                                                    selectedScreen = .groupDetail(group: group)
+                                                }
                                         }
-                                }
 
-                                if folderViewModel.duplicateGroups.count > 5 {
-                                    Button("Show all \(folderViewModel.duplicateGroups.count) groups") {
-                                        selectedScreen = .groupsList
+                                        if folderViewModel.duplicateGroups.count > 5 {
+                                            Button("Show all \(folderViewModel.duplicateGroups.count) groups") {
+                                                selectedScreen = .groupsList
+                                            }
+                                            .buttonStyle(.plain)
+                                            .foregroundColor(DesignToken.colorStatusInfo)
+                                            .frame(maxWidth: .infinity, alignment: .center)
+                                            .padding(.vertical, DesignToken.spacingSM)
+                                        }
                                     }
-                                    .buttonStyle(.plain)
-                                    .foregroundColor(DesignToken.colorStatusInfo)
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                    .padding(.vertical, DesignToken.spacingSM)
                                 }
+                                .frame(height: 400)
                             }
                         }
-                        .frame(height: 400)
+                        .padding(DesignToken.spacingMD)
                     }
                 }
-                .padding(DesignToken.spacingMD)
+                .background(DesignToken.colorBackgroundPrimary)
+                .sheet(isPresented: $showMergePlan) {
+                    if let group = selectedGroupForMerge, let keeperId = selectedKeeperForMerge {
+                        MergePlanSheet(
+                            isPresented: $showMergePlan,
+                            group: group,
+                            keeperFileId: keeperId
+                        )
+                    }
+                }
+                // Keyboard shortcuts for main workflow
+                .applyMainWorkflowKeyboardShortcuts(
+                    folderViewModel: folderViewModel,
+                    selectedGroupForMerge: $selectedGroupForMerge,
+                    selectedKeeperForMerge: $selectedKeeperForMerge,
+                    showMergePlan: $showMergePlan
+                )
+            case .groupsList:
+                Text("Groups List View")
+                    .font(DesignToken.fontFamilyHeading)
+                    .padding()
+            case .groupDetail(let group):
+                Text("Group Detail: \(group.groupId.uuidString)")
+                    .font(DesignToken.fontFamilyHeading)
+                    .padding()
+            case .mergePlan:
+                Text("Merge Plan View")
+                    .font(DesignToken.fontFamilyHeading)
+                    .padding()
+            case .cleanupSummary:
+                Text("Cleanup Summary View")
+                    .font(DesignToken.fontFamilyHeading)
+                    .padding()
+            case .settings:
+                SettingsView()
+            case .history:
+                HistoryView()
+            case .logging:
+                LoggingView()
+            case .accessibility:
+                AccessibilityView()
+            case .formats:
+                FormatsView()
+            case .benchmark:
+                BenchmarkView()
+            case .testing:
+                TestingView()
             }
         }
         .background(DesignToken.colorBackgroundPrimary)
-        .sheet(isPresented: $showMergePlan) {
-            if let group = selectedGroupForMerge, let keeperId = selectedKeeperForMerge {
-                MergePlanSheet(
-                    isPresented: $showMergePlan,
-                    group: group,
-                    keeperFileId: keeperId
-                )
-            }
-        }
-        // Keyboard shortcuts for main workflow
-        .applyMainWorkflowKeyboardShortcuts(
-            folderViewModel: folderViewModel,
-            selectedGroupForMerge: $selectedGroupForMerge,
-            selectedKeeperForMerge: $selectedKeeperForMerge,
-            showMergePlan: $showMergePlan
-        )
     }
 }
 

@@ -12,6 +12,8 @@ import DeduperCore
 public struct HistoryView: View {
     @StateObject private var viewModel = HistoryViewModel()
 
+    public init() {}
+
     public var body: some View {
         VStack {
             // Header

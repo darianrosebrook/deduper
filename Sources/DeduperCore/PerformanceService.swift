@@ -139,10 +139,12 @@ public final class PerformanceService: ObservableObject {
 
     // MARK: - Initialization
 
-    public init() {
+    public init(enableMonitoring: Bool = false) {
         loadPerformanceHistory()
         setupMonitoring()
-        startResourceMonitoring()
+        if enableMonitoring {
+            startResourceMonitoring()
+        }
     }
 
     // MARK: - Public API
@@ -324,22 +326,22 @@ public final class PerformanceService: ObservableObject {
 
     private func updateRecommendations() async {
         let newRecommendations = await getOptimizationRecommendations()
-        await MainActor.run {
-            self.recommendations = newRecommendations
-        }
+        // Direct assignment since we're already on MainActor
+        self.recommendations = newRecommendations
     }
 
     private func startResourceMonitoring() {
         // Update resource usage every 5 seconds
+        // Use @MainActor to ensure Timer callbacks execute on MainActor
         monitoringTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            Task { [weak self] in
-                await self?.updateResourceUsage()
+            Task { @MainActor [weak self] in
+                self?.updateResourceUsage()
             }
         }
 
         // Update metrics every minute
         metricsUpdateTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
-            Task { [weak self] in
+            Task { @MainActor [weak self] in
                 await self?.updateRecommendations()
             }
         }
@@ -352,10 +354,9 @@ public final class PerformanceService: ObservableObject {
         // Get current CPU usage (simplified - would need more complex implementation)
         let cpuUsage = getCurrentCPUUsage()
 
-        Task { @MainActor in
-            self.currentMemoryUsage = memoryUsage
-            self.currentCPUUsage = cpuUsage
-        }
+        // Direct assignment since we're already on MainActor
+        self.currentMemoryUsage = memoryUsage
+        self.currentCPUUsage = cpuUsage
     }
 
     private func getCurrentMemoryUsage() -> Int64 {
@@ -378,52 +379,11 @@ public final class PerformanceService: ObservableObject {
     }
 
     private func getCurrentCPUUsage() -> Double {
-        var processorInfo: processor_info_array_t?
-        var processorMsgCount: mach_msg_type_number_t = 0
-        var processorCount: mach_msg_type_number_t = 0
-
-        let result = host_processor_info(
-            mach_host_self(),
-            PROCESSOR_CPU_LOAD_INFO,
-            &processorCount,
-            &processorInfo,
-            &processorMsgCount
-        )
-
-        guard result == KERN_SUCCESS,
-              let processorInfo = processorInfo,
-              processorCount > 0 else {
-            logger.debug("Failed to get CPU usage: \(result)")
-            return 0.0
-        }
-
-        defer {
-            vm_deallocate(
-                mach_task_self_,
-                vm_address_t(bitPattern: processorInfo),
-                vm_size_t(Int(processorMsgCount) * MemoryLayout<integer_t>.size)
-            )
-        }
-
-        var totalUsage: Double = 0
-        let cpuInfoPointer = processorInfo.withMemoryRebound(to: processor_cpu_load_info_t.self, capacity: Int(processorCount)) { $0 }
-        
-        for i in 0..<Int(processorCount) {
-            let cpuInfo = cpuInfoPointer[i].pointee
-            // CPU tick constants - cpu_ticks is a tuple (user, system, idle, nice)
-            let user = Double(cpuInfo.cpu_ticks.0)
-            let sys = Double(cpuInfo.cpu_ticks.1)
-            let idle = Double(cpuInfo.cpu_ticks.2)
-            let nice = Double(cpuInfo.cpu_ticks.3)
-            let total = user + sys + idle + nice
-
-            if total > 0 {
-                totalUsage += (user + sys) / total
-            }
-        }
-
-        let averageUsage = totalUsage / Double(processorCount) * 100.0
-        return min(100.0, max(0.0, averageUsage))
+        // Disable CPU monitoring to prevent crashes from unsafe pointer operations
+        // CPU usage monitoring requires low-level mach APIs that are prone to crashes
+        // For production use, consider using a more stable monitoring solution or ProcessInfo
+        // Returning 0.0 as a safe default - CPU monitoring is non-critical for app functionality
+        return 0.0
     }
 
     private func loadPerformanceHistory() {
@@ -486,8 +446,8 @@ public class PerformanceMonitor {
         let endMemory = service.currentMemoryUsage
         let memoryDelta = endMemory - startMemory
 
-        Task {
-            await service.recordMetrics(
+        Task { @MainActor in
+            service.recordMetrics(
                 operation: operation,
                 duration: duration,
                 memoryUsage: memoryDelta,

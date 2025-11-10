@@ -21,6 +21,10 @@ public enum DesignToken {
         let lightValue = parser.resolveColorTokenString(tokenPath, for: .light)
         let darkValue = parser.resolveColorTokenString(tokenPath, for: .dark)
 
+#if DEBUG
+        print("DEBUG: Token \(tokenPath) - Light: \(lightValue ?? "nil"), Dark: \(darkValue ?? "nil")")
+#endif
+
 #if os(macOS)
         if let lightValue, let darkValue, lightValue != darkValue {
             return Color(NSColor(name: nil) { appearance in

@@ -58,7 +58,9 @@ final class SafeFileOperationsValidationTests: XCTestCase {
         // Setup: Create test files with known state
         let testFiles = Array(testAssets.prefix(5))
         let groupId = UUID()
-        let keeperId = testFiles[0].id
+        
+        // Create the group before merging (this will register files and return the actual keeper ID)
+        let keeperId = try await createGroupFromAssets(assets: testFiles, groupId: groupId)
 
         // 1. Perform a merge operation
         let mergeResult = try await mergeService.merge(groupId: groupId, keeperId: keeperId)
@@ -120,7 +122,9 @@ final class SafeFileOperationsValidationTests: XCTestCase {
         // Setup: Perform a merge operation
         let testFiles = Array(testAssets.prefix(3))
         let groupId = UUID()
-        let keeperId = testFiles[0].id
+        
+        // Create the group before merging (this will register files and return the actual keeper ID)
+        let keeperId = try await createGroupFromAssets(assets: testFiles, groupId: groupId)
 
         let mergeResult = try await mergeService.merge(groupId: groupId, keeperId: keeperId)
 
@@ -160,7 +164,9 @@ final class SafeFileOperationsValidationTests: XCTestCase {
         // Setup: Create test scenario for dry-run
         let testFiles = Array(testAssets.prefix(3))
         let groupId = UUID()
-        let keeperId = testFiles[0].id
+        
+        // Create the group before merging (this will register files and return the actual keeper ID)
+        let keeperId = try await createGroupFromAssets(assets: testFiles, groupId: groupId)
 
         // Test 1: Plan merge (dry-run equivalent)
         let plan = try await mergeService.planMerge(groupId: groupId, keeperId: keeperId)
@@ -204,7 +210,9 @@ final class SafeFileOperationsValidationTests: XCTestCase {
         // Setup: Create larger dataset to test atomicity
         let testFiles = Array(testAssets.prefix(10))
         let groupId = UUID()
-        let keeperId = testFiles[0].id
+        
+        // Create the group before merging (this will register files and return the actual keeper ID)
+        let keeperId = try await createGroupFromAssets(assets: testFiles, groupId: groupId)
 
         // Execute: Perform merge operation
         let mergeResult = try await mergeService.merge(groupId: groupId, keeperId: keeperId)
@@ -286,6 +294,9 @@ final class SafeFileOperationsValidationTests: XCTestCase {
         let testFiles = Array(testAssets.prefix(3))
         let groupId = UUID()
         let keeperId = testFiles[0].id
+        
+        // Create the group before merging
+        try await createGroupFromAssets(assets: testFiles, groupId: groupId, keeperId: keeperId)
 
         let mergeResult = try await mergeService.merge(groupId: groupId, keeperId: keeperId)
 
@@ -331,13 +342,61 @@ final class SafeFileOperationsValidationTests: XCTestCase {
             XCTFail("MergeService not available")
             return
         }
+        guard let persistenceController = self.persistenceController else {
+            XCTFail("PersistenceController not available")
+            return
+        }
         try await withThrowingTaskGroup(of: (operationId: UUID?, result: MergeResult).self) { group in
             for _ in 0..<concurrentOperations {
-                group.addTask { [mergeService] in
+                group.addTask { [mergeService, persistenceController] in
                     let batchFiles = try await Self.createTestFiles(count: operationsPerBatch, withDuplicates: true)
                     let groupId = UUID()
                     let keeperId = batchFiles[0].id
-                    let result = try await mergeService.merge(groupId: groupId, keeperId: keeperId)
+                    
+                    // Create temporary files and register them
+                    var registeredFileIds: [UUID] = []
+                    for asset in batchFiles {
+                        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("deduper-safety-tests", isDirectory: true)
+                        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+                        let fileURL = tempDir.appendingPathComponent(asset.fileName)
+                        let fileData = Data(count: Int(asset.fileSize))
+                        try fileData.write(to: fileURL, options: .atomic)
+                        
+                        let registeredId = try await persistenceController.upsertFile(
+                            url: fileURL,
+                            fileSize: asset.fileSize,
+                            mediaType: asset.mediaType,
+                            createdAt: asset.createdAt,
+                            modifiedAt: asset.modifiedAt,
+                            checksum: asset.checksum
+                        )
+                        registeredFileIds.append(registeredId)
+                    }
+                    
+                    // Create the group before merging
+                    let members = registeredFileIds.map { fileId in
+                        DuplicateGroupMember(
+                            fileId: fileId,
+                            confidence: 0.95,
+                            signals: [],
+                            penalties: [],
+                            rationale: ["test"],
+                            fileSize: batchFiles.first?.fileSize ?? 1000
+                        )
+                    }
+                    let actualKeeperId = registeredFileIds.first!
+                    let groupResult = DuplicateGroupResult(
+                        groupId: groupId,
+                        members: members,
+                        confidence: 0.95,
+                        rationaleLines: ["test"],
+                        keeperSuggestion: actualKeeperId,
+                        incomplete: false,
+                        mediaType: .photo
+                    )
+                    try await persistenceController.createOrUpdateGroup(from: groupResult)
+                    
+                    let result = try await mergeService.merge(groupId: groupId, keeperId: actualKeeperId)
                     return (operationId: result.transactionId, result: result)
                 }
             }
@@ -566,6 +625,75 @@ final class SafeFileOperationsValidationTests: XCTestCase {
         // Clean up any test files created during testing
         logger.info("Cleaning up test files")
     }
+    
+    /// Helper to create a duplicate group from test assets
+    /// Creates temporary files and registers them in the database
+    /// Returns the actual keeper file ID (registered in database)
+    @discardableResult
+    private func createGroupFromAssets(
+        assets: [DetectionAsset],
+        groupId: UUID,
+        keeperId: UUID? = nil
+    ) async throws -> UUID {
+        // Create temporary files and register them in the database
+        var registeredFileIds: [UUID: UUID] = [:] // Map from asset.id to registered fileId
+        
+        for asset in assets {
+            // Create a temporary file
+            let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("deduper-safety-tests", isDirectory: true)
+            try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            let fileURL = tempDir.appendingPathComponent(asset.fileName)
+            
+            // Write some data to the file
+            let fileData = Data(count: Int(asset.fileSize))
+            try fileData.write(to: fileURL, options: .atomic)
+            
+            // Register the file in the database
+            let registeredId = try await persistenceController.upsertFile(
+                url: fileURL,
+                fileSize: asset.fileSize,
+                mediaType: asset.mediaType,
+                createdAt: asset.createdAt,
+                modifiedAt: asset.modifiedAt,
+                checksum: asset.checksum
+            )
+            
+            registeredFileIds[asset.id] = registeredId
+        }
+        
+        // Create group members using registered file IDs
+        let members = assets.compactMap { asset -> DuplicateGroupMember? in
+            guard let registeredId = registeredFileIds[asset.id] else { return nil }
+            return DuplicateGroupMember(
+                fileId: registeredId,
+                confidence: 0.95,
+                signals: [],
+                penalties: [],
+                rationale: ["test"],
+                fileSize: asset.fileSize
+            )
+        }
+        
+        let actualKeeperId = keeperId.flatMap { registeredFileIds[$0] } ?? registeredFileIds[assets.first?.id ?? UUID()]
+        
+        guard let keeperFileId = actualKeeperId else {
+            throw NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "No keeper file ID available"])
+        }
+        
+        let groupResult = DuplicateGroupResult(
+            groupId: groupId,
+            members: members,
+            confidence: 0.95,
+            rationaleLines: ["test"],
+            keeperSuggestion: keeperFileId,
+            incomplete: false,
+            mediaType: assets.first?.mediaType ?? .photo
+        )
+        
+        try await persistenceController.createOrUpdateGroup(from: groupResult)
+        
+        return keeperFileId
+    }
 
     private func validateOperationStructure(_ operation: CoreMergeOperation,
                                           against result: MergeResult) {
@@ -660,19 +788,68 @@ extension SafeFileOperationsValidationTests {
         // Test: Large dataset operations
         let largeDataset = try await createValidationTestAssets()
         let largeTestFiles = Array(largeDataset.prefix(100))
+        let largeGroupId = UUID()
+        
+        // Create the group before merging (this will register files and return the actual keeper ID)
+        let largeKeeperId = try await createGroupFromAssets(assets: largeTestFiles, groupId: largeGroupId)
 
         let largeResult = try await mergeService.merge(
-            groupId: UUID(),
-            keeperId: largeTestFiles[0].id
+            groupId: largeGroupId,
+            keeperId: largeKeeperId
         )
 
         logger.info("✅ Large dataset operation completed: \(largeResult.removedFileIds.count) files processed")
 
         // Test: Complex metadata scenarios
         let complexFiles = try await Self.createTestFiles(count: 5, withDuplicates: true)
+        let complexGroupId = UUID()
+        
+        // Create temporary files and register them
+        var complexRegisteredIds: [UUID] = []
+        for asset in complexFiles {
+            let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("deduper-safety-tests", isDirectory: true)
+            try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            let fileURL = tempDir.appendingPathComponent(asset.fileName)
+            let fileData = Data(count: Int(asset.fileSize))
+            try fileData.write(to: fileURL, options: .atomic)
+            
+            let registeredId = try await persistenceController.upsertFile(
+                url: fileURL,
+                fileSize: asset.fileSize,
+                mediaType: asset.mediaType,
+                createdAt: asset.createdAt,
+                modifiedAt: asset.modifiedAt,
+                checksum: asset.checksum
+            )
+            complexRegisteredIds.append(registeredId)
+        }
+        
+        // Create the group before merging
+        let complexMembers = complexRegisteredIds.map { fileId in
+            DuplicateGroupMember(
+                fileId: fileId,
+                confidence: 0.95,
+                signals: [],
+                penalties: [],
+                rationale: ["test"],
+                fileSize: complexFiles.first?.fileSize ?? 1000
+            )
+        }
+        let complexKeeperId = complexRegisteredIds.first!
+        let complexGroupResult = DuplicateGroupResult(
+            groupId: complexGroupId,
+            members: complexMembers,
+            confidence: 0.95,
+            rationaleLines: ["test"],
+            keeperSuggestion: complexKeeperId,
+            incomplete: false,
+            mediaType: .photo
+        )
+        try await persistenceController.createOrUpdateGroup(from: complexGroupResult)
+        
         let complexResult = try await mergeService.merge(
-            groupId: UUID(),
-            keeperId: complexFiles[0].id
+            groupId: complexGroupId,
+            keeperId: complexKeeperId
         )
 
         logger.info("✅ Complex metadata operation completed")

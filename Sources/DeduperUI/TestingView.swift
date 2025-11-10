@@ -130,10 +130,10 @@ public final class TestingViewModel: ObservableObject {
 
         public var color: Color {
             switch self {
-            case .passed: return .green
-            case .failed: return .red
-            case .skipped: return .yellow
-            case .error: return .orange
+            case .passed: return DesignToken.colorStatusSuccess
+            case .failed: return DesignToken.colorStatusError
+            case .skipped: return DesignToken.colorStatusWarning
+            case .error: return DesignToken.colorStatusWarning
             }
         }
 
@@ -892,14 +892,14 @@ public struct TestResultsView: View {
                             title: "Total Tests",
                             value: "\(qualityMetrics.testCount)",
                             icon: "list.bullet.circle.fill",
-                            color: .blue
+                            color: DesignToken.colorStatusInfo
                         )
 
                         StatCard(
                             title: "Passed",
                             value: "\(qualityMetrics.passCount)",
                             icon: "checkmark.circle.fill",
-                            color: .green
+                            color: DesignToken.colorStatusSuccess
                         )
 
                         StatCard(
@@ -998,7 +998,7 @@ public struct TestResultRow: View {
                     }
                 } label: {
                     Image(systemName: "exclamationmark.triangle")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(DesignToken.colorStatusError)
                 }
             }
         }
@@ -1025,28 +1025,28 @@ public struct CoverageView: View {
                         title: "Coverage",
                         value: String(format: "%.1f%%", coverageData.coveragePercentage),
                         icon: "chart.pie.fill",
-                        color: coverageData.coveragePercentage > 80 ? .green : coverageData.coveragePercentage > 60 ? .yellow : .red
+                        color: coverageData.coveragePercentage > 80 ? DesignToken.colorStatusSuccess : coverageData.coveragePercentage > 60 ? DesignToken.colorStatusWarning : DesignToken.colorStatusError
                     )
 
                     StatCard(
                         title: "Covered Lines",
                         value: "\(coverageData.coveredLines)",
                         icon: "checkmark.circle.fill",
-                        color: .green
+                        color: DesignToken.colorStatusSuccess
                     )
 
                     StatCard(
                         title: "Uncovered Lines",
                         value: "\(coverageData.uncoveredLines)",
                         icon: "xmark.circle.fill",
-                        color: coverageData.uncoveredLines > 0 ? .red : .green
+                        color: coverageData.uncoveredLines > 0 ? DesignToken.colorStatusError : DesignToken.colorStatusSuccess
                     )
 
                     StatCard(
                         title: "Total Lines",
                         value: "\(coverageData.totalLines)",
                         icon: "doc.text.fill",
-                        color: .blue
+                        color: DesignToken.colorStatusInfo
                     )
                 }
 
@@ -1195,28 +1195,28 @@ public struct QualityReportView: View {
                             title: "Test Count",
                             value: "\(metrics.testCount)",
                             icon: "list.bullet.circle.fill",
-                            color: .blue
+                            color: DesignToken.colorStatusInfo
                         )
 
                         StatCard(
                             title: "Pass Rate",
                             value: String(format: "%.1f%%", metrics.passRate * 100),
                             icon: "checkmark.circle.fill",
-                            color: metrics.passRate > 0.9 ? .green : metrics.passRate > 0.7 ? .yellow : .red
+                            color: metrics.passRate > 0.9 ? DesignToken.colorStatusSuccess : metrics.passRate > 0.7 ? DesignToken.colorStatusWarning : DesignToken.colorStatusError
                         )
 
                         StatCard(
                             title: "Coverage",
                             value: String(format: "%.1f%%", metrics.coveragePercentage),
                             icon: "chart.pie.fill",
-                            color: metrics.coveragePercentage > 80 ? .green : metrics.coveragePercentage > 60 ? .yellow : .red
+                            color: metrics.coveragePercentage > 80 ? DesignToken.colorStatusSuccess : metrics.coveragePercentage > 60 ? DesignToken.colorStatusWarning : DesignToken.colorStatusError
                         )
 
                         StatCard(
                             title: "Avg Duration",
                             value: String(format: "%.2f sec", metrics.averageTestDuration),
                             icon: "clock.fill",
-                            color: .purple
+                            color: DesignToken.colorStatusInfo
                         )
                     }
 
@@ -1232,7 +1232,7 @@ public struct QualityReportView: View {
                                     title: "Failed Tests",
                                     value: "\(metrics.failCount)",
                                     icon: "xmark.circle.fill",
-                                    color: .red
+                                    color: DesignToken.colorStatusError
                                 )
                             }
 
@@ -1241,7 +1241,7 @@ public struct QualityReportView: View {
                                     title: "Flaky Tests",
                                     value: "\(metrics.flakyTests)",
                                     icon: "exclamationmark.triangle.fill",
-                                    color: .yellow
+                                    color: DesignToken.colorStatusWarning
                                 )
                             }
 
@@ -1250,7 +1250,7 @@ public struct QualityReportView: View {
                                     title: "Regressions",
                                     value: "\(metrics.regressionCount)",
                                     icon: "arrow.down.circle.fill",
-                                    color: .red
+                                    color: DesignToken.colorStatusError
                                 )
                             }
                         }

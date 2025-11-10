@@ -31,12 +31,12 @@ public final class ScanService: @unchecked Sendable {
         public let batchSizeForLargeDatasets: Int // Batch size when processing large datasets
 
         public static let `default` = ScanConfig(
-            enableMemoryMonitoring: true,
+            enableMemoryMonitoring: false, // Disabled by default to prevent crashes during initialization
             enableAdaptiveConcurrency: true,
             enableParallelProcessing: true,
             maxConcurrency: ProcessInfo.processInfo.activeProcessorCount,
             memoryPressureThreshold: 0.8,
-            healthCheckInterval: 30.0,
+            healthCheckInterval: 0, // Disabled by default to prevent crashes during initialization
             maxDatasetSize: 100 * 1024 * 1024 * 1024, // 100 GB default warning threshold
             batchSizeForLargeDatasets: 1000 // Process 1000 files at a time for large datasets
         )
@@ -172,7 +172,9 @@ public final class ScanService: @unchecked Sendable {
 
         memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .warning)
         memoryPressureSource?.setEventHandler { [weak self] in
-            self?.handleMemoryPressureEvent()
+            Task { @MainActor [weak self] in
+                self?.handleMemoryPressureEvent()
+            }
         }
 
         memoryPressureSource?.resume()
@@ -237,7 +239,9 @@ public final class ScanService: @unchecked Sendable {
         healthCheckTimer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
         healthCheckTimer?.schedule(deadline: .now() + config.healthCheckInterval, repeating: config.healthCheckInterval)
         healthCheckTimer?.setEventHandler { [weak self] in
-            self?.performHealthCheck()
+            Task { @MainActor [weak self] in
+                self?.performHealthCheck()
+            }
         }
 
         healthCheckTimer?.resume()
@@ -916,9 +920,11 @@ public final class ScanService: @unchecked Sendable {
                 // Emit progress updates and track for health monitoring
                 if itemCount % progressInterval == 0 {
                     continuation.yield(.progress(itemCount))
-                    // Track progress for health monitoring
-                    Task { @MainActor in
-                        self.lastProgressCount += progressInterval
+                    // Track progress for health monitoring (thread-safe increment)
+                    // Note: lastProgressCount is accessed from background threads, so we use atomic operations
+                    // via the updateProgressCount method which uses proper synchronization
+                    Task {
+                        await self.updateProgressCount(progressInterval)
                     }
                 }
             }

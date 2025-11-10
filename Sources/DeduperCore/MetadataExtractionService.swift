@@ -146,12 +146,12 @@ public final class MetadataExtractionService: @unchecked Sendable {
         public let slowOperationThresholdMs: Double
 
         public static let `default` = ExtractionConfig(
-            enableMemoryMonitoring: true,
+            enableMemoryMonitoring: false, // Disabled by default to prevent crashes during initialization
             enableAdaptiveProcessing: true,
             enableParallelExtraction: true,
             maxConcurrency: ProcessInfo.processInfo.activeProcessorCount,
             memoryPressureThreshold: 0.8,
-            healthCheckInterval: 30.0,
+            healthCheckInterval: 0, // Disabled by default to prevent crashes during initialization
             slowOperationThresholdMs: 5.0
         )
 
@@ -262,7 +262,9 @@ public final class MetadataExtractionService: @unchecked Sendable {
 
         memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: .all)
         memoryPressureSource?.setEventHandler { [weak self] in
-            self?.handleMemoryPressureEvent()
+            Task { @MainActor [weak self] in
+                self?.handleMemoryPressureEvent()
+            }
         }
 
         memoryPressureSource?.resume()
@@ -329,7 +331,9 @@ public final class MetadataExtractionService: @unchecked Sendable {
         healthCheckTimer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
         healthCheckTimer?.schedule(deadline: .now() + config.healthCheckInterval, repeating: config.healthCheckInterval)
         healthCheckTimer?.setEventHandler { [weak self] in
-            self?.performHealthCheck()
+            Task { @MainActor [weak self] in
+                self?.performHealthCheck()
+            }
         }
 
         healthCheckTimer?.resume()

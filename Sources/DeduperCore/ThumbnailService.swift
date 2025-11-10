@@ -31,14 +31,14 @@ public struct ThumbnailConfig: Sendable, Equatable {
     public let enableContentValidation: Bool
 
     public static let `default` = ThumbnailConfig(
-        enableMemoryMonitoring: true,
+        enableMemoryMonitoring: false, // Disabled by default to prevent crashes during initialization
         enablePerformanceProfiling: true,
         enableSecurityAudit: true,
         enableTaskPooling: true,
         enablePredictivePrefetching: true,
         maxConcurrentGenerations: 4,
         memoryCacheLimitMB: 50,
-        healthCheckInterval: 60.0,
+        healthCheckInterval: 0, // Disabled by default to prevent crashes during initialization
         memoryPressureThreshold: 0.8,
         enableAuditLogging: true,
         maxThumbnailSize: CGSize(width: 512, height: 512),
@@ -283,7 +283,9 @@ public final class ThumbnailService {
         healthCheckTimer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
         healthCheckTimer?.schedule(deadline: .now() + config.healthCheckInterval, repeating: config.healthCheckInterval)
         healthCheckTimer?.setEventHandler { [weak self] in
-            self?.performHealthCheck()
+            Task { @MainActor [weak self] in
+                self?.performHealthCheck()
+            }
         }
 
         healthCheckTimer?.resume()
@@ -337,9 +339,8 @@ public final class ThumbnailService {
 
     private func exportMetricsIfNeeded() {
         // This would integrate with external monitoring systems like Prometheus, Datadog, etc.
-        metricsQueue.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self = self else { return }
-            // Implementation would depend on the external monitoring system
             logger.debug("Thumbnail metrics export triggered - \(self.performanceMetrics.count) metrics buffered")
         }
     }
@@ -377,7 +378,11 @@ public final class ThumbnailService {
         guard let userInfo = notification.userInfo,
               let fileId = userInfo["fileId"] as? UUID else { return }
 
-        ThumbnailService.shared.invalidate(fileId: fileId)
+        // NotificationCenter callbacks can run on any thread
+        // Since ThumbnailService is @MainActor, we need to switch to MainActor
+        Task { @MainActor in
+            ThumbnailService.shared.invalidate(fileId: fileId)
+        }
     }
 
     private func scheduleOrphanCleanup() {
@@ -390,8 +395,10 @@ public final class ThumbnailService {
             matchingPolicy: .nextTime
         ) ?? calendar.date(byAdding: .day, value: 1, to: now)!
 
-        Timer.scheduledTimer(withTimeInterval: nextCleanup.timeIntervalSince(now), repeats: true) { _ in
-            Task { await self.performMaintenance() }
+        Timer.scheduledTimer(withTimeInterval: nextCleanup.timeIntervalSince(now), repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.performMaintenance()
+            }
         }
     }
 
@@ -637,7 +644,7 @@ public final class ThumbnailService {
     private func logSecurityEvent(_ event: ThumbnailSecurityEvent) {
         guard config.enableSecurityAudit else { return }
 
-        securityQueue.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self = self else { return }
 
             self.securityEvents.append(event)

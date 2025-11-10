@@ -124,7 +124,7 @@ public struct FolderSelectionView: View {
                             if viewModel.isScanning {
                                 Button("Stop Scan", action: viewModel.stopScanning)
                                     .buttonStyle(.borderedProminent)
-                                    .foregroundColor(.red)
+                                    .foregroundColor(DesignToken.colorStatusError)
                                     .keyboardShortcut(.escape, modifiers: [])
                             } else {
                                 Button("Start Scan", action: viewModel.startScanning)
@@ -181,7 +181,7 @@ public struct FolderSelectionView: View {
 
                         Button("Cancel", action: viewModel.stopScanning)
                             .buttonStyle(.bordered)
-                            .foregroundColor(.red)
+                            .foregroundColor(DesignToken.colorStatusError)
                     }
 
                     // Enhanced timeline view showing phase progression
@@ -2286,11 +2286,15 @@ public final class GroupsListViewModel: ObservableObject {
         guard let groupId = notification.userInfo?["groupId"] as? UUID else { return }
         guard let keeperId = notification.userInfo?["keeperId"] as? UUID else { return }
 
-        if let existing = groups.first(where: { $0.groupId == groupId }), existing.keeperSuggestion == keeperId {
-            return
+        // NotificationCenter callbacks can run on any thread
+        // Since GroupsListViewModel is @MainActor, we need to switch to MainActor
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if let existing = self.groups.first(where: { $0.groupId == groupId }), existing.keeperSuggestion == keeperId {
+                return
+            }
+            self.applyKeeperSelection(keeperId, to: groupId, broadcast: false)
         }
-
-        applyKeeperSelection(keeperId, to: groupId, broadcast: false)
     }
 }
 

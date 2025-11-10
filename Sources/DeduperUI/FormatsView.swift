@@ -521,28 +521,28 @@ public struct FormatStatisticsView: View {
                     title: "Images",
                     value: "\(statistics.imageFiles)",
                     icon: "photo.circle.fill",
-                    color: .blue
+                    color: DesignToken.colorStatusInfo
                 )
 
                 StatCard(
                     title: "Videos",
                     value: "\(statistics.videoFiles)",
                     icon: "video.circle.fill",
-                    color: .red
+                    color: DesignToken.colorStatusError
                 )
 
                 StatCard(
                     title: "Audio",
                     value: "\(statistics.audioFiles)",
                     icon: "music.note.circle.fill",
-                    color: .green
+                    color: DesignToken.colorStatusSuccess
                 )
 
                 StatCard(
                     title: "Documents",
                     value: "\(statistics.documentFiles)",
                     icon: "doc.circle.fill",
-                    color: .purple
+                    color: DesignToken.colorStatusInfo
                 )
             }
 
@@ -551,7 +551,7 @@ public struct FormatStatisticsView: View {
                     title: "Total Files",
                     value: "\(statistics.totalFiles)",
                     icon: "doc.text.fill",
-                    color: .orange
+                    color: DesignToken.colorStatusWarning
                 )
 
                 StatCard(
