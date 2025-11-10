@@ -1666,7 +1666,10 @@ public struct GroupsListView: View {
             .applyGroupsKeyboardShortcuts(
                 viewModel: viewModel,
                 selectedGroup: $selectedGroup,
-                selectedIndex: $selectedGroupIndex
+                selectedIndex: $selectedGroupIndex,
+                mergePlanGroup: $mergePlanGroup,
+                mergePlanKeeperId: $mergePlanKeeperId,
+                showMergePlanSheet: $showMergePlanSheet
             )
             .background(DesignToken.colorBackgroundPrimary)
             .navigationTitle("Duplicate Groups")
@@ -1894,7 +1897,10 @@ private extension View {
     func applyGroupsKeyboardShortcuts(
         viewModel: GroupsListViewModel,
         selectedGroup: Binding<DuplicateGroupResult?>,
-        selectedIndex: Binding<Int>
+        selectedIndex: Binding<Int>,
+        mergePlanGroup: Binding<DuplicateGroupResult?>,
+        mergePlanKeeperId: Binding<UUID?>,
+        showMergePlanSheet: Binding<Bool>
     ) -> some View {
         if #available(macOS 14.0, *) {
             self
@@ -1922,9 +1928,9 @@ private extension View {
                         // No keeper available - cannot preview merge
                         return .ignored
                     }
-                    mergePlanGroup = current
-                    mergePlanKeeperId = keeperId
-                    showMergePlanSheet = true
+                    mergePlanGroup.wrappedValue = current
+                    mergePlanKeeperId.wrappedValue = keeperId
+                    showMergePlanSheet.wrappedValue = true
                     return .handled
                 }
                 .onKeyPress(" ") {
