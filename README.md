@@ -16,6 +16,10 @@ A native macOS application that intelligently finds and manages duplicate and vi
 - **Configurable Similarity Thresholds**: Fine-tune detection sensitivity with granular controls
 - **Evidence-Based Decisions**: Transparent confidence scoring with detailed signal analysis
 - **Machine Learning Enhancement**: Learns from user decisions to improve future recommendations
+- **Supported Formats**: 
+  - **Images**: JPEG, PNG, HEIC/HEIF, TIFF, WebP, GIF, BMP, RAW formats (CR2, CR3, NEF, ARW, DNG, etc.), professional formats (PSD, AI, EPS, SVG)
+  - **Videos**: MP4, MOV, AVI, MKV, WMV, FLV, WebM, M4V, 3GP, MTS, M2TS, OGV, ProRes, DNxHD, XDCAM, XAVC, RED formats
+  - **Audio**: MP3, WAV, AAC, M4A, FLAC, OGG, Opus, ALAC, APE, WV, AIFF, WMA, AC3, DTS, and more
 
 ### **Security & Privacy First**
 - **macOS Sandbox Compliant**: Secure file access with proper entitlements and permissions
@@ -63,20 +67,17 @@ A native macOS application that intelligently finds and manages duplicate and vi
    swift build
    ```
 
-3. **For Xcode development:**
-   ```bash
-   # Open the package directly in Xcode (Swift Package Manager projects)
-   xed Sources/
-   # OR open the entire project directory
-   xed .
-   ```
-
-4. **Run the application:**
+3. **Run the application:**
    ```bash
    # Run directly from command line
-   swift run
+   swift run Deduper
 
-   # OR build and run in Xcode
+   # OR build the executable and run it
+   swift build
+   .build/arm64-apple-macosx/debug/Deduper
+
+   # OR open in Xcode and run
+   xed .
    # Select the `Deduper` executable target
    # Choose your development team for signing
    # Press `Cmd + R` to build and run
@@ -104,18 +105,153 @@ A native macOS application that intelligently finds and manages duplicate and vi
 - ✅ **Build System**: Resolved model compilation issues - project now builds cleanly
 - ✅ **Implementation Roadmap**: Created detailed plans for remaining TODOs in `/docs/TODOS/`
 
+## Getting Started
+
 ### First Launch
 
-1. **Grant Permissions**: The app will request access to folders containing photos/videos
-2. **Select Folders**: Choose directories to scan (supports Photos library, external drives, etc.)
-3. **Configure Settings**: Adjust similarity thresholds and processing options
-4. **Start Scanning**: Begin the duplicate detection process
+When you first launch Deduper, you'll see the main interface with a sidebar navigation and the folder selection screen.
+
+1. **Select Folders**: Click "Add Folder" to choose directories containing photos and videos
+   - The app will request macOS permissions to access selected folders
+   - Supports Photos library, external drives, network volumes, and local directories
+   - You can add multiple folders to scan
+
+2. **Start Scanning**: Click "Start Scan" or press `Return` to begin duplicate detection
+   - Progress is shown in real-time with item counts and current folder being scanned
+   - You can cancel the scan at any time with "Stop Scan" or `Escape`
+
+3. **Review Results**: After scanning completes, duplicate groups are displayed
+   - Each group shows similar files with confidence scores
+   - Preview thumbnails help identify duplicates visually
+
+4. **Select Keepers**: For each duplicate group, choose which file to keep
+   - Click on a file thumbnail to select it as the keeper
+   - The app suggests a keeper based on file quality and metadata
+   - Selected keepers are highlighted with a star indicator
+
+5. **Merge Duplicates**: Review the merge plan and execute
+   - Click "Preview Merge" or press `Return` on a selected group
+   - Review which files will be moved to trash and space savings
+   - Confirm the merge operation
+   - Duplicate files are moved to Trash (not permanently deleted)
+
+6. **Undo Operations**: If you need to restore files
+   - Use the "Undo Last Merge" menu item (`Cmd+Z`) or navigate to History view
+   - Files are restored from Trash to their original locations
+   - Undo is available for recent operations within the configured undo depth
+
+## Key Functionality
+
+### Main Workflows
+
+#### 1. **Folder Selection & Scanning**
+- **Add Folders**: Click "Add Folder" button or use folder picker dialog
+- **Start Scan**: Click "Start Scan" button or press `Return` key
+- **Monitor Progress**: Real-time progress shows items processed and current folder
+- **Cancel Scan**: Click "Stop Scan" or press `Escape` to cancel
+- **Rescan**: Click "Rescan" or press `Cmd+R` to re-analyze selected folders
+
+#### 2. **Reviewing Duplicate Groups**
+- **Groups List**: Navigate to "Duplicate Groups" in sidebar to see all detected duplicates
+- **Search & Filter**: Use search bar to find specific groups or files
+- **Group Details**: Click on a group to see detailed comparison view
+- **Navigation**: Use arrow keys (`↑`/`↓`) to navigate between groups
+
+#### 3. **Selecting Keepers**
+- **Visual Selection**: Click on file thumbnails to select as keeper
+- **Keyboard Shortcut**: Press `Space` to select/deselect keeper
+- **Auto-Suggestion**: App suggests best keeper based on file quality and metadata
+- **Manual Override**: You can always change the suggested keeper
+
+#### 4. **Merging Duplicates**
+- **Preview Merge**: Click "Preview Merge" button or press `Return` on selected group
+- **Review Plan**: Merge plan sheet shows:
+  - Keeper file (file to keep)
+  - Files to remove (moved to Trash)
+  - Estimated space savings
+  - Metadata changes (if any)
+- **Execute Merge**: Click "Merge" button or press `Cmd+Return` in merge plan sheet
+- **Safety**: Files are moved to Trash, not permanently deleted
+
+#### 5. **Undo Operations**
+- **Undo Last**: Use menu "Merge > Undo Last Merge" or `Cmd+Z`
+- **History View**: Navigate to "History" in sidebar to see all operations
+- **Restore Files**: Undo restores files from Trash to original locations
+- **Transaction Logging**: All operations are logged for recovery
+
+### Keyboard Shortcuts
+
+#### Navigation
+- `↑` / `↓` - Navigate between duplicate groups
+- `Return` - Preview merge plan for selected group
+- `Space` - Select/deselect keeper for current group
+- `Tab` - Navigate to next interactive element
+- `Escape` - Cancel current operation or close sheet
+
+#### Scanning
+- `Return` - Start scan (when folders selected)
+- `Escape` - Stop/cancel scan
+- `Cmd+R` - Rescan selected folders
+
+#### Merge Operations
+- `Cmd+M` - Merge current group (from menu)
+- `Cmd+Z` - Undo last merge (from menu)
+- `Cmd+S` - Skip current group (from menu)
+- `Cmd+Return` - Execute merge (in merge plan sheet)
+- `Escape` - Cancel merge plan sheet
+
+#### General
+- `Cmd+S` - Open similarity settings
+- `Cmd+,` - Open application settings
+- `Cmd+W` - Close window
+- `Cmd+Q` - Quit application
+
+### Main Screens
+
+#### Dashboard (Default)
+- Folder selection and scanning interface
+- Real-time scan progress
+- Quick preview of duplicate groups
+- Session metrics and recovery options
+
+#### Duplicate Groups
+- List view of all detected duplicate groups
+- Search and filter capabilities
+- Group preview cards with thumbnails
+- Quick actions (Preview Merge, Show in Finder)
+
+#### Group Detail
+- Detailed view of a single duplicate group
+- Side-by-side file comparison
+- Evidence panel with confidence signals
+- Metadata differences
+- Merge plan preview
+
+#### History
+- List of all merge operations
+- Undo capabilities
+- Operation details and timestamps
+- File restoration options
+
+#### Settings
+- Similarity threshold configuration
+- Processing options
+- Safety settings (dry-run mode, undo depth)
+- Performance preferences
+
+#### Tools & Utilities
+- **Logs**: Real-time logging and diagnostics
+- **Benchmarking**: Performance testing interface
+- **Testing**: Quality metrics and test execution
+- **Accessibility**: VoiceOver and accessibility settings
+- **File Formats**: Supported format information
 
 ### Development Notes
 
 - **Xcode Project**: Use `xed .` to open the package directly in Xcode (no need for `generate-xcodeproj`)
 - **CoreData**: Uses programmatic model with secure transformers (no .xcdatamodel file needed)
 - **Build Issues**: If you encounter model loading errors, run `rm -rf .build` to clean
+- **Executable Name**: The app executable is named `Deduper` (run with `swift run Deduper`)
 
 ## Architecture Overview
 
