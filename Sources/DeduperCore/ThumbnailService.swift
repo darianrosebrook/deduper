@@ -523,7 +523,9 @@ public final class ThumbnailService {
     }
 
     private func generateThumbnailDirect(fileId: UUID, targetSize: CGSize, operationId: String) async -> NSImage? {
-        guard let url = PersistenceController.shared.resolveFileURL(id: fileId) else {
+        // PersistenceController is @MainActor, so we need to access it on MainActor
+        let url = await MainActor.run { PersistenceController.shared.resolveFileURL(id: fileId) }
+        guard let url = url else {
             logSecurityEvent(ThumbnailSecurityEvent(
                 operation: "thumbnail_generation_failed",
                 fileId: fileId.uuidString,
@@ -885,7 +887,8 @@ public final class ThumbnailService {
 
     private func getKnownFileIds() async -> Set<String> {
         do {
-            // Query persistence for all file records
+            // Query persistence for all file records (PersistenceController is @MainActor)
+            // getFileRecords() is async, so Swift automatically hops to MainActor
             let files = try await PersistenceController.shared.getFileRecords()
             // Convert UUIDs to strings for comparison with cache directory names
             return Set(files.map { $0.id.uuidString })

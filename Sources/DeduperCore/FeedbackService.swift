@@ -359,13 +359,14 @@ public final class FeedbackService: ObservableObject {
 
     private func performHealthCheck() {
         // Check for data corruption by validating stored metrics
-        Task {
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
             do {
-                let _ = try await calculateCurrentMetrics()
+                let _ = try await self.calculateCurrentMetrics()
             } catch {
-                // Already on MainActor, safe to access healthStatus
-                healthStatus = .dataCorrupted
-                logger.error("Learning data corruption detected: \(error.localizedDescription)")
+                // Now explicitly on MainActor, safe to access healthStatus
+                self.healthStatus = .dataCorrupted
+                self.logger.error("Learning data corruption detected: \(error.localizedDescription)")
             }
         }
 
