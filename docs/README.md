@@ -15,6 +15,8 @@ Project management, planning, and milestone documentation.
 - Release checklists and deployment guides
 - Feature flag management and rollout strategies
 
+**Note:** Temporal status reports and audits have been archived to `docs-status/`
+
 ### 📁 [architecture/](./architecture/)
 Architectural decisions, system design, and technical specifications.
 - CAWS framework and agent documentation
@@ -29,9 +31,9 @@ Development processes, guidelines, and reference materials.
 
 ### 📁 [quality/](./quality/)
 Testing, validation, and quality assurance documentation.
-- Validation checklists and implementation plans
-- Performance reviews and skeptical analysis
+- Validation checklists and requirements
 - Evidence-based decision making and quality gates
+- Quality standards and specifications
 
 ### 📁 [user-experience/](./user-experience/)
 User experience design, copy standards, and interaction guidelines.
