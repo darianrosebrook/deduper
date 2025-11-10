@@ -247,7 +247,7 @@ public final class AccessibilityViewModel: ObservableObject {
                         // Fallback: if VoiceOver app is running, assume it's enabled
                         continuation.resume(returning: true)
                     } else {
-                        let isEnabled = result?.booleanValue ?? false
+                        let isEnabled = result.booleanValue
                         continuation.resume(returning: isEnabled)
                     }
                 } else {
