@@ -62,8 +62,8 @@ public final class ScanViewModel {
                 let result = try await orchestrator.run(
                     directories: dirs,
                     options: options,
-                    hashCacheContainer: DefaultHashCacheProvider()
-                ) { [weak self] phase in
+                    hashCacheContainer: DefaultHashCacheProvider(),
+                    progress: { [weak self] phase in
                     Task { @MainActor [weak self] in
                         guard let self else { return }
                         switch phase {
@@ -80,7 +80,7 @@ public final class ScanViewModel {
                                 "Found \(groupCount) groups"
                         }
                     }
-                }
+                })
 
                 return result.sessionId
             } catch is CancellationError {

@@ -45,10 +45,23 @@ public struct ScanOrchestrator: Sendable {
     /// Run full scan + detect pipeline. Writes artifact + manifest
     /// atomically. Returns result on success.
     /// Throws on cancellation or error. Cleans up temp files.
+    ///
+    /// `outputDirectory` overrides where the artifact and manifest are
+    /// written. Defaults to `nil`, meaning the shared application-support
+    /// sessions directory (production CLI/UI behavior). Tests pass a temp
+    /// directory so they never touch the real sessions store.
+    ///
+    /// `afterArtifactCommit` is a test seam invoked in the window AFTER
+    /// the artifact is atomically renamed into place but BEFORE the
+    /// manifest is written. Tests use it to drive cancellation into that
+    /// exact window to prove the orphan-final-artifact cleanup. Defaults
+    /// to nil (no-op in production).
     public func run(
         directories: [URL],
         options: Options = Options(),
         hashCacheContainer: ModelContainerProvider? = nil,
+        outputDirectory: URL? = nil,
+        afterArtifactCommit: (@Sendable () async -> Void)? = nil,
         progress: (@Sendable (Phase) -> Void)? = nil
     ) async throws -> Result {
         let scanner = ScanService()
@@ -131,14 +144,17 @@ public struct ScanOrchestrator: Sendable {
             )
         }
 
-        let artDir = SessionArtifact.artifactDirectory()
+        // Artifact + manifest write to `outputDirectory` when provided
+        // (tests), else the shared sessions directory (production).
+        let artDir = outputDirectory
+            ?? SessionArtifact.artifactDirectory()
         try FileManager.default.createDirectory(
             at: artDir, withIntermediateDirectories: true
         )
 
         // Write to temp, rename on success
-        let finalPath = SessionArtifact.artifactPath(
-            for: sessionId
+        let finalPath = artDir.appendingPathComponent(
+            "\(sessionId.uuidString).ndjson.gz"
         )
         let tempPath = finalPath.appendingPathExtension("tmp")
 
@@ -163,7 +179,17 @@ public struct ScanOrchestrator: Sendable {
             throw error
         }
 
-        try Task.checkCancellation()
+        // A4: if cancellation happens AFTER the artifact rename but
+        // BEFORE the manifest, the renamed final artifact would be
+        // orphaned (an artifact with no manifest — undiscoverable but
+        // leaking disk). Clean it up on cancellation in this window.
+        await afterArtifactCommit?()
+        do {
+            try Task.checkCancellation()
+        } catch {
+            try? FileManager.default.removeItem(at: finalPath)
+            throw error
+        }
 
         // Phase 4: Write manifest last
         let dirPaths: String
@@ -189,7 +215,19 @@ public struct ScanOrchestrator: Sendable {
             duplicateGroups: groups.count,
             artifactFileName: finalPath.lastPathComponent
         )
-        try manifest.write()
+        if let outputDirectory {
+            // Test/override path: write the manifest beside the artifact
+            // so the whole session lives under the caller's directory.
+            let manifestURL = outputDirectory.appendingPathComponent(
+                "\(sessionId.uuidString).manifest.json"
+            )
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(manifest).write(to: manifestURL)
+        } else {
+            try manifest.write()
+        }
 
         let result = Result(
             sessionId: sessionId,
