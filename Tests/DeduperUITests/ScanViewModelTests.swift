@@ -123,6 +123,75 @@ struct ScanViewModelTests {
         }
     }
 
+    // MARK: - Real-scan outcome grounding
+    // (SCAN-EMPTY-ACCESS-DISAMBIGUATE-001 A5)
+    // These use NO injected runner — a real ScanOrchestrator over real
+    // directories — to prove the typed outcome is grounded in actual
+    // ScanService behavior, not only in the injected mapping tests below.
+
+    @Test("Real scan of an accessible empty dir yields .empty")
+    @MainActor
+    func realEmptyDirYieldsEmpty() async throws {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let dir = home.appendingPathComponent(
+            ".deduper-scanvm-empty-\(UUID().uuidString)"
+        )
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let vm = ScanViewModel()
+        vm.addDirectories([dir])
+
+        let result = await vm.startScan()
+        #expect(result == nil)
+        // Grounded: a REAL accessible empty dir -> .empty, not
+        // .permissionDenied.
+        #expect(vm.outcome == .empty)
+        #expect(!vm.isScanning)
+    }
+
+    @Test("Real scan of an inaccessible dir yields .permissionDenied")
+    @MainActor
+    func realInaccessibleDirYieldsPermissionDenied() async throws {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let dir = home.appendingPathComponent(
+            ".deduper-scanvm-denied-\(UUID().uuidString)"
+        )
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true
+        )
+        // Put a file in, then make the dir unreadable.
+        try Data(repeating: 0xCD, count: 8).write(
+            to: dir.appendingPathComponent("secret.jpg")
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000], ofItemAtPath: dir.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: dir.path
+            )
+            try? FileManager.default.removeItem(at: dir)
+        }
+
+        let vm = ScanViewModel()
+        vm.addDirectories([dir])
+
+        let result = await vm.startScan()
+        #expect(result == nil)
+        // Grounded: a REAL unreadable dir -> .permissionDenied, distinct
+        // from .empty. This is the whole point of the ScanService repair.
+        if case .permissionDenied(let url) = vm.outcome {
+            #expect(url.lastPathComponent == dir.lastPathComponent)
+        } else {
+            Issue.record(
+                "real inaccessible scan must yield .permissionDenied, got \(vm.outcome)"
+            )
+        }
+    }
+
     // MARK: - A5: typed outcome mapping (deterministic, injected runner)
 
     /// Build a view model whose scan runner always throws `error`, so the

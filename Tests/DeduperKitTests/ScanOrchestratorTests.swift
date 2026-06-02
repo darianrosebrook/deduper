@@ -104,17 +104,14 @@ struct ScanOrchestratorTests {
         )
     }
 
-    // MARK: - A5 (empty): no reviewable result -> typed error, no session
+    // MARK: - A4: empty / non-media / inaccessible map distinctly,
+    // commit nothing (SCAN-EMPTY-ACCESS-DISAMBIGUATE-001)
 
-    // NOTE: ScanService currently conflates "empty directory" with
-    // "not accessible" — a single empty dir throws
-    // ScanError.directoryNotAccessible (ScanService.swift:80-81), NOT
-    // ScanOrchestratorError.noMediaFiles. That conflation is a real
-    // (pre-existing) imprecision in an OUT-OF-SCOPE file; this slice
-    // pins the CURRENT behavior and records the finding for a follow-up
-    // (see PATH/SCAN error-typing). The invariant that matters here —
-    // a non-completed scan commits nothing — holds either way.
-    @Test("Empty directory throws a typed error and commits nothing")
+    // With the ScanService repair, an ACCESSIBLE empty directory is no
+    // longer conflated with an inaccessible one: it surfaces as
+    // ScanOrchestratorError.noMediaFiles (the orchestrator's
+    // `guard !files.isEmpty`), NOT ScanError.directoryNotAccessible.
+    @Test("Empty directory maps to noMediaFiles and commits nothing")
     func emptyInputCommitsNothing() async throws {
         let dir = try makeTempDir()
         defer { cleanup(dir) }
@@ -125,33 +122,30 @@ struct ScanOrchestratorTests {
         )
 
         let orchestrator = ScanOrchestrator()
-        var threw = false
+        var caught: Error?
         do {
             _ = try await orchestrator.run(
                 directories: [input],
                 outputDirectory: output
             )
         } catch {
-            threw = true
-            // Current behavior: empty dir -> ScanError (not
-            // noMediaFiles). Either typed error is acceptable for the
-            // "nothing committed" invariant; assert it is one of the
-            // known typed errors, not an untyped surprise.
-            #expect(
-                error is ScanError || error is ScanOrchestratorError,
-                "empty scan must throw a typed scan error, got \(type(of: error))"
-            )
+            caught = error
         }
-        #expect(threw, "an empty scan must throw, not silently succeed")
-
-        // No artifact and no manifest were created.
+        // Repaired behavior: accessible-empty -> noMediaFiles, NOT
+        // directoryNotAccessible.
+        guard let caught, case ScanOrchestratorError.noMediaFiles = caught else {
+            Issue.record(
+                "empty dir must map to noMediaFiles, got \(String(describing: caught))"
+            )
+            return
+        }
         #expect(
             contents(output).isEmpty,
             "an empty scan must commit nothing: \(contents(output))"
         )
     }
 
-    @Test("Accessible dir with only non-media files commits nothing")
+    @Test("Non-media-only dir maps to noMediaFiles and commits nothing")
     func nonMediaOnlyCommitsNothing() async throws {
         let dir = try makeTempDir()
         defer { cleanup(dir) }
@@ -170,23 +164,70 @@ struct ScanOrchestratorTests {
         )
 
         let orchestrator = ScanOrchestrator()
-        var threw = false
+        var caught: Error?
         do {
             _ = try await orchestrator.run(
                 directories: [input],
                 outputDirectory: output
             )
         } catch {
-            threw = true
-            #expect(
-                error is ScanError || error is ScanOrchestratorError,
-                "non-media scan must throw a typed error, got \(type(of: error))"
-            )
+            caught = error
         }
-        #expect(threw, "a non-media scan must throw, not commit a session")
+        // Same no-media outcome as the empty case.
+        guard let caught, case ScanOrchestratorError.noMediaFiles = caught else {
+            Issue.record(
+                "non-media dir must map to noMediaFiles, got \(String(describing: caught))"
+            )
+            return
+        }
         #expect(
             contents(output).isEmpty,
             "a non-media scan must commit nothing: \(contents(output))"
+        )
+    }
+
+    @Test("Inaccessible dir maps to directoryNotAccessible, commits nothing")
+    func inaccessibleInputCommitsNothing() async throws {
+        let dir = try makeTempDir()
+        defer { cleanup(dir) }
+        let input = dir.appendingPathComponent("input")
+        let output = dir.appendingPathComponent("output")
+        try FileManager.default.createDirectory(
+            at: input, withIntermediateDirectories: true
+        )
+        try Data(repeating: 0xAB, count: 16).write(
+            to: input.appendingPathComponent("secret.jpg")
+        )
+        // Make the input unreadable -> genuine inaccessibility.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000], ofItemAtPath: input.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: input.path
+            )
+        }
+
+        let orchestrator = ScanOrchestrator()
+        var caught: Error?
+        do {
+            _ = try await orchestrator.run(
+                directories: [input],
+                outputDirectory: output
+            )
+        } catch {
+            caught = error
+        }
+        // Distinct from empty/non-media: this is the inaccessible path.
+        guard let caught, case ScanError.directoryNotAccessible = caught else {
+            Issue.record(
+                "inaccessible dir must map to directoryNotAccessible, got \(String(describing: caught))"
+            )
+            return
+        }
+        #expect(
+            contents(output).isEmpty,
+            "an inaccessible scan must commit nothing: \(contents(output))"
         )
     }
 
