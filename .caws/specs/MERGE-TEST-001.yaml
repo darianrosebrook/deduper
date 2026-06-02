@@ -2,10 +2,10 @@ id: MERGE-TEST-001
 title: 'Harden merge-safety test coverage: fix disjunctive-OR tautologies and add untested data-loss paths'
 risk_tier: 1
 mode: fix
-lifecycle_state: active
-worktree: merge-test-001
+lifecycle_state: closed
+resolution: completed
 created_at: '2026-06-02T07:00:00.000Z'
-updated_at: '2026-06-02T07:28:50.956Z'
+updated_at: '2026-06-02T07:36:29.693Z'
 blast_radius:
   modules:
     - DeduperKitTests
