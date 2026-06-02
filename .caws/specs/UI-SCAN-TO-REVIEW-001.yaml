@@ -1,0 +1,140 @@
+id: UI-SCAN-TO-REVIEW-001
+title: 'Prove and close the UI scan-to-review loop through ScanOrchestrator'
+risk_tier: 1
+mode: feature
+lifecycle_state: active
+created_at: '2026-06-02T08:00:00.000Z'
+updated_at: '2026-06-02T07:47:08.434Z'
+blast_radius:
+  modules:
+    - DeduperKit
+    - DeduperUI
+    - DeduperKitTests
+    - DeduperUITests
+  data_migration: false
+operational_rollback_slo: 5m
+scope:
+  in:
+    - Sources/DeduperKit/ScanOrchestrator.swift
+    - Sources/DeduperUI/ViewModels/ScanViewModel.swift
+    - Tests/DeduperKitTests/ScanOrchestratorTests.swift
+    - Tests/DeduperUITests/ScanViewModelTests.swift
+    - Tests/DeduperUITests/MaterializationTests.swift
+    - Tests/DeduperKitTests/Fixtures/
+  out:
+    - Sources/DeduperKit/MergeService.swift
+    - Sources/DeduperKit/ImageHashingService.swift
+    - Sources/DeduperKit/HashIndexService.swift
+    - Sources/DeduperKit/VideoFingerprinter.swift
+    - Sources/DeduperKit/DetectionService.swift
+    - Package.swift
+invariants:
+  - >-
+    Existing scan capability is PRESUMED PRESENT but UNPROVEN. This slice
+    verifies and closes the loop; it does not rebuild scan UX or change the
+    discovery-based architecture. The manifest write is the durable
+    committed-complete boundary; the SwiftData SessionIndex row is reconstructed
+    from the manifest by SessionDiscoveryService, not written at scan time.
+  - >-
+    A scan that is cancelled, empty, failed, or partial cannot become a
+    mergeable committed session, and leaves no orphaned artifact or manifest on
+    disk (including the post-rename window between artifact commit and manifest
+    write).
+  - >-
+    Materialized SwiftData rows for a scanned session agree with the canonical
+    NDJSON artifact on group count, group IDs, keeper paths, ordered member
+    paths, member counts, and matchKind (extends the MERGE-TEST-001 A5 guard to
+    sessions produced by a real orchestrator run).
+acceptance:
+  - id: A1
+    given: 'a real fixture-backed scan run through ScanOrchestrator'
+    when: 'the scan completes successfully'
+    then: >-
+      the artifact is written to a temp path then atomically renamed, the
+      manifest is written last and references the same sessionId and artifact
+      file name, the artifact decodes via SessionArtifact.readGroups, and no
+      .tmp artifact remains.
+  - id: A2
+    given: 'the session produced by A1'
+    when: 'SessionDiscoveryService.syncIndex reconstructs the SessionIndex and the UI materializes it'
+    then: >-
+      the reconstructed SessionIndex fields equal the manifest fields, and the
+      materialized GroupSummary/GroupMember rows agree with
+      SessionArtifact.readGroups on group count, group IDs, keeper paths, ordered
+      member paths, member counts, and matchKind.
+  - id: A3
+    given: 'a scan launched through ScanViewModel'
+    when: 'ScanOrchestrator.run returns successfully'
+    then: >-
+      ScanViewModel surfaces a typed .completed(sessionId) outcome only after
+      both the artifact and manifest exist on disk (manifest = commit point); the
+      returned sessionId is discoverable by SessionDiscoveryService.
+  - id: A4
+    given: 'an in-flight scan cancelled before the manifest is written'
+    when: 'cancellation occurs in any window — before artifact write, after the artifact temp write, or after the atomic rename but before the manifest'
+    then: >-
+      no manifest exists (so the session is not discoverable/mergeable), and no
+      orphaned artifact remains — neither the .tmp nor a renamed final artifact;
+      ScanViewModel state is cancelled/not-scanning.
+  - id: A5
+    given: 'an empty scan input, a permission-denied input, or a generic scan failure'
+    when: 'the scan path resolves'
+    then: >-
+      ScanViewModel exposes a typed ScanOutcome distinguishing
+      .empty, .permissionDenied, and .failed from .completed; no non-completed
+      outcome creates a discoverable/mergeable session.
+  - id: A6
+    given: 'a cancelled, failed, empty, or unmaterialized session state'
+    when: 'merge affordances or MergeViewModel undo/preview eligibility are evaluated'
+    then: >-
+      a merge plan cannot be generated from partial scan state; the gate refuses
+      with a typed reason rather than proceeding.
+  - id: A7
+    given: 'ScanOrchestrator is the shared CLI/UI session-creation path with zero existing tests (audit M13)'
+    when: 'the test suite runs'
+    then: >-
+      direct orchestrator-boundary tests cover successful commit, cancellation
+      cleanup (including the post-rename window), empty-result, and failure
+      cleanup — not only via ScanViewModel.
+non_functional:
+  security:
+    - >-
+      A non-completed scan (cancelled/empty/failed/partial) must never yield a
+      discoverable or mergeable session; A4 and A6 mechanically prove this so a
+      partial scan cannot drive a deletion.
+    - >-
+      Tests must write only under per-test temp directories and the project
+      Fixtures/ directory; no test may touch real user data or the shared
+      application-support sessions directory.
+  performance:
+    - >-
+      Added tests run within the existing fast unit-test gate (sub-5s suite) and
+      introduce no fixed sleeps as a correctness gate; cancellation tests use an
+      injectable slow seam rather than wall-clock races where practical.
+observability:
+  - >-
+    log: ScanOrchestrator emits os.Logger entries (category "orchestrator") for
+    scan completion; the manifest + artifact files on disk are the durable
+    observability artifacts the tests assert against.
+  - >-
+    log: ScanViewModel emits os.Logger entries (category "scan") for cancel and
+    failure; the typed ScanOutcome is the structured signal tests assert,
+    replacing the flattened errorMessage string.
+rollback:
+  - >-
+    Source changes are limited to the ScanOutcome typed enum on ScanViewModel and
+    the orphan-final-artifact cleanup in ScanOrchestrator (scope.out forbids
+    detection/merge internals). To roll back, revert the slice commits on the
+    feature branch; the discovery-based architecture is unchanged.
+  - >-
+    If a new test reveals a real production defect beyond the two scoped source
+    changes, file a separate fix spec; do not weaken the assertion to pass.
+contracts:
+  - name: scan-orchestrator-commit
+    type: behavior
+    path: Sources/DeduperKit/ScanOrchestrator.swift
+    description: >-
+      ScanOrchestrator.run writes artifact (temp -> atomic rename) then manifest
+      last; on cancellation in any window it leaves no orphaned artifact or
+      manifest; the manifest is the durable commit point a session is discovered
+      from. These behaviors are the contract the slice pins.
