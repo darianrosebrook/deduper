@@ -56,19 +56,45 @@ public struct ScanService: Sendable {
 
         for directory in directories {
             let canonicalDir = PathIdentity.canonicalRoot(directory)
+            // Distinguish "could not read the directory" from "read it
+            // fine but it was empty". On macOS, FileManager.enumerator(at:)
+            // returns NON-nil even for an unreadable directory (it just
+            // yields nothing) — the genuine accessibility failure surfaces
+            // only through the errorHandler, which fires with a permission
+            // error whose URL is the directory root. So: capture a
+            // root-level access failure via the handler and throw
+            // directoryNotAccessible for it; an accessible empty directory
+            // never triggers the handler and falls through to a clean
+            // .finished with zero media. (SCAN-EMPTY-ACCESS-DISAMBIGUATE-001)
+            let rootAccessFailure = RootAccessFailureBox()
+            let rootPath = PathIdentity.canonical(canonicalDir.path)
+            let enumerator = FileManager.default.enumerator(
+                at: canonicalDir,
+                includingPropertiesForKeys: [
+                    .isRegularFileKey,
+                    .fileSizeKey,
+                    .creationDateKey,
+                    .contentModificationDateKey,
+                    .isSymbolicLinkKey
+                ],
+                options: options.followSymlinks
+                    ? [] : [.skipsPackageDescendants],
+                errorHandler: { url, _ in
+                    // A failure whose URL is the scanned root means the
+                    // directory itself could not be opened (inaccessible).
+                    // Per-file failures deeper in the tree are surfaced as
+                    // .error events during iteration, not here.
+                    if PathIdentity.canonical(url.path) == rootPath {
+                        rootAccessFailure.tripped = true
+                    }
+                    return true
+                }
+            )
+
+            // Drain the enumerator in a synchronous closure:
+            // DirectoryEnumerator.makeIterator() is unavailable from an
+            // async context.
             let fileURLs: [URL] = {
-                let enumerator = FileManager.default.enumerator(
-                    at: canonicalDir,
-                    includingPropertiesForKeys: [
-                        .isRegularFileKey,
-                        .fileSizeKey,
-                        .creationDateKey,
-                        .contentModificationDateKey,
-                        .isSymbolicLinkKey
-                    ],
-                    options: options.followSymlinks
-                        ? [] : [.skipsPackageDescendants]
-                )
                 guard let enumerator else { return [] }
                 var urls: [URL] = []
                 for case let url as URL in enumerator {
@@ -77,8 +103,14 @@ public struct ScanService: Sendable {
                 return urls
             }()
 
-            if fileURLs.isEmpty && directories.count == 1 {
-                throw ScanError.directoryNotAccessible(directory)
+            // Genuinely unreadable root directory: the errorHandler tripped
+            // (or, defensively, the enumerator was nil). An ACCESSIBLE empty
+            // directory does NOT trip this and finishes cleanly.
+            if rootAccessFailure.tripped || enumerator == nil {
+                if directories.count == 1 {
+                    throw ScanError.directoryNotAccessible(directory)
+                }
+                continue
             }
 
             for fileURL in fileURLs {
@@ -168,6 +200,18 @@ public struct ScanService: Sendable {
         }
         return nil
     }
+}
+
+// MARK: - Root access failure box
+
+/// Mutable reference captured by the enumerator's errorHandler closure to
+/// signal that the scanned root directory itself could not be opened. A
+/// reference type is used because the closure cannot mutate a captured
+/// value-typed `var` under Swift 6 strict concurrency. The enumerator and
+/// its handler run synchronously within a single directory iteration on the
+/// scan task, so no cross-actor access occurs.
+private final class RootAccessFailureBox: @unchecked Sendable {
+    var tripped = false
 }
 
 // MARK: - ScanError
