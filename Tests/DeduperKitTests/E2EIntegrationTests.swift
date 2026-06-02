@@ -123,6 +123,79 @@ struct E2EIntegrationTests {
         }
     }
 
+    @Test("NDJSON artifact round-trips group identity: write == readGroups")
+    func artifactRoundTripFidelity() async throws {
+        let dir = try makeTempDir()
+        defer { cleanup(dir) }
+
+        // Real detected groups from fixtures (exact-dup pair + unique).
+        _ = try copyFixture("dup-original.png", to: dir)
+        _ = try copyFixture("dup-original.png", to: dir, as: "dup-copy.png")
+        _ = try copyFixture("screenshot-a.png", to: dir)
+
+        let scanner = ScanService()
+        var files: [ScannedFile] = []
+        for try await event in scanner.scan(directory: dir) {
+            if case .item(let f) = event { files.append(f) }
+        }
+        let detector = DetectionService()
+        let groups = try await detector.detectDuplicates(in: files)
+        #expect(!groups.isEmpty)
+
+        let fileMap = Dictionary(
+            uniqueKeysWithValues: files.map { ($0.id, $0.url) }
+        )
+        let written = groups.enumerated().map { (i, g) in
+            StoredDuplicateGroup(from: g, fileMap: fileMap, index: i + 1)
+        }
+
+        // Write to the REAL canonical artifact (gzip NDJSON), then read
+        // back through the SAME path materialization uses. This is the
+        // AD-001 canonical store — if it does not round-trip, no
+        // downstream SwiftData cache can agree with it.
+        let artifactURL = dir.appendingPathComponent("session.ndjson.gz")
+        try SessionArtifact.write(groups: written, to: artifactURL)
+        // Compressed bytes actually landed on disk.
+        #expect(FileManager.default.fileExists(atPath: artifactURL.path))
+
+        let readBack = try SessionArtifact.readGroups(from: artifactURL)
+
+        // Identity must be preserved, not just count: group count, the
+        // set of groupIds, each group's keeperPath, and each group's
+        // ordered member paths. A misparse, dropped member, or swapped
+        // keeper on the read side would diverge here.
+        #expect(
+            readBack.count == written.count,
+            "group count must round-trip: wrote \(written.count), read \(readBack.count)"
+        )
+        #expect(
+            Set(readBack.map(\.groupId)) == Set(written.map(\.groupId)),
+            "groupId set must round-trip exactly"
+        )
+
+        let writtenById = Dictionary(
+            uniqueKeysWithValues: written.map { ($0.groupId, $0) }
+        )
+        for r in readBack {
+            guard let w = writtenById[r.groupId] else {
+                Issue.record("read group \(r.groupId) not in written set")
+                continue
+            }
+            #expect(
+                r.keeperPath == w.keeperPath,
+                "keeperPath must round-trip for group \(r.groupId)"
+            )
+            #expect(
+                r.memberPaths == w.memberPaths,
+                "member paths (ordered) must round-trip for group \(r.groupId)"
+            )
+            #expect(
+                r.matchKind == w.matchKind,
+                "matchKind must round-trip (AD-005) for group \(r.groupId)"
+            )
+        }
+    }
+
     @Test("Selective group filtering by index")
     func selectiveGroupFilter() async throws {
         let dir = try makeTempDir()

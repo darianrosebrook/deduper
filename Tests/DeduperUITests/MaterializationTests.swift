@@ -247,6 +247,100 @@ struct MaterializationTests {
         }
     }
 
+    @Test("Materialized SwiftData rows agree with the canonical artifact")
+    @MainActor
+    func swiftDataAgreesWithArtifact() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Distinct member counts per group so a cross-group leak or a
+        // dropped member is caught, not just a uniform count.
+        let groups = [
+            StoredDuplicateGroup(
+                groupId: UUID(), groupIndex: 0, confidence: 0.9,
+                keeperPath: "/tmp/a/keep.jpg",
+                memberPaths: ["/tmp/a/keep.jpg", "/tmp/a/dup.jpg"],
+                memberSizes: [2000, 1000], mediaType: 1
+            ),
+            StoredDuplicateGroup(
+                groupId: UUID(), groupIndex: 1, confidence: 0.8,
+                keeperPath: "/tmp/b/keep.jpg",
+                memberPaths: [
+                    "/tmp/b/keep.jpg", "/tmp/b/d1.jpg", "/tmp/b/d2.jpg"
+                ],
+                memberSizes: [3000, 2000, 1000], mediaType: 1
+            )
+        ]
+        let (container, session, snapshot) = try makeTestSession(
+            groups: groups, tempDir: tempDir
+        )
+
+        let materializer = ArtifactMaterializer()
+        _ = try await materializer.materialize(
+            session: snapshot, container: container
+        )
+
+        // Canonical truth: read the SAME artifact the materializer read.
+        let artifactURL = URL(fileURLWithPath: session.artifactPath)
+        let artifactGroups = try SessionArtifact.readGroups(
+            from: artifactURL
+        )
+
+        let context = ModelContext(container)
+        let sid = session.sessionId
+
+        // Group-count agreement.
+        let sPred = #Predicate<GroupSummary> { $0.sessionId == sid }
+        let summaries = try context.fetch(
+            FetchDescriptor<GroupSummary>(predicate: sPred)
+        )
+        #expect(
+            summaries.count == artifactGroups.count,
+            "SwiftData GroupSummary count (\(summaries.count)) must equal artifact group count (\(artifactGroups.count))"
+        )
+
+        // GroupId set agreement (no swapped/duplicated/dropped ids).
+        #expect(
+            Set(summaries.map(\.groupId))
+                == Set(artifactGroups.map(\.groupId)),
+            "GroupSummary groupId set must equal the artifact's"
+        )
+
+        let mPred = #Predicate<GroupMember> { $0.sessionId == sid }
+        let members = try context.fetch(
+            FetchDescriptor<GroupMember>(predicate: mPred)
+        )
+        let membersByGroup = Dictionary(
+            grouping: members, by: { $0.groupId }
+        )
+
+        // Per-group: keeper + ordered member paths must match exactly.
+        for ag in artifactGroups {
+            guard let summary = summaries.first(
+                where: { $0.groupId == ag.groupId }
+            ) else {
+                Issue.record("artifact group \(ag.groupId) has no SwiftData summary")
+                continue
+            }
+            #expect(
+                summary.suggestedKeeperPath == ag.keeperPath,
+                "keeper path must agree for group \(ag.groupId)"
+            )
+
+            let rowPaths = (membersByGroup[ag.groupId] ?? [])
+                .sorted { $0.memberIndex < $1.memberIndex }
+                .map(\.filePath)
+            #expect(
+                rowPaths == ag.memberPaths,
+                "ordered member paths must agree for group \(ag.groupId): rows \(rowPaths) vs artifact \(ag.memberPaths)"
+            )
+        }
+    }
+
     @Test("Partial materialization detected by count mismatch")
     func partialMaterializationDetection() {
         let session = SessionIndex(
