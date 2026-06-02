@@ -5,7 +5,7 @@ mode: feature
 lifecycle_state: active
 worktree: ui-scan-to-review-001
 created_at: '2026-06-02T08:00:00.000Z'
-updated_at: '2026-06-02T07:57:57.471Z'
+updated_at: '2026-06-02T07:58:46.593Z'
 blast_radius:
   modules:
     - DeduperKit
@@ -22,7 +22,6 @@ scope:
     - Tests/DeduperUITests/ScanViewModelTests.swift
     - Tests/DeduperUITests/MaterializationTests.swift
     - Tests/DeduperKitTests/Fixtures/
-    - Sources/DeduperUI/Services/ArtifactMaterializer.swift
   out:
     - Sources/DeduperKit/MergeService.swift
     - Sources/DeduperKit/ImageHashingService.swift
