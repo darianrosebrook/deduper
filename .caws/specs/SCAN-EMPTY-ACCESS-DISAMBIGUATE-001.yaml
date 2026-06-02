@@ -1,0 +1,133 @@
+id: SCAN-EMPTY-ACCESS-DISAMBIGUATE-001
+title: 'Disambiguate accessible-empty from inaccessible directories in ScanService'
+risk_tier: 1
+mode: fix
+lifecycle_state: active
+worktree: scan-empty-access
+created_at: '2026-06-02T09:00:00.000Z'
+updated_at: '2026-06-02T09:10:19.735Z'
+blast_radius:
+  modules:
+    - DeduperKit
+    - DeduperKitTests
+  data_migration: false
+operational_rollback_slo: 5m
+scope:
+  in:
+    - Sources/DeduperKit/ScanService.swift
+    - Sources/DeduperKit/ScanOrchestrator.swift
+    - Sources/DeduperUI/ViewModels/ScanViewModel.swift
+    - Tests/DeduperKitTests/ScanServiceTests.swift
+    - Tests/DeduperKitTests/ScanOrchestratorTests.swift
+    - Tests/DeduperUITests/ScanViewModelTests.swift
+  out:
+    - Sources/DeduperKit/MergeService.swift
+    - Sources/DeduperUI/ViewModels/MergeViewModel.swift
+    - Sources/DeduperKit/DetectionService.swift
+    - Sources/DeduperKit/ImageHashingService.swift
+    - Sources/DeduperKit/VideoFingerprinter.swift
+    - Sources/DeduperKit/HashIndexService.swift
+    - Package.swift
+invariants:
+  - >-
+    ScanService is the lowest layer that observes directory accessibility. It
+    MUST classify "directory could not be read" (FileManager.enumerator returns
+    nil) distinctly from "directory was read but contained nothing usable"
+    (enumerator non-nil, zero media yielded). Higher layers (ScanOrchestrator
+    noMediaFiles, ScanViewModel typed .empty vs .permissionDenied) depend on
+    this distinction being grounded in the scanner, not compensated for above.
+  - >-
+    This is a below-the-VM-boundary semantics repair. Source changes to
+    ScanOrchestrator or ScanViewModel are admitted ONLY if a failing real-run
+    test proves the repaired distinction is collapsed at that layer. No
+    merge/review code, no artifact schema change, no detection/classification
+    tuning, no permission-simulation framework.
+  - >-
+    The repair must not change the success path: an accessible directory with
+    media still yields .item events and .finished metrics exactly as today; an
+    accessible directory with only non-media files still completes (mediaFiles
+    == 0) and is mapped to empty/no-media by the orchestrator, not to an error.
+acceptance:
+  - id: A1
+    given: 'an accessible but empty directory (enumerator succeeds, yields zero entries)'
+    when: 'ScanService.scan runs over it as the sole directory'
+    then: >-
+      the scan does NOT throw directoryNotAccessible; it finishes normally with
+      zero media files (a typed empty/no-media outcome), so the orchestrator can
+      classify it as empty rather than inaccessible.
+  - id: A2
+    given: 'an accessible directory containing only non-media files'
+    when: 'ScanService.scan runs over it and ScanOrchestrator.run consumes the stream'
+    then: >-
+      the scan finishes with zero media files and ScanOrchestrator commits no
+      artifact and no manifest (it surfaces the same no-media outcome as A1); no
+      directoryNotAccessible is thrown.
+  - id: A3
+    given: 'a genuinely inaccessible/unreadable directory (FileManager.enumerator returns nil)'
+    when: 'ScanService.scan runs over it as the sole directory'
+    then: >-
+      the scan throws ScanError.directoryNotAccessible(url) carrying the
+      offending directory url — and ONLY this case throws it, distinguished from
+      the accessible-empty case by the enumerator-nil signal, not by emptiness.
+  - id: A4
+    given: 'the repaired ScanService outcomes (empty vs no-media vs inaccessible)'
+    when: 'ScanOrchestrator.run maps them'
+    then: >-
+      empty and non-media-only inputs both resolve to the no-media path and
+      commit nothing (no artifact, no manifest, no .tmp); only the genuinely
+      inaccessible input propagates directoryNotAccessible. Every non-success
+      path commits nothing.
+  - id: A5
+    given: 'a REAL scan (no injected runner seam) over an empty, a non-media-only, and an inaccessible directory'
+    when: 'ScanViewModel.startScan drives ScanOrchestrator end to end'
+    then: >-
+      ScanViewModel maps the real scanner outcomes to .empty for the
+      empty/non-media-only inputs and .permissionDenied(url) for the inaccessible
+      input — proving the typed outcome is grounded in real ScanService behavior,
+      not only in the injected-runner mapping tests from
+      UI-SCAN-TO-REVIEW-001 A5.
+non_functional:
+  security:
+    - >-
+      Mislabeling an inaccessible directory as "empty" could let a user believe a
+      protected/unreadable location was scanned and found clean when it was never
+      read. The repair keeps directoryNotAccessible reserved for the genuinely
+      unreadable case so the user is not falsely reassured.
+    - >-
+      Tests must write only under per-test temp directories; no test may touch
+      real user data or the shared application-support sessions directory. The
+      inaccessible-directory fixture must be created and torn down within the
+      test and must not depend on ambient machine permission state.
+  performance:
+    - >-
+      Added tests run within the existing fast unit-test gate and introduce no
+      fixed sleeps as a correctness gate.
+observability:
+  - >-
+    log: ScanService emits os.Logger entries (category "scan"). The structured
+    signals tests assert are the ScanEvent stream (.finished metrics with
+    mediaFiles == 0 for empty/no-media) and the thrown ScanError for the
+    inaccessible case.
+  - >-
+    log: ScanViewModel emits os.Logger entries (category "scan") for the typed
+    outcome; the ScanOutcome value is the structured signal A5 asserts.
+rollback:
+  - >-
+    The repair is a narrow change to ScanService's enumerator-nil vs
+    enumerator-empty decision, plus minimal propagation only if proven needed.
+    To roll back, revert the slice commits on the feature branch; no data
+    migration, no schema change.
+  - >-
+    If a test reveals a real defect beyond this scanner-semantics repair, file a
+    separate fix spec; do not weaken the assertion to pass and do not expand into
+    scan UX or detection tuning.
+contracts:
+  - name: scan-service-accessibility-semantics
+    type: behavior
+    path: Sources/DeduperKit/ScanService.swift
+    description: >-
+      ScanService.scan throws ScanError.directoryNotAccessible(url) IFF the
+      directory could not be read (FileManager.enumerator(at:) returns nil). An
+      accessible directory that yields zero entries, or zero media files,
+      finishes normally with mediaFiles == 0 and does NOT throw
+      directoryNotAccessible. This is the contract the slice pins.
