@@ -341,6 +341,137 @@ struct MaterializationTests {
         }
     }
 
+    // A2: a session produced by a REAL ScanOrchestrator run — not
+    // hand-built groups — discovers/reconstructs into a SessionIndex
+    // whose fields equal the manifest, and materializes into SwiftData
+    // rows that agree with the canonical artifact. Extends the A5 guard
+    // to the end-to-end scan path (UI-SCAN-TO-REVIEW-001).
+    @Test("Real orchestrator scan: manifest, index, and materialized rows agree")
+    @MainActor
+    func realScanMaterializationAgreement() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = tempDir.appendingPathComponent("input")
+        let output = tempDir.appendingPathComponent("output")
+        try FileManager.default.createDirectory(
+            at: input, withIntermediateDirectories: true
+        )
+
+        // Fixtures live in DeduperKitTests/Fixtures (sibling target).
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()      // DeduperUITests
+            .deletingLastPathComponent()      // Tests
+            .appendingPathComponent("DeduperKitTests")
+            .appendingPathComponent("Fixtures")
+        func copyFixture(_ name: String, as newName: String) throws {
+            try FileManager.default.copyItem(
+                at: fixtures.appendingPathComponent(name),
+                to: input.appendingPathComponent(newName)
+            )
+        }
+        // Exact-duplicate pair -> at least one group.
+        try copyFixture("dup-original.png", as: "a.png")
+        try copyFixture("dup-original.png", as: "b.png")
+
+        // Real scan -> artifact + manifest in `output`.
+        let result = try await ScanOrchestrator().run(
+            directories: [input],
+            outputDirectory: output
+        )
+
+        // Read the manifest the orchestrator committed.
+        let manifestURL = output.appendingPathComponent(
+            "\(result.sessionId.uuidString).manifest.json"
+        )
+        let manifest = try SessionManifest.read(from: manifestURL)
+        let artifactURL = output.appendingPathComponent(
+            manifest.artifactFileName
+        )
+
+        // Reconstruct the SessionIndex from the manifest exactly as
+        // SessionDiscoveryService.syncIndex does (manifest -> index).
+        let session = SessionIndex(
+            sessionId: manifest.sessionId,
+            directoryPath: manifest.directoryPath,
+            startedAt: manifest.startedAt,
+            completedAt: manifest.completedAt,
+            totalFiles: manifest.totalFiles,
+            mediaFiles: manifest.mediaFiles,
+            duplicateGroups: manifest.duplicateGroups,
+            artifactPath: artifactURL.path,
+            manifestPath: manifestURL.path
+        )
+        // Index fields equal manifest fields (the reconstruction contract).
+        #expect(session.sessionId == manifest.sessionId)
+        #expect(session.duplicateGroups == manifest.duplicateGroups)
+        #expect(session.artifactPath == artifactURL.path)
+
+        // Materialize into SwiftData via the real materializer.
+        let container = try UIPersistenceFactory.makeContainer(
+            inMemory: true
+        )
+        let context = ModelContext(container)
+        context.insert(session)
+        try context.save()
+
+        let snapshot = ArtifactMaterializer.SessionSnapshot(
+            session: session
+        )
+        let materializedCount = try await ArtifactMaterializer()
+            .materialize(session: snapshot, container: container)
+
+        // Canonical truth.
+        let artifactGroups = try SessionArtifact.readGroups(
+            from: artifactURL
+        )
+        #expect(materializedCount == artifactGroups.count)
+        #expect(
+            manifest.duplicateGroups == artifactGroups.count,
+            "manifest group count must equal the artifact's"
+        )
+
+        // Rows agree with the artifact (count, ids, keeper, ordered members).
+        let sid = session.sessionId
+        let summaries = try context.fetch(
+            FetchDescriptor<GroupSummary>(
+                predicate: #Predicate<GroupSummary> { $0.sessionId == sid }
+            )
+        )
+        #expect(
+            Set(summaries.map(\.groupId))
+                == Set(artifactGroups.map(\.groupId)),
+            "materialized groupId set must equal the artifact's"
+        )
+
+        let members = try context.fetch(
+            FetchDescriptor<GroupMember>(
+                predicate: #Predicate<GroupMember> { $0.sessionId == sid }
+            )
+        )
+        let membersByGroup = Dictionary(
+            grouping: members, by: { $0.groupId }
+        )
+        for ag in artifactGroups {
+            let summary = summaries.first { $0.groupId == ag.groupId }
+            #expect(
+                summary?.suggestedKeeperPath == ag.keeperPath,
+                "keeper must agree for group \(ag.groupId)"
+            )
+            let rowPaths = (membersByGroup[ag.groupId] ?? [])
+                .sorted { $0.memberIndex < $1.memberIndex }
+                .map(\.filePath)
+            #expect(
+                rowPaths == ag.memberPaths,
+                "ordered member paths must agree for group \(ag.groupId)"
+            )
+        }
+    }
+
     @Test("Partial materialization detected by count mismatch")
     func partialMaterializationDetection() {
         let session = SessionIndex(
