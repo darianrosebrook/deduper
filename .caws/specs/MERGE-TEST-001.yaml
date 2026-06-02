@@ -3,6 +3,7 @@ title: 'Harden merge-safety test coverage: fix disjunctive-OR tautologies and ad
 risk_tier: 1
 mode: fix
 lifecycle_state: active
+worktree: merge-test-001
 created_at: '2026-06-02T07:00:00.000Z'
 updated_at: '2026-06-02T07:00:09.464Z'
 blast_radius:
