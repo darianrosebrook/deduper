@@ -2,10 +2,11 @@ id: SCAN-EMPTY-ACCESS-DISAMBIGUATE-001
 title: 'Disambiguate accessible-empty from inaccessible directories in ScanService'
 risk_tier: 1
 mode: fix
-lifecycle_state: active
-worktree: scan-empty-access
+lifecycle_state: closed
+resolution: completed
+closure_notes: 'Auto-closed by caws worktree merge scan-empty-access at d9edd29e6088f0f8768d967f315af500931b6e17'
 created_at: '2026-06-02T09:00:00.000Z'
-updated_at: '2026-06-02T09:10:19.735Z'
+updated_at: '2026-06-02T09:22:54.735Z'
 blast_radius:
   modules:
     - DeduperKit
