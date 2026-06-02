@@ -125,9 +125,15 @@ struct MergeSmokeTests {
         let qRoot = dir.appendingPathComponent("quarantine")
 
         // keeper will be renamed to "Vacation.jpg"
-        // nonKeeper IS "Vacation.jpg" — it will be quarantined first
-        let keeper = try writeFile("IMG_0001.jpg", in: dir)
-        let nonKeeper = try writeFile("Vacation.jpg", in: dir)
+        // nonKeeper IS "Vacation.jpg" — it will be quarantined first.
+        // Distinct content lets us prove WHICH file ends up at the
+        // vacated slot (the keeper, not the resurrected non-keeper).
+        let keeper = try writeFile(
+            "IMG_0001.jpg", content: "keeper-bytes", in: dir
+        )
+        let nonKeeper = try writeFile(
+            "Vacation.jpg", content: "nonkeeper-bytes", in: dir
+        )
 
         let nonKeeperBundle = AssetBundle(
             primary: nonKeeper,
@@ -152,14 +158,47 @@ struct MergeSmokeTests {
             quarantineRoot: qRoot
         )
 
-        #expect(!exists(nonKeeper) || exists(renameTarget))
-        // Either nonKeeper was moved and keeper renamed, or rename failed
-        // gracefully. The important invariant: no crash, transaction written.
+        // A1: independent positive assertions of the resulting disk
+        // state. The vacated-path rename must actually run — no
+        // disjunctive OR that passes when the rename silently no-ops.
         #expect(tx.status == .completed)
+        // No silent rename failure hidden in tx.errors.
+        #expect(
+            tx.errors.isEmpty,
+            "rename must not silently fail: \(tx.errors)"
+        )
+        // The keeper was renamed AWAY from its original path.
+        #expect(
+            !exists(keeper),
+            "keeper IMG_0001.jpg should have been renamed away"
+        )
+        // The vacated slot now holds the keeper (its bytes), not the
+        // quarantined non-keeper.
+        #expect(exists(renameTarget))
+        let landed = try? String(
+            contentsOf: renameTarget, encoding: .utf8
+        )
+        #expect(
+            landed == "keeper-bytes",
+            "vacated slot must hold the keeper's content, got: \(landed ?? "<missing>")"
+        )
 
+        // Undo reverses both the rename and the quarantine move:
+        // keeper returns to IMG_0001.jpg, non-keeper returns to
+        // Vacation.jpg with its original bytes.
         let failures = service.undo(transaction: tx, logDirectory: logDir)
         #expect(failures.isEmpty)
+        #expect(exists(keeper), "undo must restore keeper's original name")
+        let keeperBack = try? String(contentsOf: keeper, encoding: .utf8)
+        #expect(keeperBack == "keeper-bytes")
         #expect(exists(nonKeeper))
+        let nonKeeperBack = try? String(
+            contentsOf: nonKeeper, encoding: .utf8
+        )
+        #expect(
+            nonKeeperBack == "nonkeeper-bytes",
+            "undo must restore the quarantined non-keeper's content"
+        )
     }
 
     // MARK: - Scenario C: Interrupted merge (crash simulation)
@@ -274,12 +313,21 @@ struct MergeSmokeTests {
         #expect(deleted == 1)
         #expect(!exists(URL(fileURLWithPath: quarantinedPath)))
 
-        // Undo after purge: file is gone, undo returns failures
+        // Undo after purge: the quarantined file is permanently gone,
+        // so undo MUST fail loudly rather than silently report success.
         let failures = service.undo(
             transaction: tx, logDirectory: logDir
         )
-        // Undo will fail because quarantined file is gone —
-        // that's the expected behavior after purge.
-        #expect(!failures.isEmpty || !exists(nonKeeper))
+        // A2: independent assertions. The first proves undo did not
+        // silently swallow the missing-source error; the second proves
+        // no file was resurrected at the original path.
+        #expect(
+            !failures.isEmpty,
+            "undo after purge must report a failure for the deleted quarantine source, not silently succeed"
+        )
+        #expect(
+            !exists(nonKeeper),
+            "a purged file must not reappear at its original path"
+        )
     }
 }
