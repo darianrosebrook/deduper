@@ -1607,6 +1607,75 @@ struct MergeViewModelTests {
         }
     }
 
+    /// A6: an unmaterialized / partial-scan session — a SessionIndex with
+    /// ZERO materialized GroupMember rows — cannot produce a mergeable plan.
+    /// Validation yields an empty plan (so the merge affordance has nothing
+    /// to act on), and executing that empty plan is refused with a typed
+    /// `.failed` phase rather than calling MergeService with empty assets.
+    /// This is the gate that stops a cancelled/failed/empty scan (which
+    /// never materializes rows) from being merged.
+    @Test("Unmaterialized session yields no mergeable plan")
+    @MainActor
+    func unmaterializedSessionNotMergeable() async throws {
+        let container = try UIPersistenceFactory.makeContainer(
+            inMemory: true
+        )
+        let context = ModelContext(container)
+        let sessionId = UUID()
+        let runId = UUID()
+
+        // A session row exists, but NO GroupSummary/GroupMember rows —
+        // exactly the state of a scan that never materialized (cancelled
+        // before manifest, empty result, or permission-denied).
+        let session = SessionIndex(
+            sessionId: sessionId,
+            directoryPath: "/tmp",
+            startedAt: Date(),
+            totalFiles: 0,
+            mediaFiles: 0,
+            duplicateGroups: 0,
+            artifactPath: "/tmp/none.ndjson.gz",
+            manifestPath: "/tmp/none.manifest.json"
+        )
+        session.currentRunId = runId
+        context.insert(session)
+        try context.save()
+
+        let logDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let quarDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        defer { cleanup(logDir); cleanup(quarDir) }
+
+        let vm = MergeViewModel(
+            logDirectory: logDir, quarantineRoot: quarDir
+        )
+        vm.validate(sessionId: sessionId, container: container)
+        await waitForValidation(vm)
+
+        guard case .preview(let plan) = vm.phase else {
+            Issue.record("Expected preview phase, got \(vm.phase)")
+            return
+        }
+
+        // No materialized rows -> nothing to merge.
+        #expect(plan.items.isEmpty)
+        #expect(plan.totalAssetBundles == 0)
+
+        // And executing the empty plan must be refused with a typed
+        // failure, NOT silently proceed into MergeService.
+        vm.execute(plan: plan, container: container)
+        await waitForExecution(vm)
+
+        if case .failed(let reason) = vm.phase {
+            #expect(reason == "No files to merge.")
+        } else {
+            Issue.record(
+                "Expected .failed refusal on empty plan, got \(vm.phase)"
+            )
+        }
+    }
+
     @Test("Session ID stored for undo session guard")
     @MainActor
     func sessionIdStoredForUndoGuard() async throws {
