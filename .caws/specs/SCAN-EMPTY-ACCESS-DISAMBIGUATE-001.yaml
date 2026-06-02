@@ -31,11 +31,16 @@ scope:
 invariants:
   - >-
     ScanService is the lowest layer that observes directory accessibility. It
-    MUST classify "directory could not be read" (FileManager.enumerator returns
-    nil) distinctly from "directory was read but contained nothing usable"
-    (enumerator non-nil, zero media yielded). Higher layers (ScanOrchestrator
-    noMediaFiles, ScanViewModel typed .empty vs .permissionDenied) depend on
-    this distinction being grounded in the scanner, not compensated for above.
+    MUST classify "directory could not be read" distinctly from "directory was
+    read but contained nothing usable" (zero media yielded). FINDING during
+    implementation: on macOS FileManager.enumerator(at:) does NOT return nil for
+    an unreadable directory — it returns a non-nil enumerator that yields nothing
+    and reports the access failure through its errorHandler (NSCocoaError 257 for
+    permission-denied, 260 for a missing root, with the failing URL == the
+    scanned root). So the accessibility signal is the errorHandler firing on the
+    ROOT url, not enumerator==nil. Higher layers (ScanOrchestrator noMediaFiles,
+    ScanViewModel typed .empty vs .permissionDenied) depend on this distinction
+    being grounded in the scanner, not compensated for above.
   - >-
     This is a below-the-VM-boundary semantics repair. Source changes to
     ScanOrchestrator or ScanViewModel are admitted ONLY if a failing real-run
@@ -63,12 +68,14 @@ acceptance:
       artifact and no manifest (it surfaces the same no-media outcome as A1); no
       directoryNotAccessible is thrown.
   - id: A3
-    given: 'a genuinely inaccessible/unreadable directory (FileManager.enumerator returns nil)'
+    given: 'a genuinely inaccessible/unreadable directory (the enumerator errorHandler fires on the root url — reproduced deterministically with chmod 000, and likewise a missing root which reports NSFileReadNoSuchFile)'
     when: 'ScanService.scan runs over it as the sole directory'
     then: >-
       the scan throws ScanError.directoryNotAccessible(url) carrying the
-      offending directory url — and ONLY this case throws it, distinguished from
-      the accessible-empty case by the enumerator-nil signal, not by emptiness.
+      offending directory url — and ONLY a root-level access failure throws it,
+      distinguished from the accessible-empty case (handler never fires) by the
+      errorHandler signal, not by emptiness. A deep/non-root access failure does
+      NOT abort the scan: accessible media elsewhere is still yielded.
   - id: A4
     given: 'the repaired ScanService outcomes (empty vs no-media vs inaccessible)'
     when: 'ScanOrchestrator.run maps them'
@@ -127,7 +134,10 @@ contracts:
     path: Sources/DeduperKit/ScanService.swift
     description: >-
       ScanService.scan throws ScanError.directoryNotAccessible(url) IFF the
-      directory could not be read (FileManager.enumerator(at:) returns nil). An
-      accessible directory that yields zero entries, or zero media files,
-      finishes normally with mediaFiles == 0 and does NOT throw
-      directoryNotAccessible. This is the contract the slice pins.
+      scanned ROOT directory could not be read — detected by the enumerator's
+      errorHandler firing with the root url (chmod-000 -> NSCocoaError 257;
+      missing root -> 260), since FileManager.enumerator(at:) does NOT return nil
+      for an unreadable directory on macOS. An accessible directory that yields
+      zero entries, or zero media files, finishes normally with mediaFiles == 0
+      and does NOT throw. A deep (non-root) access failure is tolerated and does
+      not abort the scan. This is the contract the slice pins.
