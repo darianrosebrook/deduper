@@ -5,7 +5,7 @@ mode: fix
 lifecycle_state: active
 worktree: merge-test-001
 created_at: '2026-06-02T07:00:00.000Z'
-updated_at: '2026-06-02T07:13:41.446Z'
+updated_at: '2026-06-02T07:17:14.896Z'
 blast_radius:
   modules:
     - DeduperKitTests
@@ -19,11 +19,8 @@ scope:
     - Tests/DeduperKitTests/E2EIntegrationTests.swift
     - Tests/DeduperUITests/MergeViewModelTests.swift
     - Tests/DeduperKitTests/Fixtures/
-    - Sources/DeduperKit/MergeService.swift
   out:
-    - Sources/DeduperUI
-    - Sources/DeduperCLI
-    - Sources/DeduperApp
+    - Sources/
 invariants:
   - >-
     Every merge-safety test that exercises a destructive operation (quarantine,
