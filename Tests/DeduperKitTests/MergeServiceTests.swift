@@ -67,6 +67,66 @@ struct MergeServiceTests {
         )
     }
 
+    /// Every protected prefix in MergeService.isProtectedPath must be
+    /// refused, not just /System/Library. A regression that narrows or
+    /// removes any one prefix (e.g. /Applications -> /Application) would
+    /// otherwise pass the single-prefix test above while letting the
+    /// tool quarantine OS or application files. Covers both the trash
+    /// path and the quarantine path, since each calls isProtectedPath
+    /// independently.
+    @Test(
+        "All protected prefixes are refused (trash + quarantine)",
+        arguments: [
+            "/System/Library",
+            "/usr",
+            "/Library",
+            "/bin",
+            "/sbin",
+            "/Applications",
+            "/private/var"
+        ]
+    )
+    func allProtectedPrefixesRefused(prefix: String) throws {
+        let dir = try makeTempDir()
+        defer { cleanup(dir) }
+        let logDir = dir.appendingPathComponent("logs")
+        let qDir = dir.appendingPathComponent("quarantine")
+        // A fake, non-existent file under the protected prefix. The
+        // guard must refuse it on path alone, before touching disk.
+        let victim = URL(
+            fileURLWithPath: "\(prefix)/deduper-should-never-touch.jpg"
+        )
+
+        // Trash path
+        let trashTx = try service.moveToTrash(
+            files: [victim], logDirectory: logDir
+        )
+        #expect(
+            trashTx.entries.isEmpty,
+            "\(prefix): trash must move nothing"
+        )
+        #expect(
+            trashTx.errors.count == 1
+                && trashTx.errors[0].reason.contains("Protected"),
+            "\(prefix): trash must refuse with a Protected-path error, got: \(trashTx.errors.map(\.reason))"
+        )
+
+        // Quarantine path (separate isProtectedPath call site)
+        let qTx = try service.moveToQuarantine(
+            assets: [AssetBundle(primary: victim)],
+            logDirectory: logDir,
+            quarantineRoot: qDir
+        )
+        #expect(
+            qTx.entries.isEmpty,
+            "\(prefix): quarantine must move nothing"
+        )
+        #expect(
+            qTx.errors.contains { $0.reason.contains("Protected") },
+            "\(prefix): quarantine must refuse with a Protected-path error, got: \(qTx.errors.map(\.reason))"
+        )
+    }
+
     @Test("Transaction log is persisted as JSON")
     func transactionLogPersisted() throws {
         let dir = try makeTempDir()
@@ -478,6 +538,68 @@ struct MergeServiceTests {
             $0.isCompanion
         }
         #expect(companionEntries.count == 1)
+    }
+
+    @Test("Undo restores both primary and companion with original content")
+    func companionUndoRestoresBoth() throws {
+        let dir = try makeTempDir()
+        defer { cleanup(dir) }
+
+        let logDir = dir.appendingPathComponent("logs")
+        let qDir = dir.appendingPathComponent("quarantine")
+        let primary = dir.appendingPathComponent("IMG.heic")
+        let companion = dir.appendingPathComponent("IMG.aae")
+        // Distinct content so a swap or a dropped-companion bug is
+        // caught, not just file presence.
+        try Data("primary-photo-bytes".utf8).write(to: primary)
+        try Data("companion-sidecar-bytes".utf8).write(to: companion)
+
+        let assets = [
+            AssetBundle(primary: primary, companions: [companion])
+        ]
+        let transaction = try service.moveToQuarantine(
+            assets: assets,
+            logDirectory: logDir,
+            quarantineRoot: qDir
+        )
+
+        // Both quarantined (move half — also covered by the move test).
+        #expect(
+            !FileManager.default.fileExists(atPath: primary.path)
+        )
+        #expect(
+            !FileManager.default.fileExists(atPath: companion.path)
+        )
+
+        // Undo: exercises the companion-aware restore path
+        // (primaries sorted before companions in MergeService.undo).
+        let failures = service.undo(
+            transaction: transaction, logDirectory: logDir
+        )
+        #expect(
+            failures.isEmpty,
+            "companion-aware undo must restore both files: \(failures)"
+        )
+
+        // Both files back at their ORIGINAL paths with ORIGINAL bytes.
+        #expect(
+            FileManager.default.fileExists(atPath: primary.path),
+            "primary must be restored"
+        )
+        #expect(
+            FileManager.default.fileExists(atPath: companion.path),
+            "companion sidecar must be restored, not stranded in quarantine"
+        )
+        let primaryBack = try? Data(contentsOf: primary)
+        let companionBack = try? Data(contentsOf: companion)
+        #expect(
+            primaryBack == Data("primary-photo-bytes".utf8),
+            "primary content must round-trip unchanged"
+        )
+        #expect(
+            companionBack == Data("companion-sidecar-bytes".utf8),
+            "companion content must round-trip unchanged (not swapped with primary)"
+        )
     }
 
     // MARK: - TransactionStatus.isStatusUndoEligible

@@ -1,0 +1,108 @@
+id: MERGE-TEST-001
+title: 'Harden merge-safety test coverage: fix disjunctive-OR tautologies and add untested data-loss paths'
+risk_tier: 1
+mode: fix
+lifecycle_state: closed
+resolution: completed
+created_at: '2026-06-02T07:00:00.000Z'
+updated_at: '2026-06-02T07:36:29.693Z'
+blast_radius:
+  modules:
+    - DeduperKitTests
+    - DeduperUITests
+  data_migration: false
+operational_rollback_slo: 5m
+scope:
+  in:
+    - Tests/DeduperKitTests/MergeSmokeTests.swift
+    - Tests/DeduperKitTests/MergeServiceTests.swift
+    - Tests/DeduperKitTests/E2EIntegrationTests.swift
+    - Tests/DeduperUITests/MergeViewModelTests.swift
+    - Tests/DeduperKitTests/Fixtures/
+    - Tests/DeduperUITests/MaterializationTests.swift
+  out:
+    - Sources/
+invariants:
+  - >-
+    Every merge-safety test that exercises a destructive operation (quarantine,
+    rename, purge, undo) asserts the resulting on-disk file state with
+    independent positive assertions, never a disjunctive-OR that can pass when
+    the destructive op silently fails.
+  - >-
+    Undo of a transaction containing companion (isCompanion=true) move entries
+    restores every companion file to its original path with original bytes.
+  - >-
+    No test added by this spec mutates files under Sources/; production behavior
+    is unchanged — only test assertions and fixtures are added or corrected.
+acceptance:
+  - id: A1
+    given: 'the vacatedPathRenameTarget smoke test'
+    when: 'the keeper rename into a quarantine-vacated slot runs'
+    then: >-
+      the test asserts independently that the keeper is gone from its original
+      path, the rename target exists, and tx.errors is empty — replacing the
+      tautological `!exists(nonKeeper) || exists(renameTarget)` assertion.
+  - id: A2
+    given: 'the purgeDeletesQuarantinedFiles smoke test'
+    when: 'undo runs after the quarantined file was purged'
+    then: >-
+      the test asserts `!failures.isEmpty` as an independent assertion, proving
+      undo-after-purge fails loudly — replacing the
+      `!failures.isEmpty || !exists(nonKeeper)` disjunction.
+  - id: A3
+    given: 'a quarantine transaction with a primary and an .aae companion'
+    when: 'undo is invoked'
+    then: >-
+      a new test asserts both the primary and the companion are restored to
+      their original paths with original byte content.
+  - id: A4
+    given: 'each of the seven protected-path prefixes in isProtectedPath'
+    when: 'a file under that prefix is submitted to moveToQuarantine'
+    then: >-
+      a parameterized test asserts the move is refused with a Protected-path
+      error for every prefix, not just /System/Library.
+  - id: A5
+    given: 'a completed scan that wrote both a SwiftData session and an NDJSON.gz artifact'
+    when: 'the artifact is decoded via SessionArtifact.readGroups and compared to SwiftData rows'
+    then: >-
+      a new test asserts group count, group IDs, and member paths are identical
+      between the two stores (AD-001 canonical-agreement guard).
+non_functional:
+  security:
+    - >-
+      Protected-path refusal must hold for all seven system prefixes so the tool
+      cannot quarantine OS or application files; A4 mechanically proves this.
+    - >-
+      Tests must not write outside per-test temp directories or the project
+      Fixtures/ directory; no test may touch real user data paths.
+  performance:
+    - >-
+      Added tests run within the existing fast unit-test gate (sub-5s suite);
+      no test introduces fixed sleeps as a correctness gate.
+observability:
+  - >-
+    log: MergeService emits os.Logger entries (category "merge") for every
+    quarantine, rename, rollback, undo, and purge; tests assert resulting file
+    state rather than parsing logs, but the logs remain the runtime audit trail
+    for the operations under test.
+  - >-
+    log: The NDJSON journal (merge-<txid>.journal.ndjson) records
+    planned -> moved/renamed -> completed ordering; the WAL-ordering test reads
+    it as the observability artifact proving write-ahead behavior.
+rollback:
+  - >-
+    This spec adds and corrects tests only (scope.out forbids Sources/). To roll
+    back, revert the test commits on the feature branch; production code is
+    untouched, so no runtime rollback is required.
+  - >-
+    If a newly-added test reveals a real production defect, file a separate fix
+    spec; do not weaken the assertion to make it pass.
+contracts:
+  - name: merge-undo-restore
+    type: behavior
+    path: Sources/DeduperKit/MergeService.swift
+    description: >-
+      undo(transaction:) restores every move entry (primary and companion) to
+      its originalPath, and returns non-empty failures when the quarantined
+      source no longer exists (e.g. after purge). These behaviors are the
+      contract the hardened tests pin.
