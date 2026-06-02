@@ -2,10 +2,11 @@ id: UI-SCAN-TO-REVIEW-001
 title: 'Prove and close the UI scan-to-review loop through ScanOrchestrator'
 risk_tier: 1
 mode: feature
-lifecycle_state: active
-worktree: ui-scan-to-review-001
+lifecycle_state: closed
+resolution: completed
+closure_notes: 'Verify-and-close disposition (not greenfield): the scan→review loop was already wired; this slice proved each invariant adversarially and added the one genuine source change (typed ScanOutcome). 299/299 tests, 5/5 CAWS gates PASS. Production footprint bounded to 2 files: ScanOrchestrator.swift (testability seams + orphan-artifact cleanup fix) and ScanViewModel.swift (typed ScanOutcome replacing stringly errorMessage). Test footprint +643 lines across ScanOrchestratorTests, MaterializationTests, ScanViewModelTests, MergeViewModelTests. Mutation evidence: A2 (V2-branch corruption reddens real-scan agreement, V1 does not — complementary), A3 (removing .completed assignment reddens success tests), A5 (empty/permission/cancel collapse each redden only their own mapping test), A6 (id-without-completed reddens the biconditional; removing execute() empty-assets guard reddens the unmaterialized-session merge test). Follow-up intentionally NOT fixed here (below the VM boundary, out of scope): ScanService conflates empty-directory with not-accessible (ScanService.swift:81) — to be addressed in a dedicated repair slice.'
 created_at: '2026-06-02T08:00:00.000Z'
-updated_at: '2026-06-02T08:09:24.369Z'
+updated_at: '2026-06-02T08:34:38.733Z'
 blast_radius:
   modules:
     - DeduperKit
