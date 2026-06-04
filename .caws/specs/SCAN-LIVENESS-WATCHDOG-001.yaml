@@ -1,0 +1,32 @@
+id: SCAN-LIVENESS-WATCHDOG-001
+title: 'Scan liveness: per-asset hash timeout, skip-with-diagnostic, heartbeat'
+risk_tier: 2
+mode: fix
+lifecycle_state: active
+created_at: '2026-06-04T22:58:42.205Z'
+updated_at: '2026-06-04T22:58:42.205Z'
+blast_radius:
+  modules:
+    - 'TODO: list one or more modules this spec touches.'
+  data_migration: false
+operational_rollback_slo: 5m
+scope:
+  in:
+    - 'Sources/DeduperKit/DetectionService.swift'
+    - 'Sources/DeduperKit/DetectionTypes.swift'
+    - 'Tests/DeduperKitTests/ScanLivenessTests.swift'
+  out: []
+invariants:
+  - 'TODO: describe one invariant this spec guarantees.'
+acceptance:
+  - id: A1
+    given: 'TODO'
+    when: 'TODO'
+    then: 'TODO'
+non_functional: {}
+contracts:
+  - name: 'scan-liveness'
+    type: behavior
+  - name: 'liveness-regression'
+    type: contract-test
+    path: 'Tests/DeduperKitTests/ScanLivenessTests.swift'
