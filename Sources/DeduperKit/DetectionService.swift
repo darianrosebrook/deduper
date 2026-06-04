@@ -12,8 +12,72 @@ public struct DetectionProgress: Sendable {
         case indexing
         case querying
         case complete
+        /// Wall-clock liveness tick, emitted on a fixed interval independent of
+        /// per-asset completion so a stalled hashing phase is observable within
+        /// one interval. `secondsSinceLastCompletion` growing while `current`
+        /// is frozen is the signature of a hung worker pool.
+        case heartbeat(
+            current: Int,
+            total: Int,
+            activeWorkers: Int,
+            secondsSinceLastCompletion: Double
+        )
+        /// A single asset was abandoned by the per-asset watchdog and excluded
+        /// from hashing. Carries a stable identity (canonical path) and reason.
+        case assetSkipped(identity: String, reason: SkipReason)
     }
     public let phase: Phase
+}
+
+/// Why an asset was excluded from the hashing phase.
+public enum SkipReason: String, Sendable {
+    /// The per-asset hash operation exceeded the configured timeout and was
+    /// abandoned so it could not deadlock the hashing task group.
+    case hashTimeout
+}
+
+/// Outcome of a single asset's hashing attempt under the watchdog.
+private enum HashOutcome: Sendable {
+    case hashed(ScannedFile, [ImageHashResult])
+    case skipped(ScannedFile, reason: SkipReason)
+}
+
+/// Result of racing a blocking hash against the per-asset timeout.
+private enum HashRace: Sendable {
+    case done([ImageHashResult])
+    case timedOut
+}
+
+/// Guarantees a continuation is resumed exactly once when two racing
+/// closures (the blocking work and the timeout) may both try.
+private final class ResumeGuard: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    /// Returns true to exactly one caller; that caller owns the resume.
+    func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if done { return false }
+        done = true
+        return true
+    }
+}
+
+/// Tracks hashing-phase liveness so a concurrent heartbeat task can observe
+/// whether forward progress is happening. Single writer (the drain loop);
+/// the heartbeat reads snapshots concurrently — hence an actor.
+private actor LivenessTracker {
+    private var completed = 0
+    private var lastCompletion = CFAbsoluteTimeGetCurrent()
+
+    func recordCompletion() {
+        completed += 1
+        lastCompletion = CFAbsoluteTimeGetCurrent()
+    }
+
+    /// (completed-so-far, seconds since the last completion advanced).
+    func snapshot() -> (completed: Int, sinceLast: Double) {
+        (completed, CFAbsoluteTimeGetCurrent() - lastCompletion)
+    }
 }
 
 /// Orchestrates the duplicate detection pipeline:
@@ -26,17 +90,59 @@ public struct DetectionService: Sendable {
     private let videoFingerprinter: VideoFingerprinter
     private let metadataService: MetadataService
     private let hashCache: HashCacheService?
+    /// Blocking image-hash function. Injectable so tests can simulate a hung
+    /// decode (a never-returning provider) and exercise the watchdog without a
+    /// real corrupt media file. Defaults to the image hasher.
+    private let hashProvider: @Sendable (URL) -> [ImageHashResult]
 
     public init(
         imageHasher: ImageHashingService = ImageHashingService(),
         videoFingerprinter: VideoFingerprinter = VideoFingerprinter(),
         metadataService: MetadataService = MetadataService(),
-        hashCache: HashCacheService? = nil
+        hashCache: HashCacheService? = nil,
+        hashProvider: (@Sendable (URL) -> [ImageHashResult])? = nil
     ) {
         self.imageHasher = imageHasher
         self.videoFingerprinter = videoFingerprinter
         self.metadataService = metadataService
         self.hashCache = hashCache
+        self.hashProvider = hashProvider
+            ?? { imageHasher.computeHashes(for: $0) }
+    }
+
+    /// Runs the blocking image-hash for `url` on a Dispatch thread (NOT the
+    /// cooperative pool) and races it against `timeoutSeconds`. Bridging onto
+    /// Dispatch is essential: a hung `CGImageSource` decode is an
+    /// uncancellable blocking syscall; left on the cooperative pool, enough
+    /// hung decodes starve the Swift concurrency runtime and deadlock the
+    /// whole hashing task group.
+    ///
+    /// We deliberately do NOT use a child-task race here: `withTaskGroup`
+    /// implicitly awaits every child at scope exit, and `cancelAll()` cannot
+    /// stop a thread blocked in a C syscall — so a child-task race would still
+    /// block on the hung work. Instead a single continuation is resumed by
+    /// whichever of {work, timeout} fires first (guarded resume-once). When
+    /// the timeout wins, the function returns immediately; the work thread is
+    /// abandoned (leaked, bounded by the count of pathological files) and its
+    /// late resume is a no-op.
+    private func hashWithWatchdog(
+        _ url: URL,
+        timeoutSeconds: Double
+    ) async -> HashRace {
+        let provider = hashProvider
+        return await withCheckedContinuation {
+            (cont: CheckedContinuation<HashRace, Never>) in
+            let gate = ResumeGuard()
+            DispatchQueue.global(qos: .userInitiated).async {
+                let hashes = provider(url)
+                if gate.claim() { cont.resume(returning: .done(hashes)) }
+            }
+            DispatchQueue.global().asyncAfter(
+                deadline: .now() + timeoutSeconds
+            ) {
+                if gate.claim() { cont.resume(returning: .timedOut) }
+            }
+        }
     }
 
     /// Detect duplicates among a set of scanned files.
@@ -330,69 +436,89 @@ public struct DetectionService: Sendable {
             hashingService: imageHasher
         )
 
-        // Compute hashes with bounded concurrency, streaming into index
+        // Compute hashes with bounded concurrency, streaming into index.
+        // Each per-asset hash runs under hashWithWatchdog so a single hung
+        // decode cannot deadlock the task group (SCAN-LIVENESS-WATCHDOG-001).
         let maxConcurrency = ProcessInfo.processInfo.activeProcessorCount
+        let hashTimeout = options.hashTimeoutSeconds
         var fileHashMap: [UUID: (ScannedFile, [ImageHashResult])] = [:]
         var hashCount = 0
+        var skippedCount = 0
         let totalHash = files.count
 
-        await withTaskGroup(
-            of: (ScannedFile, [ImageHashResult]).self
-        ) { group in
+        // Liveness: a heartbeat task emits a wall-clock tick every interval,
+        // independent of per-asset completion, so a stalled phase surfaces
+        // within one interval instead of looking like slow progress.
+        let tracker = LivenessTracker()
+        let heartbeatInterval = options.heartbeatIntervalSeconds
+        let heartbeat = Task { [progress] in
+            while !Task.isCancelled {
+                try? await Task.sleep(
+                    nanoseconds: UInt64(heartbeatInterval * 1_000_000_000)
+                )
+                if Task.isCancelled { break }
+                let snap = await tracker.snapshot()
+                let active = max(0, min(
+                    maxConcurrency, totalHash - snap.completed
+                ))
+                progress?(.init(phase: .heartbeat(
+                    current: snap.completed,
+                    total: totalHash,
+                    activeWorkers: active,
+                    secondsSinceLastCompletion: snap.sinceLast
+                )))
+            }
+        }
+
+        await withTaskGroup(of: HashOutcome.self) { group in
             var iterator = files.makeIterator()
 
             func addNext() -> Bool {
                 guard let file = iterator.next() else { return false }
-                group.addTask { [hashCache, imageHasher] in
-                    // Check cache first (content fingerprint)
-                    if let cache = hashCache {
-                        let fp = ContentFingerprint.compute(
-                            for: file.url
-                        )
+                group.addTask {
+                    // Cache hit skips the (potentially hanging) decode entirely.
+                    if let cache = self.hashCache {
+                        let fp = ContentFingerprint.compute(for: file.url)
                         if let fp,
                            let cached = await cache
                                .lookupByFingerprint(fingerprint: fp) {
-                            let results = cached.map {
+                            return .hashed(file, cached.map {
                                 ImageHashResult(
                                     algorithm: HashAlgorithm(
                                         rawValue: $0.algorithm
                                     ) ?? .pHash,
                                     hash: $0.hash
                                 )
-                            }
-                            return (file, results)
+                            })
                         }
-
-                        // Fallback: path-based lookup
                         let mtime = Self.modificationDate(of: file.url)
                         if let cached = await cache.lookup(
                             path: PathIdentity.canonical(file.url),
                             fileSize: file.fileSize,
                             modifiedAt: mtime
                         ) {
-                            let results = cached.map {
+                            return .hashed(file, cached.map {
                                 ImageHashResult(
                                     algorithm: HashAlgorithm(
                                         rawValue: $0.algorithm
                                     ) ?? .pHash,
                                     hash: $0.hash
                                 )
-                            }
-                            return (file, results)
+                            })
                         }
                     }
 
-                    // Cache miss — compute fresh
-                    let hashes = imageHasher.computeHashes(
-                        for: file.url
+                    // Cache miss — compute under the per-asset watchdog.
+                    let race = await self.hashWithWatchdog(
+                        file.url, timeoutSeconds: hashTimeout
                     )
+                    guard case .done(let hashes) = race else {
+                        return .skipped(file, reason: .hashTimeout)
+                    }
 
-                    // Store in cache with content fingerprint
-                    if let cache = hashCache {
+                    if let cache = self.hashCache {
                         let mtime = Self.modificationDate(of: file.url)
-                        let fp = ContentFingerprint.compute(
-                            for: file.url
-                        )
+                        let fp = ContentFingerprint.compute(for: file.url)
                         await cache.store(
                             path: PathIdentity.canonical(file.url),
                             fileSize: file.fileSize,
@@ -405,7 +531,7 @@ public struct DetectionService: Sendable {
                         )
                     }
 
-                    return (file, hashes)
+                    return .hashed(file, hashes)
                 }
                 return true
             }
@@ -414,25 +540,43 @@ public struct DetectionService: Sendable {
                 _ = addNext()
             }
 
-            for await (file, hashes) in group {
-                fileHashMap[file.id] = (file, hashes)
+            for await outcome in group {
+                await tracker.recordCompletion()
 
-                // Stream: insert into index immediately
-                let hashResults = hashes.map { HashResult(from: $0) }
-                await hashIndex.add(
-                    fileId: file.id.uuidString,
-                    hashResults: hashResults
-                )
-
-                hashCount += 1
-                if hashCount % 200 == 0 {
-                    progress?(.init(phase: .hashing(
-                        current: hashCount, total: totalHash
+                switch outcome {
+                case .hashed(let file, let hashes):
+                    fileHashMap[file.id] = (file, hashes)
+                    let hashResults = hashes.map { HashResult(from: $0) }
+                    await hashIndex.add(
+                        fileId: file.id.uuidString,
+                        hashResults: hashResults
+                    )
+                    hashCount += 1
+                    if hashCount % 200 == 0 {
+                        progress?(.init(phase: .hashing(
+                            current: hashCount, total: totalHash
+                        )))
+                    }
+                case .skipped(let file, let reason):
+                    skippedCount += 1
+                    logger.warning(
+                        "Watchdog skipped asset: \(file.url.path, privacy: .public) reason=\(reason.rawValue, privacy: .public)"
+                    )
+                    progress?(.init(phase: .assetSkipped(
+                        identity: PathIdentity.canonical(file.url),
+                        reason: reason
                     )))
                 }
 
                 _ = addNext()
             }
+        }
+
+        heartbeat.cancel()
+        if skippedCount > 0 {
+            logger.warning(
+                "Hashing phase complete: \(hashCount, privacy: .public) hashed, \(skippedCount, privacy: .public) skipped (watchdog)"
+            )
         }
 
         progress?(.init(phase: .querying))

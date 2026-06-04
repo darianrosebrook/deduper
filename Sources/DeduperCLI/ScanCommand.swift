@@ -146,6 +146,16 @@ struct Scan: AsyncParsableCommand {
                     status("  Querying index...")
                 case .complete:
                     break
+                case .heartbeat(let n, let total, let active, let since):
+                    // Wall-clock liveness tick: a frozen `n` with a growing
+                    // "since last" is the signature of a stalled worker pool.
+                    status(
+                        "  ♥ hashing \(n)/\(total) — \(active) active, "
+                        + String(format: "%.0f", since)
+                        + "s since last completion"
+                    )
+                case .assetSkipped(let identity, let reason):
+                    status("  ⚠ skipped \(identity) (\(reason.rawValue))")
                 }
             }
         )
