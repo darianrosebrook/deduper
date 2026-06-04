@@ -7,7 +7,8 @@ created_at: '2026-06-04T22:58:42.205Z'
 updated_at: '2026-06-04T22:58:42.205Z'
 blast_radius:
   modules:
-    - 'TODO: list one or more modules this spec touches.'
+    - 'DeduperKit/DetectionService (image+video hashing task group)'
+    - 'DeduperKit/DetectionTypes (DetectionProgress, skip diagnostics)'
   data_migration: false
 operational_rollback_slo: 5m
 scope:
@@ -15,15 +16,45 @@ scope:
     - 'Sources/DeduperKit/DetectionService.swift'
     - 'Sources/DeduperKit/DetectionTypes.swift'
     - 'Tests/DeduperKitTests/ScanLivenessTests.swift'
-  out: []
+  out:
+    - 'Sources/DeduperUI'
+    - 'Sources/DeduperApp'
 invariants:
-  - 'TODO: describe one invariant this spec guarantees.'
+  - 'A single asset whose hash/fingerprint operation never returns MUST NOT prevent the scan from completing (no unbounded deadlock of the hashing task group).'
+  - 'Every input asset is accounted for in the outcome: hashed, skipped-with-diagnostic, or failed — none silently dropped.'
+  - 'Scan progress advances on a wall-clock heartbeat independent of per-asset completion, so a stall is observable within one heartbeat interval.'
+  - 'The watchdog is correctness-neutral: assets that hash normally produce identical hashes, groups, and confidence as before this change.'
 acceptance:
   - id: A1
-    given: 'TODO'
-    when: 'TODO'
-    then: 'TODO'
-non_functional: {}
+    given: 'a corpus of hashable images where exactly one asset''s hash operation never returns'
+    when: 'a scan runs with the per-asset watchdog enabled'
+    then: 'the scan completes (does not deadlock) and produces duplicate groups for the healthy assets'
+  - id: A2
+    given: 'an asset whose per-asset hash operation exceeds the configured timeout'
+    when: 'the watchdog fires for that asset'
+    then: 'the asset is excluded from hashing and recorded as a skipped asset carrying a typed diagnostic with its path/stable identity and reason=timeout'
+  - id: A3
+    given: 'a scan in progress where no per-asset completion occurs for longer than the heartbeat interval'
+    when: 'the heartbeat tick elapses'
+    then: 'a heartbeat progress event is emitted carrying active-worker count, completed/total counts, and seconds-since-last-completion'
+  - id: A4
+    given: 'a unit test injecting a hasher that never returns for one asset and returns normally for the rest'
+    when: 'detection runs'
+    then: 'the task group drains, detection returns, the hung asset appears in the skipped set with reason=timeout, and the test relies on no real corrupt media'
+  - id: A5
+    given: 'a completed scan in which at least one asset was skipped by the watchdog'
+    when: 'the scan finishes'
+    then: 'the returned metrics include counts of hashed, skipped-timeout, and failed assets'
+  - id: A6
+    given: 'a healthy corpus with no hanging assets'
+    when: 'scanned with the watchdog enabled'
+    then: 'detection results (group membership, keeper, confidence) are byte-for-byte identical to watchdog-disabled behavior (no correctness regression)'
+non_functional:
+  performance:
+    - 'Per-asset hash timeout is configurable via DetectOptions; default 30s.'
+    - 'Heartbeat interval default 5s.'
+    - 'Watchdog adds no polling overhead for assets that complete normally (per-asset race/cancellation, not a poll loop).'
+    - 'Skipped/hung assets logged with stable file identity + reason; final summary aggregates hashed/skipped/failed counts.'
 contracts:
   - name: 'scan-liveness'
     type: behavior
