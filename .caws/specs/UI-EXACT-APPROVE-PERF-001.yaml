@@ -1,0 +1,31 @@
+id: UI-EXACT-APPROVE-PERF-001
+title: 'Bulk exact approve: single fetch instead of O(n) per-group SwiftData queries'
+risk_tier: 2
+mode: fix
+lifecycle_state: active
+created_at: '2026-06-05T06:24:06.143Z'
+updated_at: '2026-06-05T06:24:06.143Z'
+blast_radius:
+  modules:
+    - 'TODO: list one or more modules this spec touches.'
+  data_migration: false
+operational_rollback_slo: 5m
+scope:
+  in:
+    - 'Sources/DeduperUI/ViewModels/GroupListViewModel.swift'
+    - 'Tests/DeduperUITests/TriageFunnelTests.swift'
+  out: []
+invariants:
+  - 'TODO: describe one invariant this spec guarantees.'
+acceptance:
+  - id: A1
+    given: 'TODO'
+    when: 'TODO'
+    then: 'TODO'
+non_functional: {}
+contracts:
+  - name: 'bulk-approve-single-fetch'
+    type: behavior
+  - name: 'bulk-approve-perf'
+    type: contract-test
+    path: 'Tests/DeduperUITests/TriageFunnelTests.swift'
