@@ -1,0 +1,31 @@
+id: UI-VIDEO-PLAYER-CRASH-001
+title: 'Fix video detail crash: replace SwiftUI VideoPlayer with AppKit AVPlayerView'
+risk_tier: 2
+mode: fix
+lifecycle_state: active
+created_at: '2026-06-05T04:47:11.121Z'
+updated_at: '2026-06-05T04:47:11.121Z'
+blast_radius:
+  modules:
+    - 'TODO: list one or more modules this spec touches.'
+  data_migration: false
+operational_rollback_slo: 5m
+scope:
+  in:
+    - 'Sources/DeduperUI/Views/Detail/SplitVideoComparison.swift'
+    - 'Tests/DeduperUITests/SplitVideoComparisonTests.swift'
+  out: []
+invariants:
+  - 'TODO: describe one invariant this spec guarantees.'
+acceptance:
+  - id: A1
+    given: 'TODO'
+    when: 'TODO'
+    then: 'TODO'
+non_functional: {}
+contracts:
+  - name: 'video-comparison-no-swiftui-videoplayer'
+    type: behavior
+  - name: 'avplayerview-representable'
+    type: contract-test
+    path: 'Tests/DeduperUITests/SplitVideoComparisonTests.swift'
