@@ -230,4 +230,40 @@ struct TriageFunnelTests {
         // per-render decode regression, not micro-optimized.
         #expect(elapsedMs < 2000)
     }
+
+    // UI-EXACT-APPROVE-PERF-001: bulk approve must use ONE fetch, not O(N). The
+    // old per-group FetchDescriptor loop pegged the main thread and hung on a
+    // 10.7k-group approve. Scale here is kept moderate ON PURPOSE: this runs on
+    // the @MainActor, and a multi-second main-actor block starves the other
+    // parallel @MainActor tests (Swift Testing shares one main actor). The
+    // generous bound still distinguishes the O(1)-fetch fix from the old O(N)
+    // loop, which took multiple seconds even at this size. The full-corpus
+    // (~12k) measurement (~1.9s) is recorded in the spec/commit, not gated here.
+    @Test("Bulk policy-backed approve scales without per-group fetches")
+    @MainActor
+    func bulkApproveScales() {
+        let n = 2_000
+        let entries = Array(
+            repeating: (Era.policyBacked, Int64(1000)), count: n
+        )
+        let (vm, _, container) = makeVM(entries)
+        let context = ModelContext(container)
+        #expect(vm.triageSummary.policyBackedExactUndecided == n)
+
+        let start = Date()
+        let approved = vm.batchApprovePolicyBackedExactMatches(context: context)
+        let elapsedMs = Date().timeIntervalSince(start) * 1000
+
+        print("""
+        [perf] bulk approve \(approved) policy-backed exact: \
+        \(String(format: "%.1f", elapsedMs)) ms (single fetch)
+        """)
+
+        #expect(approved == n)
+        #expect(vm.triageSummary.policyBackedExactApproved == n)
+        #expect(vm.triageSummary.policyBackedExactUndecided == 0)
+        // Generous bound: bulk-fetch does this in well under a second; the old
+        // O(N) per-group loop would not. Loose enough to never flake under load.
+        #expect(elapsedMs < 8000)
+    }
 }
