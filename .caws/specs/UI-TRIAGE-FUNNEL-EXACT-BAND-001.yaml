@@ -7,7 +7,10 @@ created_at: '2026-06-05T03:02:45.597Z'
 updated_at: '2026-06-05T03:02:45.597Z'
 blast_radius:
   modules:
-    - 'TODO: list one or more modules this spec touches.'
+    - 'DeduperUI/TriageFunnelView + ExactBandCard (new triage summary, exact band)'
+    - 'DeduperUI/GroupListViewModel (policy-backed trust gate + cached triage summary)'
+    - 'DeduperUI/AppRootView (session opens on funnel; list as drill-down)'
+    - 'DeduperKit/ExactKeeperPolicy (shared rationale marker constant)'
   data_migration: false
 operational_rollback_slo: 5m
 scope:
@@ -24,15 +27,62 @@ scope:
     - 'Tests/DeduperUITests/TriageLoopTests.swift'
     - 'Tests/DeduperUITests/MaterializationTests.swift'
     - 'Tests/DeduperKitTests/ScanExactKeeperPolicyTests.swift'
-  out: []
+  out:
+    - 'Sources/DeduperApp'
+    - 'Sources/DeduperKit/DetectionService.swift'
+    - 'Sources/DeduperKit/MergeService.swift'
+    - 'Sources/DeduperKit/Persistence.swift'
 invariants:
-  - 'TODO: describe one invariant this spec guarantees.'
+  - 'No UI path may bulk-approve non-policy-backed exact groups. There is exactly one bulk-approve entry point, and it approves only policy-backed exact groups (deterministic keeper from SCAN-EXACT-KEEPER-POLICY-001). The pre-existing broad path that approved every sha256Exact group is removed.'
+  - 'Policy-backed is determined structurally, never from confidence: matchKind == sha256Exact AND a group rationale line begins with the shared ExactKeeperPolicy.rationaleMarker (which the policy provably emits). Legacy era-1 (legacyUnknown) and era-2 (sha256Exact without the marker) are NOT policy-backed.'
+  - 'The shared rationaleMarker is a machine contract: do not localize or edit without a migration; the producer (ExactKeeperPolicy) is asserted to emit it and the consumer (UI) is asserted to require it.'
+  - 'Bulk approve writes ReviewDecision=.approved only (reversible); it never moves files. Merge stays the separate downstream MergeSheet step. No DetectionService/MergeService/Persistence-schema/design-token change.'
+  - 'A selected session opens on the triage funnel summary, not the flat group list; the list/filters/detail remain reachable as a drill-down. Loading and true-empty states are visually distinct (loading inferred from materialization progress, not from an empty group set).'
+  - 'Triage band aggregates are computed from a cached summary refreshed on load/decision/approve/clear, not by decoding rationaleJSON during view-body rendering.'
+non_functional:
+  performance:
+    - 'Policy-backed classification is cached (memoized per materialization load), not recomputed per SwiftUI body evaluation; verified scalable on a ~10.7k-group session.'
 acceptance:
   - id: A1
-    given: 'TODO'
-    when: 'TODO'
-    then: 'TODO'
-non_functional: {}
+    given: 'a session is selected in the sidebar'
+    when: 'its groups have materialized'
+    then: 'the content area renders the triage funnel summary (exact band first-class), not the flat GroupListView'
+  - id: A2
+    given: 'a session with exact groups'
+    when: 'the exact band computes its count'
+    then: 'membership is keyed on matchKind == sha256Exact and policy-backed status, never on confidence == 1.0'
+  - id: A3
+    given: 'a policy-backed exact band'
+    when: 'it renders'
+    then: 'it shows the exact group count and total reclaimable bytes'
+  - id: A4
+    given: 'a session whose exact groups are policy-backed'
+    when: 'the band renders'
+    then: 'the primary bulk-approve action is exposed and targets only policy-backed exact groups'
+  - id: A5
+    given: 'a session whose exact groups are legacy (era-1 legacyUnknown or era-2 sha256Exact without the marker)'
+    when: 'the band renders'
+    then: 'no primary bulk-approve is shown; a review/rescan affordance is shown instead, and those groups stay undecided'
+  - id: A6
+    given: 'the exact-band primary action is invoked'
+    when: 'it runs'
+    then: 'it marks ReviewDecision=.approved for the policy-backed exact groups (reversible) via the existing batch path and performs no merge'
+  - id: A7
+    given: 'the exact-band approve confirmation'
+    when: 'it is shown'
+    then: 'its copy names the keeper policy and that approval does not move files; merge/quarantine/undo is described as the downstream step'
+  - id: A8
+    given: 'the user is on the triage funnel'
+    when: 'they drill into a band'
+    then: 'the existing group list, filters, and detail review are reachable, and a way back to the summary exists'
+  - id: A9
+    given: 'this slice'
+    when: 'it is implemented'
+    then: 'no DetectionService, MergeService, Persistence-schema, or design-token change occurs (the rationaleMarker is a non-behavioral shared constant)'
+  - id: A10
+    given: 'policy-backed, era-2, legacyUnknown, and mixed sessions'
+    when: 'the triage summary and bulk-approve run'
+    then: 'tests assert only policy-backed exact groups are counted bulk-approvable and approved, and the rationaleJSON marker round-trips through materialization'
 contracts:
   - name: 'triage-funnel-exact-band'
     type: behavior
