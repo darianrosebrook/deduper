@@ -2,9 +2,18 @@ id: UI-TRIAGE-FUNNEL-EXACT-BAND-001
 title: 'Triage funnel exact band: trust-gated bulk-approval for policy-backed exact groups'
 risk_tier: 2
 mode: feature
-lifecycle_state: active
+lifecycle_state: closed
+resolution: completed
+closure_notes: 'Completed. First cockpit slice as a TRUST-BOUNDARY, not a layout: a selected session opens on TriageFunnelView with the exact band first-class.
+1. Single bulk-approve entry point batchApprovePolicyBackedExactMatches approves ONLY policy-backed exact groups (deterministic keeper). Broad ''approve every sha256Exact'' path REMOVED — era-1 (legacyUnknown) and era-2 (sha256Exact without keeper marker) never bulk-approved. Audited: 0 surviving broad-approve callers.
+2. Policy-backed detected structurally via shared ExactKeeperPolicy.rationaleMarker (machine contract, drift-tested both sides), never from confidence. Cached (TriageSummary + policyBackedExactIds), recomputed only on load/decision/approve/clear, never in view body.
+3. Approve writes ReviewDecision=.approved (reversible); merge stays downstream MergeSheet; post-approval ''Preview merge'' state; confirmation says files do not move now. Mixed sessions approve only the policy-backed subset; legacy gets review/rescan.
+4. Navigation = state swap (showGroupList), not NavigationStack in split-view content column (macOS 14 mis-route); list/filters/detail reachable as drill-down with Summary back; loading vs empty distinguished via materialization progress. GroupStatsBar lost exact-approve ownership.
+5. No DetectionService/MergeService/Persistence-schema/design-token change; rationaleMarker is non-behavioral. Empirically verified the marker round-trips into the persisted artifact + rationaleJSON (era-3 present, era-2 absent).
+6. Tests: TriageFunnel 7/7 (incl. confidence==1.0 trap, mixed/legacy gates, 12k-group recompute ~524ms one-time off-render), TriageLoop batch rewritten to prove era-2/legacyUnknown stay undecided, Materialization marker round-trip, ExactKeeperPolicy marker drift guard. Full suite 329/329. Merge 688f377; commit 64290bd.
+7. NOT done (correctly out of scope): manual macOS GUI walkthrough (headless — user must run app), fuzzy/video bands, design tokens.'
 created_at: '2026-06-05T03:02:45.597Z'
-updated_at: '2026-06-05T03:02:45.597Z'
+updated_at: '2026-06-05T03:41:38.124Z'
 blast_radius:
   modules:
     - 'DeduperUI/TriageFunnelView + ExactBandCard (new triage summary, exact band)'
