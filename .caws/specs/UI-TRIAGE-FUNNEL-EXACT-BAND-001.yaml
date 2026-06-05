@@ -1,0 +1,41 @@
+id: UI-TRIAGE-FUNNEL-EXACT-BAND-001
+title: 'Triage funnel exact band: trust-gated bulk-approval for policy-backed exact groups'
+risk_tier: 2
+mode: feature
+lifecycle_state: active
+created_at: '2026-06-05T03:02:45.597Z'
+updated_at: '2026-06-05T03:02:45.597Z'
+blast_radius:
+  modules:
+    - 'TODO: list one or more modules this spec touches.'
+  data_migration: false
+operational_rollback_slo: 5m
+scope:
+  in:
+    - 'Sources/DeduperKit/ExactKeeperPolicy.swift'
+    - 'Sources/DeduperUI/ViewModels/GroupListViewModel.swift'
+    - 'Sources/DeduperUI/Views/AppRootView.swift'
+    - 'Sources/DeduperUI/Views/GroupListView.swift'
+    - 'Sources/DeduperUI/Views/Components/GroupStatsBar.swift'
+    - 'Sources/DeduperUI/Views/TriageFunnelView.swift'
+    - 'Sources/DeduperUI/Views/Components/ExactBandCard.swift'
+    - 'Sources/DeduperUI/Views/Components/TriageBandCard.swift'
+    - 'Tests/DeduperUITests/TriageFunnelTests.swift'
+    - 'Tests/DeduperUITests/TriageLoopTests.swift'
+    - 'Tests/DeduperUITests/MaterializationTests.swift'
+    - 'Tests/DeduperKitTests/ScanExactKeeperPolicyTests.swift'
+  out: []
+invariants:
+  - 'TODO: describe one invariant this spec guarantees.'
+acceptance:
+  - id: A1
+    given: 'TODO'
+    when: 'TODO'
+    then: 'TODO'
+non_functional: {}
+contracts:
+  - name: 'triage-funnel-exact-band'
+    type: behavior
+  - name: 'exact-band-trust-gate'
+    type: contract-test
+    path: 'Tests/DeduperUITests/TriageFunnelTests.swift'
