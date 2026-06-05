@@ -1,0 +1,32 @@
+id: SCAN-ZERO-BYTE-EXACT-DISAMBIGUATE-001
+title: 'Zero-byte exact disambiguation: exclude empty files from grouping with typed diagnostic'
+risk_tier: 2
+mode: fix
+lifecycle_state: active
+created_at: '2026-06-05T00:53:50.036Z'
+updated_at: '2026-06-05T00:53:50.036Z'
+blast_radius:
+  modules:
+    - 'TODO: list one or more modules this spec touches.'
+  data_migration: false
+operational_rollback_slo: 5m
+scope:
+  in:
+    - 'Sources/DeduperKit/DetectionService.swift'
+    - 'Sources/DeduperKit/DetectionTypes.swift'
+    - 'Tests/DeduperKitTests/ScanZeroByteTests.swift'
+  out: []
+invariants:
+  - 'TODO: describe one invariant this spec guarantees.'
+acceptance:
+  - id: A1
+    given: 'TODO'
+    when: 'TODO'
+    then: 'TODO'
+non_functional: {}
+contracts:
+  - name: 'zero-byte-exclusion'
+    type: behavior
+  - name: 'zero-byte-regression'
+    type: contract-test
+    path: 'Tests/DeduperKitTests/ScanZeroByteTests.swift'
