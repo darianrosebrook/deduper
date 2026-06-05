@@ -121,6 +121,21 @@ struct ScanExactKeeperPolicyTests {
             || sel.rationale.contains("album"))
     }
 
+    // Drift guard (UI-TRIAGE-FUNNEL-EXACT-BAND-001): every keeper-decision
+    // rationale begins with the shared machine-contract marker, which the UI
+    // triage funnel relies on to detect policy-backed exact groups. If this
+    // ever fails, the producer and the UI consumer have drifted.
+    @Test("Keeper rationale begins with the shared rationaleMarker")
+    func rationaleBeginsWithMarker() throws {
+        let organized = cand(UUID(), "/Users/me/Pictures/2019/Italy/IMG.jpg")
+        let dump = cand(UUID(), "/Users/me/Downloads/IMG (1).jpg")
+        let sel = try #require(policy.selectKeeper(from: [organized, dump]))
+        #expect(sel.rationale.hasPrefix(ExactKeeperPolicy.rationaleMarker))
+        // Sole-candidate branch also carries the marker.
+        let solo = try #require(policy.selectKeeper(from: [organized]))
+        #expect(solo.rationale.hasPrefix(ExactKeeperPolicy.rationaleMarker))
+    }
+
     // MARK: - Integration tests (through detectDuplicates)
 
     private func makeTempDir() throws -> URL {

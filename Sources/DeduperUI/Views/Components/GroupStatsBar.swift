@@ -1,38 +1,33 @@
 import SwiftUI
 
 /// Aggregate stats bar showing group counts and potential space savings.
+/// A compact status strip for the drilled-in list. It deliberately does NOT
+/// own the exact bulk-approve action — that lives on the triage funnel's exact
+/// band, trust-gated to policy-backed groups. (UI-TRIAGE-FUNNEL-EXACT-BAND-001)
 public struct GroupStatsBar: View {
     public let totalGroups: Int
     public let filteredCount: Int
     public let totalSpaceSavings: Int64
     public let reviewedCount: Int
-    public let undecidedExactCount: Int
     public let approvedCount: Int
     public let mergedCount: Int
-    public let onBatchApproveExact: (() -> Void)?
     public let onMergeApproved: (() -> Void)?
-
-    @State private var showBatchConfirm = false
 
     public init(
         totalGroups: Int,
         filteredCount: Int,
         totalSpaceSavings: Int64,
         reviewedCount: Int = 0,
-        undecidedExactCount: Int = 0,
         approvedCount: Int = 0,
         mergedCount: Int = 0,
-        onBatchApproveExact: (() -> Void)? = nil,
         onMergeApproved: (() -> Void)? = nil
     ) {
         self.totalGroups = totalGroups
         self.filteredCount = filteredCount
         self.totalSpaceSavings = totalSpaceSavings
         self.reviewedCount = reviewedCount
-        self.undecidedExactCount = undecidedExactCount
         self.approvedCount = approvedCount
         self.mergedCount = mergedCount
-        self.onBatchApproveExact = onBatchApproveExact
         self.onMergeApproved = onMergeApproved
     }
 
@@ -68,38 +63,6 @@ public struct GroupStatsBar: View {
             }
 
             Spacer()
-
-            if undecidedExactCount > 0,
-               let onBatch = onBatchApproveExact {
-                Button {
-                    showBatchConfirm = true
-                } label: {
-                    Label(
-                        "Approve \(undecidedExactCount) Exact",
-                        systemImage: "checkmark.circle.fill"
-                    )
-                    .font(.caption)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .confirmationDialog(
-                    "Batch Approve",
-                    isPresented: $showBatchConfirm
-                ) {
-                    Button(
-                        "Approve \(undecidedExactCount) exact matches"
-                    ) {
-                        onBatch()
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text(
-                        "Approve \(undecidedExactCount) byte-identical"
-                        + " (SHA256) matches? This cannot be undone"
-                        + " without resetting decisions."
-                    )
-                }
-            }
 
             if approvedCount > 0, let onMerge = onMergeApproved {
                 Button {

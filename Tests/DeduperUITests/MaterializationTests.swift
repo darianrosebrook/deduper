@@ -247,6 +247,95 @@ struct MaterializationTests {
         }
     }
 
+    /// Build a V2 exact StoredDuplicateGroup. `policyBacked` controls whether
+    /// the keeper-policy rationale marker + keeper.* signals are present —
+    /// mirroring an era-3 vs era-2 persisted artifact.
+    private func storedExactGroup(
+        policyBacked: Bool, savings: Int64, index: Int
+    ) -> StoredDuplicateGroup {
+        let id1 = UUID(), id2 = UUID()
+        let checksum = ConfidenceSignal(
+            key: "checksum", weight: 0.5, rawScore: 1.0,
+            contribution: 0.5, rationale: "SHA256 exact match: abc123..."
+        )
+        var signals = [checksum]
+        var lines = ["Byte-identical files (SHA256)"]
+        if policyBacked {
+            signals.append(ConfidenceSignal(
+                key: "keeper.pathAuthority", weight: 0.45, rawScore: 1.0,
+                contribution: 0.45, rationale: "Organized location"
+            ))
+            lines.append(
+                "\(ExactKeeperPolicy.rationaleMarker)'a.jpg' over "
+                + "'a (1).jpg' (score 0.61 vs 0.28): cleaner basename"
+            )
+        }
+        let members = [id1, id2].map {
+            DuplicateGroupMember(
+                fileId: $0, confidence: 1.0, signals: signals,
+                penalties: [], rationale: ["Byte-identical (SHA256)"],
+                fileSize: savings
+            )
+        }
+        let result = DuplicateGroupResult(
+            groupId: UUID(), members: members, confidence: 1.0,
+            rationaleLines: lines, keeperSuggestion: id1,
+            incomplete: false, mediaType: .photo
+        )
+        let fileMap: [UUID: URL] = [
+            id1: URL(fileURLWithPath: "/tmp/a.jpg"),
+            id2: URL(fileURLWithPath: "/tmp/a (1).jpg")
+        ]
+        return StoredDuplicateGroup(
+            from: result, fileMap: fileMap, index: index
+        )
+    }
+
+    // A2/A10: the keeper-policy marker survives the artifact → SwiftData
+    // materialization, so the UI can tell an era-3 (policy-backed) exact group
+    // apart from an era-2 one even though BOTH are sha256Exact.
+    @Test("Keeper marker round-trips through materialization (policy vs era-2)")
+    @MainActor
+    func policyBackedMarkerRoundTrips() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mat-keeper-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let groups = [
+            storedExactGroup(policyBacked: true, savings: 1000, index: 0),
+            storedExactGroup(policyBacked: false, savings: 1000, index: 1)
+        ]
+        let (container, session, snapshot) = try makeTestSession(
+            groups: groups, tempDir: tempDir
+        )
+        _ = try await ArtifactMaterializer().materialize(
+            session: snapshot, container: container
+        )
+
+        let runId = try fetchSession(
+            sessionId: session.sessionId, container: container
+        ).currentRunId
+        let context = ModelContext(container)
+        let vm = GroupListViewModel()
+        vm.loadGroups(
+            sessionId: session.sessionId,
+            currentRunId: runId, context: context
+        )
+
+        // Both are sha256Exact — matchKind alone cannot distinguish them...
+        #expect(vm.allGroups.count == 2)
+        #expect(vm.allGroups.allSatisfy {
+            $0.matchKind == MatchKind.sha256Exact.rawValue
+        })
+        // ...but exactly one carries the keeper marker through rationaleJSON.
+        #expect(vm.allGroups.filter { vm.isPolicyBackedExact($0) }.count == 1)
+        #expect(vm.triageSummary.policyBackedExactTotal == 1)
+        #expect(vm.triageSummary.legacyExactTotal == 1)
+    }
+
     @Test("Materialized SwiftData rows agree with the canonical artifact")
     @MainActor
     func swiftDataAgreesWithArtifact() async throws {
