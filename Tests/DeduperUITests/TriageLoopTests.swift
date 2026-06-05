@@ -34,6 +34,9 @@ struct TriageLoopTests {
                 materializationRunId: runId
             )
             group.matchKind = MatchKind.sha256Exact.rawValue
+            // Policy-backed (era-3): carries the keeper marker, so these are
+            // bulk-approvable. Selection/advance tests are unaffected by this.
+            group.rationaleJSON = Self.policyBackedRationaleJSON()
             context.insert(group)
             groups.append(group)
         }
@@ -146,9 +149,13 @@ struct TriageLoopTests {
         #expect(vm.selectedGroupId == nil)
     }
 
-    @Test("batch approve excludes legacyUnknown")
+    // TRUST GATE (UI-TRIAGE-FUNNEL-EXACT-BAND-001): bulk approve touches ONLY
+    // policy-backed exact groups. Era-2 (sha256Exact WITHOUT the keeper marker)
+    // and era-1 (legacyUnknown) must stay undecided — proving the old broad
+    // "approve every sha256Exact" behavior is gone.
+    @Test("batch approve touches only policy-backed exact, never legacy")
     @MainActor
-    func batchApproveExcludesLegacyUnknown() {
+    func batchApproveOnlyPolicyBacked() {
         let container = try! UIPersistenceFactory.makeContainer(
             inMemory: true
         )
@@ -156,14 +163,15 @@ struct TriageLoopTests {
         let sessionId = UUID()
         let runId = UUID()
 
-        // 3 sha256Exact + 2 legacyUnknown
+        // 2 policy-backed (sha256Exact + marker), 2 era-2 (sha256Exact, no
+        // marker), 1 legacyUnknown.
         var groups: [GroupSummary] = []
         for i in 0..<5 {
             let group = GroupSummary(
                 sessionId: sessionId,
                 groupIndex: i,
                 groupId: UUID(),
-                confidence: 0.9,
+                confidence: 1.0,
                 mediaTypeRaw: 1,
                 memberCount: 2,
                 suggestedKeeperPath: "/tmp/g\(i)/file0.jpg",
@@ -171,9 +179,15 @@ struct TriageLoopTests {
                 spaceSavings: 1000,
                 materializationRunId: runId
             )
-            group.matchKind = i < 3
-                ? MatchKind.sha256Exact.rawValue
-                : MatchKind.legacyUnknown.rawValue
+            if i < 2 {
+                group.matchKind = MatchKind.sha256Exact.rawValue
+                group.rationaleJSON = Self.policyBackedRationaleJSON()
+            } else if i < 4 {
+                group.matchKind = MatchKind.sha256Exact.rawValue
+                group.rationaleJSON = Self.legacyExactRationaleJSON()
+            } else {
+                group.matchKind = MatchKind.legacyUnknown.rawValue
+            }
             context.insert(group)
             groups.append(group)
         }
@@ -186,15 +200,40 @@ struct TriageLoopTests {
             context: context
         )
 
-        let count = vm.batchApproveExactMatches(context: context)
+        // Summary reflects the trust split before any action.
+        #expect(vm.triageSummary.policyBackedExactTotal == 2)
+        #expect(vm.triageSummary.legacyExactTotal == 2)   // era-2
+        #expect(vm.triageSummary.nonExactTotal == 1)      // legacyUnknown
 
-        #expect(count == 3)
-        // legacyUnknown groups should be untouched
-        for i in 3..<5 {
+        let count = vm.batchApprovePolicyBackedExactMatches(context: context)
+
+        #expect(count == 2)   // only the 2 policy-backed
+        // era-2 and legacyUnknown groups remain undecided.
+        for i in 2..<5 {
             let state = vm.decisionByGroupId[groups[i].groupId]?
                 .state ?? .undecided
             #expect(state == .undecided)
         }
+        // The two policy-backed groups are approved.
+        for i in 0..<2 {
+            #expect(vm.decisionByGroupId[groups[i].groupId]?.state
+                == .approved)
+        }
+    }
+
+    /// rationaleJSON for an era-3 policy-backed exact group (carries marker).
+    static func policyBackedRationaleJSON() -> Data {
+        let lines = [
+            "Byte-identical files (SHA256)",
+            "\(ExactKeeperPolicy.rationaleMarker)'a.jpg' over 'a (1).jpg' "
+            + "(score 0.61 vs 0.28): cleaner basename, deeper album context"
+        ]
+        return try! JSONEncoder().encode(lines)
+    }
+
+    /// rationaleJSON for an era-2 exact group (no keeper marker).
+    static func legacyExactRationaleJSON() -> Data {
+        try! JSONEncoder().encode(["Byte-identical files (SHA256)"])
     }
 
     @Test("applyFilters respects decisionStateFilter")
@@ -299,7 +338,7 @@ struct TriageLoopTests {
         #expect(vm.filteredGroups.count == 3)
     }
 
-    @Test("batchApproveExactMatches normalizes selection")
+    @Test("batchApprovePolicyBackedExactMatches normalizes selection")
     @MainActor
     func batchApproveNormalizesSelection() {
         let (vm, groups, container) = makeVM(groupCount: 3)
@@ -307,7 +346,7 @@ struct TriageLoopTests {
         vm.selectedGroupId = groups[0].groupId
         vm.decisionStateFilter = .undecided
 
-        vm.batchApproveExactMatches(context: context)
+        vm.batchApprovePolicyBackedExactMatches(context: context)
 
         // All approved, filtered to undecided → empty
         #expect(vm.filteredGroups.isEmpty)

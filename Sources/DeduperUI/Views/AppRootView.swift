@@ -11,6 +11,13 @@ public struct AppRootView: View {
     @State private var detailVM = GroupDetailViewModel()
     @State private var mergeVM = MergeViewModel()
     @State private var showMergeSheet = false
+    @State private var showRescanSheet = false
+
+    /// Content column: a selected session opens on the triage funnel; drilling
+    /// into a band swaps to the group list. macOS 14 mis-routes a
+    /// NavigationStack inside a split-view content column, so this is a plain
+    /// state swap, not navigation. (UI-TRIAGE-FUNNEL-EXACT-BAND-001)
+    @State private var showGroupList = false
 
     @State private var columnVisibility: NavigationSplitViewVisibility =
         .all
@@ -22,14 +29,37 @@ public struct AppRootView: View {
             SessionSidebarView(viewModel: sessionVM)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 250)
         } content: {
-            GroupListView(
-                viewModel: groupVM,
-                detailViewModel: detailVM,
-                modelContainer: modelContext.container,
-                onMergeApproved: {
-                    showMergeSheet = true
+            Group {
+                if sessionVM.selectedSessionId == nil {
+                    ContentUnavailableView(
+                        "No Session",
+                        systemImage: "tray",
+                        description: Text(
+                            "Select a session from the sidebar to begin triage."
+                        )
+                    )
+                } else if showGroupList {
+                    GroupListView(
+                        viewModel: groupVM,
+                        detailViewModel: detailVM,
+                        modelContainer: modelContext.container,
+                        onMergeApproved: { showMergeSheet = true },
+                        onBackToSummary: { showGroupList = false }
+                    )
+                } else {
+                    TriageFunnelView(
+                        viewModel: groupVM,
+                        isMaterializing:
+                            sessionVM.materializationProgress != nil,
+                        onDrillIntoList: { kind in
+                            groupVM.matchKindFilter = kind
+                            showGroupList = true
+                        },
+                        onPreviewMerge: { showMergeSheet = true },
+                        onRescan: { showRescanSheet = true }
+                    )
                 }
-            )
+            }
             .navigationSplitViewColumnWidth(min: 300, ideal: 400)
         } detail: {
             GroupDetailView(
@@ -101,6 +131,14 @@ public struct AppRootView: View {
                 )
             }
         }
+        .sheet(isPresented: $showRescanSheet) {
+            // Re-scan so legacy exact groups gain a deterministic keeper.
+            // Selecting the new session re-materializes into the funnel.
+            ScanSheet { newSessionId in
+                sessionVM.loadSessions(context: modelContext)
+                sessionVM.selectedSessionId = newSessionId
+            }
+        }
     }
 
     private var selectedSession: SessionIndex? {
@@ -131,6 +169,10 @@ public struct AppRootView: View {
     }
 
     private func handleSessionChange(_ sessionId: UUID?) {
+        // Always return to the funnel summary on a session switch, and clear
+        // any stale selection/detail so the session opens calmly on the
+        // summary rather than a pre-selected group.
+        showGroupList = false
         groupVM.clear()
         detailVM.clear()
 
@@ -164,11 +206,9 @@ public struct AppRootView: View {
                 for: sessionId,
                 container: modelContext.container
             )
-            // Resume: auto-select first undecided if partial progress
-            if groupVM.reviewedCount > 0,
-               groupVM.reviewedCount < groupVM.totalGroups {
-                groupVM.selectNextUndecided()
-            }
+            // No auto-select on open: the session lands on the triage funnel
+            // summary, not a pre-selected group/detail. Selection happens once
+            // the user drills into the list.
         }
     }
 }

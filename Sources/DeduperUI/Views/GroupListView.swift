@@ -9,17 +9,21 @@ public struct GroupListView: View {
     @EnvironmentObject private var triageBridge: TriageActionBridge
     public let modelContainer: ModelContainer
     public var onMergeApproved: (() -> Void)?
+    /// Return to the triage funnel summary (drill-down back affordance).
+    public var onBackToSummary: (() -> Void)?
 
     public init(
         viewModel: GroupListViewModel,
         detailViewModel: GroupDetailViewModel,
         modelContainer: ModelContainer,
-        onMergeApproved: (() -> Void)? = nil
+        onMergeApproved: (() -> Void)? = nil,
+        onBackToSummary: (() -> Void)? = nil
     ) {
         self.viewModel = viewModel
         self.detailViewModel = detailViewModel
         self.modelContainer = modelContainer
         self.onMergeApproved = onMergeApproved
+        self.onBackToSummary = onBackToSummary
     }
 
     private let gridColumns = [
@@ -31,6 +35,20 @@ public struct GroupListView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
+            if let onBackToSummary {
+                HStack {
+                    Button {
+                        onBackToSummary()
+                    } label: {
+                        Label("Summary", systemImage: "chevron.left")
+                    }
+                    .buttonStyle(.borderless)
+                    Spacer()
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                Divider()
+            }
             GroupFilterBar(viewModel: viewModel)
             Divider()
             GroupStatsBar(
@@ -38,14 +56,8 @@ public struct GroupListView: View {
                 filteredCount: viewModel.filteredCount,
                 totalSpaceSavings: viewModel.totalSpaceSavings,
                 reviewedCount: viewModel.reviewedCount,
-                undecidedExactCount: viewModel.undecidedExactCount,
                 approvedCount: approvedCount,
                 mergedCount: mergedCount,
-                onBatchApproveExact: {
-                    viewModel.batchApproveExactMatches(
-                        context: modelContext
-                    )
-                },
                 onMergeApproved: onMergeApproved
             )
             Divider()

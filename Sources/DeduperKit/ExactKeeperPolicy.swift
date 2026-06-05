@@ -17,6 +17,16 @@ import Foundation
 /// through V2 artifacts with no schema change. (SCAN-EXACT-KEEPER-POLICY-001)
 public struct ExactKeeperPolicy: Sendable {
 
+    /// MACHINE CONTRACT — do NOT localize or edit without a migration.
+    ///
+    /// Every keeper-decision rationale line produced by this policy begins with
+    /// this exact prefix. Downstream consumers (e.g. the UI triage funnel) use
+    /// its presence in a group's persisted `rationaleLines` as the structural
+    /// signal that an exact group has a deterministic, policy-selected keeper
+    /// (vs. a legacy order-dependent keeper). Producer and consumer are each
+    /// asserted against this constant so they cannot silently drift.
+    public static let rationaleMarker = "Keeper "
+
     /// Relative weights of the three authority dimensions. They sum to 1.0 so
     /// the aggregate keeper score is in [0, 1].
     public struct Weights: Sendable, Equatable {
@@ -199,7 +209,7 @@ public struct ExactKeeperPolicy: Sendable {
     private func makeRationale(winner: Scored, runnerUp: Scored?) -> String {
         let name = (winner.candidate.path as NSString).lastPathComponent
         guard let runnerUp else {
-            return "Keeper '\(name)': sole candidate"
+            return "\(Self.rationaleMarker)'\(name)': sole candidate"
         }
 
         var reasons: [String] = []
@@ -218,8 +228,9 @@ public struct ExactKeeperPolicy: Sendable {
         let runnerName = (runnerUp.candidate.path as NSString)
             .lastPathComponent
         return String(
-            format: "Keeper '%@' over '%@' (score %.2f vs %.2f): %@",
-            name, runnerName, winner.aggregate, runnerUp.aggregate, basis
+            format: "%@'%@' over '%@' (score %.2f vs %.2f): %@",
+            Self.rationaleMarker, name, runnerName,
+            winner.aggregate, runnerUp.aggregate, basis
         )
     }
 

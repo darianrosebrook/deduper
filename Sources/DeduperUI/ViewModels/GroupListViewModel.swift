@@ -15,6 +15,25 @@ public struct DecisionSnapshot: Sendable {
     }
 }
 
+/// Status-aware triage aggregates for the funnel summary.
+/// Exact groups split into POLICY-BACKED (deterministic keeper, the only
+/// bulk-approvable set) and LEGACY (sha256Exact without the keeper-policy
+/// marker — order-dependent keeper). Everything else (perceptual/video/
+/// legacyUnknown) is "other", reachable only by drilling into the list.
+public struct TriageSummary: Sendable, Equatable {
+    public var policyBackedExactTotal: Int = 0
+    public var policyBackedExactUndecided: Int = 0
+    public var policyBackedExactApproved: Int = 0
+    public var policyBackedExactReclaimableBytes: Int64 = 0
+    public var legacyExactTotal: Int = 0
+    public var legacyExactUndecided: Int = 0
+    public var nonExactTotal: Int = 0
+    public var nonExactReclaimableBytes: Int64 = 0
+
+    public var exactTotal: Int { policyBackedExactTotal + legacyExactTotal }
+    public init() {}
+}
+
 /// View mode for the group list panel.
 public enum GroupListMode: String, CaseIterable, Sendable {
     case list = "List"
@@ -114,13 +133,64 @@ public final class GroupListViewModel {
     }
     public var filteredCount: Int { filteredGroups.count }
 
-    /// Count of undecided exact-match groups (for batch approve).
-    public var undecidedExactCount: Int {
-        allGroups.count { group in
-            group.matchKind == MatchKind.sha256Exact.rawValue
-                && (decisionByGroupId[group.groupId]?.state
-                    ?? .undecided) == .undecided
+    // MARK: - Triage trust gate (UI-TRIAGE-FUNNEL-EXACT-BAND-001)
+
+    /// Cached, status-aware triage aggregates for the funnel. Recomputed only
+    /// on data transitions (load / decision / approve / clear), never during
+    /// view-body rendering, so 10k+ group sessions stay light.
+    public private(set) var triageSummary = TriageSummary()
+
+    /// Group IDs whose exact keeper is policy-backed (deterministic). Cached so
+    /// the view never re-decodes rationaleJSON. This is the ONLY set the bulk
+    /// approve action may touch.
+    private var policyBackedExactIds: Set<UUID> = []
+
+    /// An exact group whose keeper was chosen by the deterministic policy:
+    /// `matchKind == sha256Exact` AND a persisted rationale line carries the
+    /// shared `ExactKeeperPolicy.rationaleMarker`. matchKind alone is NOT
+    /// sufficient — V2 groups scanned before the keeper policy have
+    /// `sha256Exact` with an order-dependent keeper and no marker. Never infer
+    /// from confidence (the original trust trap).
+    public func isPolicyBackedExact(_ group: GroupSummary) -> Bool {
+        guard group.matchKind == MatchKind.sha256Exact.rawValue else {
+            return false
         }
+        guard let data = group.rationaleJSON,
+              let lines = try? JSONDecoder().decode(
+                  [String].self, from: data
+              )
+        else { return false }
+        return lines.contains {
+            $0.hasPrefix(ExactKeeperPolicy.rationaleMarker)
+        }
+    }
+
+    /// Recompute the cached policy-backed set + triage summary. Call only on
+    /// data transitions, never from a view body.
+    private func rebuildTriageSummary() {
+        var ids = Set<UUID>()
+        var summary = TriageSummary()
+        for group in allGroups {
+            let state = decisionByGroupId[group.groupId]?.state ?? .undecided
+            if isPolicyBackedExact(group) {
+                ids.insert(group.groupId)
+                summary.policyBackedExactTotal += 1
+                summary.policyBackedExactReclaimableBytes += group.spaceSavings
+                if state == .undecided {
+                    summary.policyBackedExactUndecided += 1
+                } else if state == .approved {
+                    summary.policyBackedExactApproved += 1
+                }
+            } else if group.matchKind == MatchKind.sha256Exact.rawValue {
+                summary.legacyExactTotal += 1
+                if state == .undecided { summary.legacyExactUndecided += 1 }
+            } else {
+                summary.nonExactTotal += 1
+                summary.nonExactReclaimableBytes += group.spaceSavings
+            }
+        }
+        policyBackedExactIds = ids
+        triageSummary = summary
     }
 
     public init() {}
@@ -134,6 +204,7 @@ public final class GroupListViewModel {
         guard let runId = currentRunId else {
             allGroups = []
             applyFilters()
+            rebuildTriageSummary()
             return
         }
 
@@ -156,6 +227,7 @@ public final class GroupListViewModel {
         }
 
         applyFilters()
+        rebuildTriageSummary()
     }
 
     /// Clear groups when session changes or is deselected.
@@ -165,6 +237,8 @@ public final class GroupListViewModel {
         selectedGroupId = nil
         decisionByGroupId = [:]
         thumbnailByGroupId = [:]
+        policyBackedExactIds = []
+        triageSummary = TriageSummary()
     }
 
     /// Load thumbnails for visible groups (keeper path).
@@ -221,6 +295,7 @@ public final class GroupListViewModel {
         }
 
         applyFilters()
+        rebuildTriageSummary()
         normalizeSelection()
     }
 
@@ -246,6 +321,7 @@ public final class GroupListViewModel {
         decisionByGroupId[groupId] = snapshot
         let advanceTarget = computeAutoAdvanceTarget()
         applyFilters()
+        rebuildTriageSummary()
         // Prefer advance target if still valid post-refilter;
         // otherwise normalize to first-or-nil (one assignment).
         if let target = advanceTarget,
@@ -258,14 +334,19 @@ public final class GroupListViewModel {
         }
     }
 
-    /// Batch-approve all undecided SHA256 exact-match groups.
-    /// Returns count of groups approved.
+    /// The ONLY bulk-approve entry point. Approves every undecided
+    /// POLICY-BACKED exact group (deterministic keeper) and nothing else —
+    /// legacy era-1 (legacyUnknown) and era-2 (sha256Exact without the keeper
+    /// marker) are never bulk-approved, because their keeper is not trustworthy.
+    /// Writes ReviewDecision=.approved only (reversible); it does NOT move
+    /// files. Merge stays the separate downstream step. Returns count approved.
+    /// (UI-TRIAGE-FUNNEL-EXACT-BAND-001)
     @discardableResult
-    public func batchApproveExactMatches(
+    public func batchApprovePolicyBackedExactMatches(
         context: ModelContext
     ) -> Int {
         let targets = allGroups.filter { group in
-            group.matchKind == MatchKind.sha256Exact.rawValue
+            policyBackedExactIds.contains(group.groupId)
                 && (decisionByGroupId[group.groupId]?.state
                     ?? .undecided) == .undecided
         }
@@ -310,6 +391,7 @@ public final class GroupListViewModel {
             )
         }
 
+        rebuildTriageSummary()
         applyFilters()
         normalizeSelection()
         return targets.count
