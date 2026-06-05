@@ -34,6 +34,12 @@ public enum SkipReason: String, Sendable {
     /// The per-asset hash operation exceeded the configured timeout and was
     /// abandoned so it could not deadlock the hashing task group.
     case hashTimeout
+    /// The file is zero bytes. Every empty file shares the SHA-256 of empty
+    /// content, so the exact-match pass would collapse unrelated empty stub
+    /// files (e.g. .jpg/.MOV/.bmp across unrelated folders) into one bogus
+    /// confidence-1.0 group. Empty files are corrupt/zero-length stubs, not
+    /// media — excluded from all grouping before any hashing.
+    case zeroByteFile
 }
 
 /// Outcome of a single asset's hashing attempt under the watchdog.
@@ -153,9 +159,35 @@ public struct DetectionService: Sendable {
     ) async throws -> [DuplicateGroupResult] {
         let startTime = CFAbsoluteTimeGetCurrent()
 
+        // Zero-byte files all hash to the SHA-256 of empty content, so the
+        // exact pass would collapse unrelated empty stub files
+        // (.jpg/.MOV/.bmp across unrelated folders) into one bogus
+        // confidence-1.0 group. They are corrupt/zero-length stubs, not
+        // media duplicates — exclude them from EVERY detection path (exact,
+        // perceptual, video) up front by file size (before any hashing), and
+        // account for each with a typed diagnostic so the exclusion is
+        // observable rather than a silent drop.
+        // (SCAN-ZERO-BYTE-EXACT-DISAMBIGUATE-001)
+        let workingFiles: [ScannedFile]
+        let zeroByteFiles = files.filter { $0.fileSize == 0 }
+        if zeroByteFiles.isEmpty {
+            workingFiles = files
+        } else {
+            workingFiles = files.filter { $0.fileSize != 0 }
+            for file in zeroByteFiles {
+                progress?(.init(phase: .assetSkipped(
+                    identity: PathIdentity.canonical(file.url),
+                    reason: .zeroByteFile
+                )))
+            }
+            logger.warning(
+                "Excluded \(zeroByteFiles.count, privacy: .public) zero-byte file(s) from detection (reason=zeroByteFile)"
+            )
+        }
+
         // Fast first pass: SHA256 exact-match detection with prehash
         let (exactGroups, remainingFiles) = await detectExactDuplicates(
-            in: files, options: options, progress: progress
+            in: workingFiles, options: options, progress: progress
         )
 
         // If exact-only mode, skip perceptual detection
