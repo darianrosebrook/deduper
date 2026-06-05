@@ -7,22 +7,35 @@ created_at: '2026-06-05T06:24:06.143Z'
 updated_at: '2026-06-05T06:24:06.143Z'
 blast_radius:
   modules:
-    - 'TODO: list one or more modules this spec touches.'
+    - 'DeduperUI/GroupListViewModel (batchApprovePolicyBackedExactMatches)'
   data_migration: false
 operational_rollback_slo: 5m
 scope:
   in:
     - 'Sources/DeduperUI/ViewModels/GroupListViewModel.swift'
     - 'Tests/DeduperUITests/TriageFunnelTests.swift'
-  out: []
+  out:
+    - 'Sources/DeduperApp'
+    - 'Sources/DeduperKit'
 invariants:
-  - 'TODO: describe one invariant this spec guarantees.'
+  - 'Bulk policy-backed exact approval issues a single SwiftData fetch of the session''s existing decisions, not one fetch per group. On a ~10.7k-group session the previous per-group fetch loop pegged the main thread (~98% CPU) and appeared hung.'
+  - 'The approval result is unchanged: exactly the undecided policy-backed exact groups transition to .approved (reversible), legacy/era-2/non-exact untouched, in-memory decision map + triage summary updated, single save.'
 acceptance:
   - id: A1
-    given: 'TODO'
-    when: 'TODO'
-    then: 'TODO'
-non_functional: {}
+    given: 'a session with N undecided policy-backed exact groups'
+    when: 'bulk approve runs'
+    then: 'it performs a single existing-decisions fetch (O(1) queries), not O(N), and approves exactly those N groups'
+  - id: A2
+    given: 'a corpus-scale session (~12k policy-backed exact groups)'
+    when: 'bulk approve runs'
+    then: 'it completes well under a bounded time (no per-group-query blowup), with all N approved'
+  - id: A3
+    given: 'a mixed session (policy-backed + legacy + non-exact, some already decided)'
+    when: 'bulk approve runs after the change'
+    then: 'only undecided policy-backed groups are approved and previously-decided rows are reused (not duplicated)'
+non_functional:
+  performance:
+    - 'Per-group SwiftData fetch removed; one bulk fetch + in-memory upsert + one save. Verified by a timing test on ~12k groups.'
 contracts:
   - name: 'bulk-approve-single-fetch'
     type: behavior
