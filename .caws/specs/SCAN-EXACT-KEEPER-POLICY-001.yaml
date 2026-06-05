@@ -2,9 +2,16 @@ id: SCAN-EXACT-KEEPER-POLICY-001
 title: 'Exact keeper policy: deterministic location/name authority + machine-readable rationale'
 risk_tier: 2
 mode: fix
-lifecycle_state: active
+lifecycle_state: closed
+resolution: completed
+closure_notes: 'Completed. Byte-identical exact members always tie on size, so max(fileSize) keeper was order-dependent/arbitrary.
+1. New ExactKeeperPolicy (Sources/DeduperKit/ExactKeeperPolicy.swift): scores location authority (dump/download/New Folder penalized), name authority ((1)/copy/duplicate/edited/export penalized), album depth; weights 0.45/0.40/0.15; ties break on lexicographically smallest path (order-independent). Each member carries keeper.* signals (winners+losers); group records rationale. Persists via existing V2 member-signal channel, no Persistence/schema change; checksum signal preserved so matchKind stays sha256Exact. Wired into detectExactDuplicates. Fix ab70312; merged db684e4.
+2. Unit: ScanExactKeeperPolicy 8/8 (organized>dump, deep>root, clean>dup-name x4, 6-permutation determinism, path tiebreak, signals+rationale on winner+losers, integration organized-keeper + grouping-unchanged + zero-byte-excluded). Full suite 321/321 incl. Persistence/E2E artifact round-trip.
+3. Real corpus (76k, threshold 0.60): group count 10739 unchanged (0 grouping drift both ways) [A6]; zero-byte 11 diagnostics unchanged [A7]; low-authority keepers 1839->390; of changed keepers 1449 bad->good, 0 good->bad regressions; all 390 residual provably unavoidable (every member low-authority, 0 misses).
+4. Confined to exact keeper SELECTION; grouping/confidence/matchKind/zero-byte unchanged.
+5. Successors deferred unchanged: SCAN-VIDEO-FINGERPRINT-WATCHDOG-001, SCAN-QUERYING-HEARTBEAT-001.'
 created_at: '2026-06-05T01:54:04.921Z'
-updated_at: '2026-06-05T01:54:04.921Z'
+updated_at: '2026-06-05T02:14:26.551Z'
 blast_radius:
   modules:
     - 'DeduperKit/ExactKeeperPolicy (new deterministic keeper scoring + rationale)'
