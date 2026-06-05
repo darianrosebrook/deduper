@@ -124,6 +124,11 @@ public struct ScanOrchestrator: Sendable {
                 case .indexing: desc = "Indexing..."
                 case .querying: desc = "Querying index..."
                 case .complete: desc = "Complete"
+                case .heartbeat(let n, let t, let active, let since):
+                    desc = "Hashing \(n)/\(t) — \(active) active, "
+                        + "\(Int(since))s since last completion"
+                case .assetSkipped(let identity, let reason):
+                    desc = "Skipped \(identity) (\(reason.rawValue))"
                 }
                 progress?(.detecting(phase: desc))
             }

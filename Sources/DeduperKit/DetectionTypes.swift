@@ -172,6 +172,12 @@ public struct DetectOptions: Sendable, Equatable {
     public let exactOnly: Bool
     /// When true, include video files in detection. Default false at scale.
     public let includeVideos: Bool
+    /// Per-asset hash watchdog timeout (seconds). A single asset whose hash
+    /// exceeds this is abandoned and skipped so it cannot deadlock the hashing
+    /// task group. See SCAN-LIVENESS-WATCHDOG-001.
+    public let hashTimeoutSeconds: Double
+    /// Interval (seconds) for the hashing-phase liveness heartbeat.
+    public let heartbeatIntervalSeconds: Double
 
     public init(
         thresholds: Thresholds = Thresholds(),
@@ -179,7 +185,9 @@ public struct DetectOptions: Sendable, Equatable {
         policies: Policies = Policies(),
         weights: ConfidenceWeights = ConfidenceWeights(),
         exactOnly: Bool = false,
-        includeVideos: Bool = false
+        includeVideos: Bool = false,
+        hashTimeoutSeconds: Double = 30.0,
+        heartbeatIntervalSeconds: Double = 5.0
     ) {
         self.thresholds = thresholds
         self.limits = limits
@@ -187,6 +195,8 @@ public struct DetectOptions: Sendable, Equatable {
         self.weights = weights
         self.exactOnly = exactOnly
         self.includeVideos = includeVideos
+        self.hashTimeoutSeconds = hashTimeoutSeconds
+        self.heartbeatIntervalSeconds = heartbeatIntervalSeconds
     }
 }
 
