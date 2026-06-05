@@ -2,9 +2,17 @@ id: SCAN-ZERO-BYTE-EXACT-DISAMBIGUATE-001
 title: 'Zero-byte exact disambiguation: exclude empty files from grouping with typed diagnostic'
 risk_tier: 2
 mode: fix
-lifecycle_state: active
+lifecycle_state: closed
+resolution: completed
+closure_notes: 'Completed. Zero-byte files all hash to the SHA-256 of empty content, so the exact pass collapsed unrelated empty stub files into one bogus confidence-1.0 group.
+1. Fix f9cebc5 on fix/scan-zero-byte-exact; merged 207f1aa. Partition fileSize==0 out of detectDuplicates before any hashing; emit typed assetSkipped/zeroByteFile diagnostic; excluded from exact+perceptual+video.
+2. Unit: ScanZeroByteTests 4/4 (no-group+diagnostic, valid exact unchanged, mixed corpus, perceptual-path exclusion); DetectionService 12/12 + ScanLiveness 2/2 unchanged.
+3. Real corpus (76k tree, threshold 0.60): groups 10740 -> 10739; ALL-ZERO-BYTE groups 1 -> 0; 11 empty files individually reported via zeroByteFile, 0 leaked into any group (cross-checked vs all 10739 member lists).
+4. Correctness-neutral: 10739 valid exact groups (conf 1.0) preserved; cross-folder 86% (9263) intact for future keeper-policy slice.
+5. Decision: file-size check before hashing, not empty-SHA-digest special-casing (per invariant).
+6. Successors (deferred, unchanged): SCAN-VIDEO-FINGERPRINT-WATCHDOG-001, SCAN-QUERYING-HEARTBEAT-001, exact keeper policy slice.'
 created_at: '2026-06-05T00:53:50.036Z'
-updated_at: '2026-06-05T00:53:50.036Z'
+updated_at: '2026-06-05T01:09:49.611Z'
 blast_radius:
   modules:
     - 'DeduperKit/DetectionService (detectDuplicates entry, exact-match pass)'
