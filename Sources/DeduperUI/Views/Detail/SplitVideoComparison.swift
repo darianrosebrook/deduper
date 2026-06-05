@@ -40,7 +40,7 @@ public struct SplitVideoComparison: View {
             ZStack(alignment: .leading) {
                 // Comparison video (full frame, underneath)
                 if let player = comparisonPlayer {
-                    VideoPlayer(player: player)
+                    AVPlayerViewRepresentable(player: player)
                         .frame(
                             width: geo.size.width,
                             height: geo.size.height
@@ -50,7 +50,7 @@ public struct SplitVideoComparison: View {
 
                 // Keeper video (masked to divider fraction)
                 if let player = keeperPlayer {
-                    VideoPlayer(player: player)
+                    AVPlayerViewRepresentable(player: player)
                         .frame(
                             width: geo.size.width,
                             height: geo.size.height
@@ -260,5 +260,41 @@ public struct SplitVideoComparison: View {
     private func seekToStart() {
         keeperPlayer?.seek(to: .zero)
         comparisonPlayer?.seek(to: .zero)
+    }
+}
+
+/// Hosts an AppKit `AVPlayerView` rather than SwiftUI's `VideoPlayer`.
+///
+/// SwiftUI `VideoPlayer` instantiates a generic `_AVKit_SwiftUI` view type
+/// whose superclass metadata (the ObjC `AVPlayerView`, mangled `So12AVPlayerViewC`)
+/// fails to resolve at runtime on macOS 26, aborting in `getSuperclassMetadata`
+/// (SIGABRT) the moment a video group's detail pane renders. Instantiating
+/// `AVPlayerView` directly uses stable ObjC class metadata and avoids that
+/// path entirely. Native transport controls are hidden because
+/// `SplitVideoComparison` draws its own play/pause + seek controls and masks
+/// the keeper to the divider. (UI-VIDEO-PLAYER-CRASH-001)
+struct AVPlayerViewRepresentable: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        Self.makeConfiguredView(player: player)
+    }
+
+    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        if nsView.player !== player {
+            nsView.player = player
+        }
+    }
+
+    /// Builds the hosted AVPlayerView. Extracted so it can be exercised
+    /// without a SwiftUI Context (which is not test-constructible).
+    @MainActor
+    static func makeConfiguredView(player: AVPlayer) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.player = player
+        view.controlsStyle = .none
+        view.videoGravity = .resizeAspect
+        view.allowsPictureInPicturePlayback = false
+        return view
     }
 }
