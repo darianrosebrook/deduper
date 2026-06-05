@@ -7,22 +7,55 @@ created_at: '2026-06-05T08:07:57.002Z'
 updated_at: '2026-06-05T08:07:57.002Z'
 blast_radius:
   modules:
-    - 'TODO: list one or more modules this spec touches.'
+    - 'DeduperUI/SplitVideoComparison (video comparison player lifecycle + coordinator)'
   data_migration: false
 operational_rollback_slo: 5m
 scope:
   in:
     - 'Sources/DeduperUI/Views/Detail/SplitVideoComparison.swift'
     - 'Tests/DeduperUITests/SplitVideoComparisonTests.swift'
-  out: []
+  out:
+    - 'Sources/DeduperKit'
+    - 'Sources/DeduperApp'
 invariants:
-  - 'TODO: describe one invariant this spec guarantees.'
+  - 'Player teardown is DESTRUCTIVE, not just pause: each player is paused, its current item replaced with nil, every observer/KVO/loop token removed BEFORE the player is released, and the owning references are nil-ed. A paused-but-retained player or a surviving observer closure is a leak.'
+  - 'Create and teardown are balanced: after every exit path (group switch, switch to image group, return to summary, session switch, view/window dismiss) the active player-pair count returns to 0; cumulative createCount == teardownCount.'
+  - 'Looping never outlives teardown: the end-of-item loop observer is removed during teardown so no player keeps decoding in the background after the view is gone (the resource-wedge hazard).'
+  - 'Setup is generation-guarded: if the selected group changes while a player pair is being created, the stale pair is torn down and never attached (no orphan players accumulate under rapid navigation).'
+  - 'The AppKit AVPlayerView is released deterministically via NSViewRepresentable.dismantleNSView (pause + replaceCurrentItem(nil) + player=nil), not relying on .onDisappear as the primary hook.'
+  - 'Behavior is preserved: video groups still render and play (looping, divider mask, custom play/pause + seek, divider-driven audio). No DeduperKit/DetectionService/VideoFingerprinter/scan/merge/funnel/design-token change.'
+non_functional:
+  performance:
+    - 'A video-lifecycle OSLog category emits create/attach/teardown/dismantle/orphan-prevented events with running counts so the create==teardown balance is verifiable in one instrumented app run.'
 acceptance:
   - id: A1
-    given: 'TODO'
-    when: 'TODO'
-    then: 'TODO'
-non_functional: {}
+    given: 'a coordinator with an attached player pair'
+    when: 'teardown runs'
+    then: 'both players are released (nil), each had its current item cleared and observers removed, and the active pair count is 0'
+  - id: A2
+    given: 'repeated setup/teardown cycles (simulating repeated video-group navigation)'
+    when: 'the cycles complete'
+    then: 'createCount == teardownCount and the active pair count is 0 (balanced, no accumulation)'
+  - id: A3
+    given: 'a setup whose generation is superseded before attach'
+    when: 'the stale setup resolves'
+    then: 'its players are torn down and never attached (orphan prevented), and the active pair count reflects only the current generation'
+  - id: A4
+    given: 'teardown is invoked more than once (e.g. onDisappear then dismantle/deinit)'
+    when: 'the extra calls run'
+    then: 'they are idempotent — no negative counts, no double-decrement, no crash'
+  - id: A5
+    given: 'the AVPlayerView NSViewRepresentable is removed from the hierarchy'
+    when: 'dismantleNSView runs'
+    then: 'the hosted AVPlayerView pauses, clears its item, and drops its player reference'
+  - id: A6
+    given: 'the rebuilt video comparison'
+    when: 'a video exact group is viewed (manual GUI verification)'
+    then: 'it renders and plays, and the lifecycle log shows active count returning to 0 on every exit path with no monotonic resource climb'
+  - id: A7
+    given: 'this slice'
+    when: 'implemented'
+    then: 'the full test suite stays green and no DeduperKit/scan/merge/funnel/design-token code changes'
 contracts:
   - name: 'video-player-lifecycle-balance'
     type: behavior
