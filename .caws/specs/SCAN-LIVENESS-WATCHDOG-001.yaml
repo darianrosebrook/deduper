@@ -2,9 +2,18 @@ id: SCAN-LIVENESS-WATCHDOG-001
 title: 'Scan liveness: per-asset hash timeout, skip-with-diagnostic, heartbeat'
 risk_tier: 2
 mode: fix
-lifecycle_state: active
+lifecycle_state: closed
+resolution: completed
+closure_notes: 'Completed. Breaks full-tree image-hashing liveness failure (cooperative-pool starvation from synchronous CGImageSource decodes deadlocking the hashing TaskGroup at Hashing 200/40114).
+1. Commit 64f9ce1 on fix/scan-liveness-watchdog; merged a3ddaf2.
+2. Unit: ScanLivenessTests 2/2 (injected 5s hang completes ~0.33s); 12 DetectionService tests unchanged.
+3. Real-world: full no-video tree (76k files) exit 0 in 14m43s, reached querying, 10740 groups, 0 hashTimeout skips, 0 other skips.
+4. Interpretation: real fix was cooperative-pool de-starvation via Dispatch bridging; per-asset timeout is the safety net (proven by unit test; hashTimeoutSkips=0 on this corpus).
+5. Resources bounded: peak RSS 703MB, peak 44 threads, 10 active workers, dropped to 7 in querying; no explosion.
+6. Histogram: 10740 exact, 0 perceptual; High/Fuzzy boundary untunable from this corpus.
+7. Successors (deferred): video-path watchdog, querying-phase heartbeat, zero-byte exact false-positive, exact keeper policy.'
 created_at: '2026-06-04T22:58:42.205Z'
-updated_at: '2026-06-04T23:08:31.453Z'
+updated_at: '2026-06-05T00:48:13.330Z'
 blast_radius:
   modules:
     - 'DeduperKit/DetectionService (image+video hashing task group)'
