@@ -7,7 +7,8 @@ created_at: '2026-06-05T01:54:04.921Z'
 updated_at: '2026-06-05T01:54:04.921Z'
 blast_radius:
   modules:
-    - 'TODO: list one or more modules this spec touches.'
+    - 'DeduperKit/ExactKeeperPolicy (new deterministic keeper scoring + rationale)'
+    - 'DeduperKit/DetectionService (exact-group keeper selection in detectExactDuplicates)'
   data_migration: false
 operational_rollback_slo: 5m
 scope:
@@ -15,15 +16,48 @@ scope:
     - 'Sources/DeduperKit/DetectionService.swift'
     - 'Sources/DeduperKit/ExactKeeperPolicy.swift'
     - 'Tests/DeduperKitTests/ScanExactKeeperPolicyTests.swift'
-  out: []
+  out:
+    - 'Sources/DeduperUI'
+    - 'Sources/DeduperApp'
 invariants:
-  - 'TODO: describe one invariant this spec guarantees.'
+  - 'Byte-identical exact-group members always have equal file size, so keeper selection MUST NOT fall through to size comparison (max(fileSize)) — that is a perpetual tie and therefore arbitrary/order-dependent. Selection is decided by a deterministic path/name authority policy.'
+  - 'Keeper selection is deterministic across input-order permutations: the same exact group yields the same keeper regardless of the order files were scanned. Policy-score ties are broken by a stable key (lexicographically smallest canonical path), never by input order.'
+  - 'The policy prefers organized/library paths over root dumps and download folders, prefers clean basenames over duplicate-looking ones ((1)/(2)/copy/duplicate/edited/export), and prefers deeper album-like context over flat/root folders.'
+  - 'Every exact-group keeper decision emits a machine-readable rationale: each member carries its keeper-policy signals (so winning and losing scores are both recorded), and the group records which signals decided the keeper.'
+  - 'The change is confined to exact-group keeper SELECTION: duplicate grouping (membership and group count), exact confidence (1.0), matchKind (sha256Exact via the preserved checksum signal), and zero-byte exclusion are all unchanged.'
 acceptance:
   - id: A1
-    given: 'TODO'
-    when: 'TODO'
-    then: 'TODO'
-non_functional: {}
+    given: 'an exact (byte-identical) group whose members all have equal file size'
+    when: 'the keeper is selected'
+    then: 'selection does not fall through to arbitrary max(fileSize); a policy-scored keeper is chosen deterministically'
+  - id: A2
+    given: 'an exact group containing an organized/library path member and a root-dump or downloads-folder duplicate (the documented harmful-pick shape)'
+    when: 'the keeper is selected'
+    then: 'the organized/library path member is chosen as keeper over the root/download duplicate'
+  - id: A3
+    given: 'an exact group containing a clean basename and a duplicate-looking basename ((1)/copy/duplicate/edited export) with identical content'
+    when: 'the keeper is selected'
+    then: 'the clean-basename member is chosen as keeper over the duplicate-looking one'
+  - id: A4
+    given: 'the same exact group presented in several different input orderings'
+    when: 'the keeper is selected for each ordering'
+    then: 'the selected keeper is identical across all orderings (deterministic)'
+  - id: A5
+    given: 'an exact group for which a keeper was selected'
+    when: 'the detection result is produced'
+    then: 'the result records machine-readable keeper-decision signals: each member carries its keeper-policy signals (winning and losing scores) and the group rationale names the deciding signal(s)'
+  - id: A6
+    given: 'a corpus of valid non-zero exact duplicates'
+    when: 'detection runs before and after this change'
+    then: 'the number of exact duplicate groups and their membership are unchanged (only the keeper within each group may differ)'
+  - id: A7
+    given: 'a corpus containing zero-byte files'
+    when: 'detection runs'
+    then: 'zero-byte exclusion behavior is unchanged: empty files are still excluded with the zeroByteFile diagnostic and never appear in any group'
+non_functional:
+  performance:
+    - 'Keeper scoring is O(members) per exact group over already-collected path strings; no extra I/O (no file reads, no metadata fetch) in the exact path.'
+    - 'Keeper-policy signals are emitted on each exact-group member and persist through the existing V2 member-signal artifact channel (no schema/Persistence change).'
 contracts:
   - name: 'exact-keeper-policy'
     type: behavior
