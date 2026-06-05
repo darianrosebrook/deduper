@@ -2,9 +2,11 @@ id: UI-VIDEO-PLAYER-LIFECYCLE-TEARDOWN-001
 title: 'Video comparison player lifecycle: destructive teardown, dismantle, generation-guarded setup, balance instrumentation'
 risk_tier: 2
 mode: fix
-lifecycle_state: active
+lifecycle_state: closed
+resolution: completed
+closure_notes: 'Root-cause fix for the media-subsystem wedge. SplitVideoComparison paused players but never released them (no replaceCurrentItem(nil), never nil-ed; loop observers retained by NotificationCenter kept players+decoders alive; only .onDisappear teardown). Orphaned looping players accumulated decode/VideoToolbox/IOSurface/GPU sessions across visits, wedging media until reboot. Extracted VideoComparisonCoordinator (@Observable): destructive idempotent teardown (remove observers, cancel KVO, pause+replaceCurrentItem(nil), nil players, counters), generation-guarded setup (orphan-prevented), create/teardown balance counters under OSLog video-lifecycle, deinit backstop. Teardown fires from reliable .task cancellation (view removal AND id change) + .onDisappear + AVPlayerViewRepresentable.dismantleNSView. Tests SplitVideoComparison 7/7 (teardown releases+balances, rapid setup keeps one active pair, idempotent, visit/leave to zero, dismantle releases); full suite 337/337. MANUAL GUI verification pending (Console category video-lifecycle: active count returns to 0 on every exit path, no monotonic resource climb). No DeduperKit/scan/merge/funnel/design-token change.'
 created_at: '2026-06-05T08:07:57.002Z'
-updated_at: '2026-06-05T08:07:57.002Z'
+updated_at: '2026-06-05T08:17:28.419Z'
 blast_radius:
   modules:
     - 'DeduperUI/SplitVideoComparison (video comparison player lifecycle + coordinator)'
