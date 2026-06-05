@@ -96,6 +96,10 @@ public struct DetectionService: Sendable {
     private let videoFingerprinter: VideoFingerprinter
     private let metadataService: MetadataService
     private let hashCache: HashCacheService?
+    /// Deterministic keeper selection for SHA256-exact groups
+    /// (SCAN-EXACT-KEEPER-POLICY-001). Stateless and pure, so a fixed default
+    /// rather than an init parameter.
+    private let keeperPolicy = ExactKeeperPolicy()
     /// Blocking image-hash function. Injectable so tests can simulate a hung
     /// decode (a never-returning provider) and exercise the watchdog without a
     /// real corrupt media file. Defaults to the image hasher.
@@ -382,38 +386,50 @@ public struct DetectionService: Sendable {
         var matchedIds = Set<UUID>()
 
         for (digest, bucket) in digestBuckets where bucket.count >= 2 {
-            let members = bucket.map { file in
-                DuplicateGroupMember(
+            // Deterministic keeper: byte-identical files always tie on size, so
+            // size cannot pick a keeper. Decide by location/name authority and
+            // attach each candidate's keeper.* signals (winners AND losers) so
+            // the decision is machine-readable. The "checksum" signal is
+            // preserved first so matchKind derivation still reads sha256Exact.
+            // (SCAN-EXACT-KEEPER-POLICY-001)
+            let selection = keeperPolicy.selectKeeper(
+                from: bucket.map {
+                    ExactKeeperPolicy.Candidate(id: $0.id, path: $0.url.path)
+                }
+            )
+
+            let members = bucket.map { file -> DuplicateGroupMember in
+                let checksumSignal = ConfidenceSignal(
+                    key: "checksum",
+                    weight: options.weights.checksum,
+                    rawScore: 1.0,
+                    contribution: options.weights.checksum,
+                    rationale: "SHA256 exact match: "
+                        + "\(digest.prefix(12))..."
+                )
+                let keeperSignals = selection?.signalsByFile[file.id] ?? []
+                return DuplicateGroupMember(
                     fileId: file.id,
                     confidence: 1.0,
-                    signals: [
-                        ConfidenceSignal(
-                            key: "checksum",
-                            weight: options.weights.checksum,
-                            rawScore: 1.0,
-                            contribution: options.weights.checksum,
-                            rationale: "SHA256 exact match: "
-                                + "\(digest.prefix(12))..."
-                        )
-                    ],
+                    signals: [checksumSignal] + keeperSignals,
                     penalties: [],
                     rationale: ["Byte-identical (SHA256)"],
                     fileSize: file.fileSize
                 )
             }
 
-            let keeper = bucket.max(by: {
-                $0.fileSize < $1.fileSize
-            })?.id
-
             let mediaType = bucket.first?.mediaType ?? .photo
+            var rationaleLines = ["Byte-identical files (SHA256)"]
+            if let selection {
+                rationaleLines.append(selection.rationale)
+            }
 
             exactGroups.append(DuplicateGroupResult(
                 groupId: UUID(),
                 members: members,
                 confidence: 1.0,
-                rationaleLines: ["Byte-identical files (SHA256)"],
-                keeperSuggestion: keeper,
+                rationaleLines: rationaleLines,
+                keeperSuggestion: selection?.keeperId,
                 incomplete: false,
                 mediaType: mediaType
             ))
