@@ -7,22 +7,36 @@ created_at: '2026-06-05T04:47:11.121Z'
 updated_at: '2026-06-05T04:47:11.121Z'
 blast_radius:
   modules:
-    - 'TODO: list one or more modules this spec touches.'
+    - 'DeduperUI/SplitVideoComparison (video detail comparison view)'
   data_migration: false
 operational_rollback_slo: 5m
 scope:
   in:
     - 'Sources/DeduperUI/Views/Detail/SplitVideoComparison.swift'
     - 'Tests/DeduperUITests/SplitVideoComparisonTests.swift'
-  out: []
+  out:
+    - 'Sources/DeduperApp'
+    - 'Sources/DeduperKit'
 invariants:
-  - 'TODO: describe one invariant this spec guarantees.'
+  - 'Selecting a video duplicate group (so the split video comparison renders) MUST NOT crash. The SwiftUI VideoPlayer view, whose generic metadata instantiation aborts in _AVKit_SwiftUI on macOS 26 (getSuperclassMetadata of AVPlayerView), is replaced by an AppKit AVPlayerView wrapped in NSViewRepresentable, which has stable ObjC metadata.'
+  - 'The replacement preserves existing behavior: two AVPlayers, looping, divider mask, custom play/pause + seek controls, divider-driven audio, and player teardown on disappear are unchanged. No native AVPlayerView transport controls are shown (controlsStyle = .none) since the view draws its own.'
+  - 'Scope is the video comparison view only: no DeduperKit, MergeService, Persistence, or other detail-view change.'
 acceptance:
   - id: A1
-    given: 'TODO'
-    when: 'TODO'
-    then: 'TODO'
-non_functional: {}
+    given: 'a duplicate group whose keeper or comparison member is a video, on macOS 26'
+    when: 'the group is selected and the split video comparison renders'
+    then: 'the detail pane renders the comparison without the _AVKit_SwiftUI metadata abort (no crash)'
+  - id: A2
+    given: 'the AVPlayerView-backed representable'
+    when: 'it is created for a player'
+    then: 'it hosts an AVPlayerView with that player and no native transport controls (controlsStyle = .none)'
+  - id: A3
+    given: 'the rebuilt split video comparison'
+    when: 'playback, divider drag, audio switching, and teardown are exercised'
+    then: 'behavior is equivalent to before (looping, masked divider, custom controls, volume follows divider, players released on disappear)'
+non_functional:
+  performance:
+    - 'AVPlayerView hosts the existing AVPlayer instances directly; no extra decode pipeline or duplicate players are introduced.'
 contracts:
   - name: 'video-comparison-no-swiftui-videoplayer'
     type: behavior
