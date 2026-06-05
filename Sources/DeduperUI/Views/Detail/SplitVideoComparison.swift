@@ -1,6 +1,160 @@
 import SwiftUI
 import AVKit
 import Combine
+import os
+
+/// Owns the AVPlayer pair lifecycle for the split video comparison.
+///
+/// Extracted from the view (UI-VIDEO-PLAYER-LIFECYCLE-TEARDOWN-001) so that:
+/// - teardown is DESTRUCTIVE (pause + replaceCurrentItem(nil) + remove every
+///   observer + nil the players), never just "pause" — a paused-but-retained
+///   player or a surviving end-of-item loop observer keeps decode pipelines
+///   (VideoToolbox / IOSurface / GPU) alive in the background and wedges the
+///   media subsystem;
+/// - the create==teardown balance is unit-testable headlessly (the view's
+///   .onDisappear / .task lifecycle cannot be driven in tests).
+@Observable
+final class VideoComparisonCoordinator {
+    private(set) var keeperPlayer: AVPlayer?
+    private(set) var comparisonPlayer: AVPlayer?
+    private(set) var isPlaying = false
+
+    /// The verifiable invariant: created == torn down, active == 0 after every
+    /// exit path. Surfaced for tests and the lifecycle log.
+    private(set) var createCount = 0
+    private(set) var teardownCount = 0
+    var activePairs: Int { createCount - teardownCount }
+
+    @ObservationIgnored private var loopTokens: [NSObjectProtocol] = []
+    @ObservationIgnored private var statusCancellable: AnyCancellable?
+    /// Identifies the current setup so a superseded one never attaches.
+    @ObservationIgnored private var generation = UUID()
+
+    @ObservationIgnored
+    private static let log = Logger(
+        subsystem: "app.deduper.ui", category: "video-lifecycle"
+    )
+
+    init() {}
+
+    /// Create and attach a fresh player pair, tearing down any prior pair
+    /// first. Generation-guarded: if a newer setup/teardown supersedes this
+    /// call before attach, the just-created players are released, not attached
+    /// (no orphan players accumulate under rapid navigation).
+    func setup(keeperPath: String, comparisonPath: String) {
+        teardown()
+        let gen = UUID()
+        generation = gen
+
+        let keeper = AVPlayer(url: URL(fileURLWithPath: keeperPath))
+        let comparison = AVPlayer(url: URL(fileURLWithPath: comparisonPath))
+
+        guard generation == gen else {
+            Self.release(keeper)
+            Self.release(comparison)
+            Self.log.debug("orphan prevented (superseded before attach)")
+            return
+        }
+
+        // Loop both; retain tokens so the observers can be removed at teardown.
+        // An un-removed observer is retained by NotificationCenter and keeps
+        // the player (and its decoder) alive forever — the core leak vector.
+        let tokenK = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: keeper.currentItem, queue: .main
+        ) { _ in keeper.seek(to: .zero); keeper.play() }
+        let tokenC = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: comparison.currentItem, queue: .main
+        ) { _ in comparison.seek(to: .zero); comparison.play() }
+        loopTokens = [tokenK, tokenC]
+
+        statusCancellable = keeper.publisher(for: \.timeControlStatus)
+            .receive(on: RunLoop.main)
+            .sink { [weak self, weak comparison] status in
+                self?.isPlaying = (status == .playing)
+                    || (comparison?.timeControlStatus == .playing)
+            }
+
+        keeperPlayer = keeper
+        comparisonPlayer = comparison
+        createCount += 1
+        Self.log.debug(
+            "attach active=\(self.activePairs, privacy: .public) created=\(self.createCount, privacy: .public)"
+        )
+
+        keeper.play()
+        comparison.play()
+    }
+
+    /// Destructive teardown. Idempotent: a second call (onDisappear, a later
+    /// setup, deinit) is a no-op once the players are released.
+    func teardown() {
+        guard keeperPlayer != nil || comparisonPlayer != nil else { return }
+        generation = UUID()   // invalidate any in-flight setup
+
+        removeObservers()
+        statusCancellable = nil
+        Self.release(keeperPlayer)
+        Self.release(comparisonPlayer)
+        keeperPlayer = nil
+        comparisonPlayer = nil
+        isPlaying = false
+        teardownCount += 1
+        Self.log.debug(
+            "teardown active=\(self.activePairs, privacy: .public) created=\(self.createCount, privacy: .public) torn=\(self.teardownCount, privacy: .public)"
+        )
+    }
+
+    func togglePlayback() {
+        guard let keeper = keeperPlayer,
+              let comparison = comparisonPlayer else { return }
+        if isPlaying {
+            keeper.pause()
+            comparison.pause()
+        } else {
+            comparison.seek(to: keeper.currentTime())
+            keeper.play()
+            comparison.play()
+        }
+    }
+
+    func seekToStart() {
+        keeperPlayer?.seek(to: .zero)
+        comparisonPlayer?.seek(to: .zero)
+    }
+
+    func updateVolumes(dividerFraction: CGFloat) {
+        let keeperDominant = dividerFraction >= 0.5
+        keeperPlayer?.volume = keeperDominant ? 1.0 : 0.0
+        comparisonPlayer?.volume = keeperDominant ? 0.0 : 1.0
+    }
+
+    private func removeObservers() {
+        for token in loopTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+        loopTokens = []
+    }
+
+    /// Fully release a player's decode pipeline (not just pause).
+    private static func release(_ player: AVPlayer?) {
+        player?.pause()
+        player?.replaceCurrentItem(with: nil)
+    }
+
+    deinit {
+        // Backstop: if no explicit teardown ran (e.g. .onDisappear missed),
+        // still remove observers and stop/clear the players so nothing keeps
+        // decoding after this coordinator is deallocated.
+        for token in loopTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+        Self.release(keeperPlayer)
+        Self.release(comparisonPlayer)
+        Self.log.debug("deinit backstop")
+    }
+}
 
 /// Split-panel video comparison with synchronized playback.
 /// Keeper video on the left (masked), comparison video on the right.
@@ -13,15 +167,7 @@ public struct SplitVideoComparison: View {
     public let comparisonLabel: String
 
     @State private var dividerFraction: CGFloat = 0.5
-    @State private var keeperPlayer: AVPlayer?
-    @State private var comparisonPlayer: AVPlayer?
-    /// Reactive play/pause state driven by KVO on timeControlStatus.
-    @State private var isPlaying: Bool = false
-
-    /// Retained loop observers so we can remove them on teardown.
-    @State private var loopTokens: [Any] = []
-    /// Retained Combine sink for timeControlStatus KVO.
-    @State private var statusCancellable: AnyCancellable?
+    @State private var coordinator = VideoComparisonCoordinator()
 
     public init(
         keeperPath: String,
@@ -39,7 +185,7 @@ public struct SplitVideoComparison: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 // Comparison video (full frame, underneath)
-                if let player = comparisonPlayer {
+                if let player = coordinator.comparisonPlayer {
                     AVPlayerViewRepresentable(player: player)
                         .frame(
                             width: geo.size.width,
@@ -49,7 +195,7 @@ public struct SplitVideoComparison: View {
                 }
 
                 // Keeper video (masked to divider fraction)
-                if let player = keeperPlayer {
+                if let player = coordinator.keeperPlayer {
                     AVPlayerViewRepresentable(player: player)
                         .frame(
                             width: geo.size.width,
@@ -83,14 +229,31 @@ public struct SplitVideoComparison: View {
         .background(Color.black)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .task(id: keeperPath + comparisonPath) {
-            teardownPlayers()
-            await setupPlayers()
+            // Primary lifecycle: setup now, and tear down when SwiftUI cancels
+            // this task — which it does reliably on view removal AND on id
+            // change. Group changes are also covered by setup()'s teardown of
+            // the prior pair; this guarantees a player pair never outlives the
+            // task that created it.
+            coordinator.setup(
+                keeperPath: keeperPath, comparisonPath: comparisonPath
+            )
+            await Self.parkUntilCancelled()
+            coordinator.teardown()
         }
         .onChange(of: dividerFraction) {
-            updateVolumes()
+            coordinator.updateVolumes(dividerFraction: dividerFraction)
         }
         .onDisappear {
-            teardownPlayers()
+            // Belt-and-suspenders; teardown is idempotent.
+            coordinator.teardown()
+        }
+    }
+
+    /// Suspend until the surrounding Task is cancelled (view removed or id
+    /// changed), then return so the caller can tear down.
+    private static func parkUntilCancelled() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 300_000_000)
         }
     }
 
@@ -147,10 +310,10 @@ public struct SplitVideoComparison: View {
             HStack(spacing: 12) {
                 Spacer()
                 Button {
-                    togglePlayback()
+                    coordinator.togglePlayback()
                 } label: {
                     Image(
-                        systemName: isPlaying
+                        systemName: coordinator.isPlaying
                             ? "pause.circle.fill"
                             : "play.circle.fill"
                     )
@@ -161,7 +324,7 @@ public struct SplitVideoComparison: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    seekToStart()
+                    coordinator.seekToStart()
                 } label: {
                     Image(
                         systemName: "backward.end.circle.fill"
@@ -186,81 +349,6 @@ public struct SplitVideoComparison: View {
             .foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: 4))
     }
-
-    private func setupPlayers() async {
-        let k = AVPlayer(
-            url: URL(fileURLWithPath: keeperPath)
-        )
-        let c = AVPlayer(
-            url: URL(fileURLWithPath: comparisonPath)
-        )
-
-        // Loop both players; store tokens for cleanup.
-        let tokenK = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: k.currentItem,
-            queue: .main
-        ) { _ in k.seek(to: .zero); k.play() }
-        let tokenC = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: c.currentItem,
-            queue: .main
-        ) { _ in c.seek(to: .zero); c.play() }
-        loopTokens = [tokenK, tokenC]
-
-        // Drive isPlaying reactively from keeper's timeControlStatus.
-        statusCancellable = k.publisher(for: \.timeControlStatus)
-            .receive(on: RunLoop.main)
-            .sink { [c] status in
-                isPlaying = (status == .playing)
-                    || (c.timeControlStatus == .playing)
-            }
-
-        keeperPlayer = k
-        comparisonPlayer = c
-        updateVolumes()
-
-        k.play()
-        c.play()
-    }
-
-    /// Pause and clean up players and all observers.
-    private func teardownPlayers() {
-        keeperPlayer?.pause()
-        comparisonPlayer?.pause()
-        for token in loopTokens {
-            NotificationCenter.default.removeObserver(token)
-        }
-        loopTokens = []
-        statusCancellable = nil
-        isPlaying = false
-    }
-
-    private func updateVolumes() {
-        let keeperDominant = dividerFraction >= 0.5
-        keeperPlayer?.volume = keeperDominant ? 1.0 : 0.0
-        comparisonPlayer?.volume = keeperDominant ? 0.0 : 1.0
-    }
-
-    private func togglePlayback() {
-        guard let k = keeperPlayer,
-              let c = comparisonPlayer else { return }
-        if isPlaying {
-            k.pause()
-            c.pause()
-        } else {
-            // Sync to same time before resuming
-            let time = k.currentTime()
-            c.seek(to: time)
-            k.play()
-            c.play()
-        }
-    }
-
-    private func seekToStart() {
-        keeperPlayer?.seek(to: .zero)
-        comparisonPlayer?.seek(to: .zero)
-    }
 }
 
 /// Hosts an AppKit `AVPlayerView` rather than SwiftUI's `VideoPlayer`.
@@ -284,6 +372,15 @@ struct AVPlayerViewRepresentable: NSViewRepresentable {
         if nsView.player !== player {
             nsView.player = player
         }
+    }
+
+    /// Deterministic AppKit teardown — releases the AVPlayerView's hold on the
+    /// player when SwiftUI removes the representable, rather than relying on
+    /// `.onDisappear`. (UI-VIDEO-PLAYER-LIFECYCLE-TEARDOWN-001)
+    static func dismantleNSView(_ nsView: AVPlayerView, coordinator: Void) {
+        nsView.player?.pause()
+        nsView.player?.replaceCurrentItem(with: nil)
+        nsView.player = nil
     }
 
     /// Builds the hosted AVPlayerView. Extracted so it can be exercised
