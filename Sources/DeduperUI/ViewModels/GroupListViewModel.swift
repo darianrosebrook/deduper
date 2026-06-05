@@ -351,20 +351,32 @@ public final class GroupListViewModel {
                     ?? .undecided) == .undecided
         }
 
-        guard !targets.isEmpty else { return 0 }
+        guard let first = targets.first else { return 0 }
 
-        for group in targets {
-            let gid = group.groupId
-            let predicate = #Predicate<ReviewDecision> {
-                $0.groupId == gid
-            }
-            var descriptor = FetchDescriptor<ReviewDecision>(
-                predicate: predicate
+        // Single bulk fetch of the session's existing decisions — NOT one
+        // FetchDescriptor per group. The per-group loop issued O(N) SwiftData
+        // queries on the main thread and pegged the CPU (~98%) on a 10.7k-group
+        // approve, appearing hung. (UI-EXACT-APPROVE-PERF-001)
+        let sid = first.sessionId
+        let existingByGroup: [UUID: ReviewDecision]
+        do {
+            let pred = #Predicate<ReviewDecision> { $0.sessionId == sid }
+            let rows = try context.fetch(
+                FetchDescriptor<ReviewDecision>(predicate: pred)
             )
-            descriptor.fetchLimit = 1
+            existingByGroup = Dictionary(
+                rows.map { ($0.groupId, $0) },
+                uniquingKeysWith: { current, _ in current }
+            )
+        } catch {
+            Self.logger.error("Batch approve fetch failed: \(error)")
+            existingByGroup = [:]
+        }
 
+        let now = Date()
+        for group in targets {
             let decision: ReviewDecision
-            if let existing = try? context.fetch(descriptor).first {
+            if let existing = existingByGroup[group.groupId] {
                 decision = existing
             } else {
                 decision = ReviewDecision(
@@ -376,10 +388,10 @@ public final class GroupListViewModel {
             }
 
             decision.decisionState = .approved
-            decision.decidedAt = Date()
+            decision.decidedAt = now
 
             decisionByGroupId[group.groupId] = DecisionSnapshot(
-                state: .approved, decidedAt: decision.decidedAt
+                state: .approved, decidedAt: now
             )
         }
 
