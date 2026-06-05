@@ -7,7 +7,8 @@ created_at: '2026-06-05T00:53:50.036Z'
 updated_at: '2026-06-05T00:53:50.036Z'
 blast_radius:
   modules:
-    - 'TODO: list one or more modules this spec touches.'
+    - 'DeduperKit/DetectionService (detectDuplicates entry, exact-match pass)'
+    - 'DeduperKit/DetectionService (SkipReason diagnostic enum)'
   data_migration: false
 operational_rollback_slo: 5m
 scope:
@@ -15,15 +16,40 @@ scope:
     - 'Sources/DeduperKit/DetectionService.swift'
     - 'Sources/DeduperKit/DetectionTypes.swift'
     - 'Tests/DeduperKitTests/ScanZeroByteTests.swift'
-  out: []
+  out:
+    - 'Sources/DeduperUI'
+    - 'Sources/DeduperApp'
 invariants:
-  - 'TODO: describe one invariant this spec guarantees.'
+  - 'Zero-byte files MUST NOT form a sha256Exact duplicate group: empty files all share the SHA-256 of empty content, so grouping them collapses unrelated empty placeholders (.jpg/.MOV/.bmp across unrelated folders) into one bogus confidence-1.0 group.'
+  - 'Zero-byte files MUST NOT be returned into perceptual or video detection either; they are empty/corrupt placeholders, not media duplicates, and are excluded from every grouping path.'
+  - 'Every zero-byte file is accounted for with a typed diagnostic (assetSkipped, reason=zeroByteFile) — excluded, never silently dropped.'
+  - 'Exclusion is decided by file size (fileSize == 0) before any hashing, not by matching the empty-content SHA digest string.'
+  - 'Non-zero byte-identical files are unaffected: they still form exactly one sha256Exact group with confidence 1.0 (no correctness regression to valid exact detection).'
 acceptance:
   - id: A1
-    given: 'TODO'
-    when: 'TODO'
-    then: 'TODO'
-non_functional: {}
+    given: 'multiple zero-byte files with different names, extensions, and paths (e.g. empty.jpg, empty.MOV, empty.bmp)'
+    when: 'detection runs'
+    then: 'no duplicate group is produced that contains any zero-byte file (no sha256Exact group forms across them)'
+  - id: A2
+    given: 'a corpus containing zero-byte files'
+    when: 'detection runs with a progress sink attached'
+    then: 'each zero-byte file emits an assetSkipped progress event carrying its canonical path identity and reason=zeroByteFile'
+  - id: A3
+    given: 'two or more non-zero byte-identical files'
+    when: 'detection runs'
+    then: 'they form exactly one group with confidence 1.0 whose members are the byte-identical files (valid exact detection unchanged)'
+  - id: A4
+    given: 'a mixed corpus of valid non-zero exact duplicates plus several zero-byte files'
+    when: 'detection runs'
+    then: 'only the valid exact group is returned; no returned group contains a zero-byte file, and every zero-byte file is reported via the zeroByteFile diagnostic'
+  - id: A5
+    given: 'a corpus with zero-byte files and non-empty non-duplicate images, with perceptual detection enabled (exactOnly=false)'
+    when: 'detection runs'
+    then: 'zero-byte files never reach perceptual/video grouping and never appear in any returned group'
+non_functional:
+  performance:
+    - 'Zero-byte exclusion is an O(n) size check before hashing; it removes empty files from the candidate set so they incur no prehash/SHA256/perceptual cost.'
+    - 'Each excluded zero-byte file is logged/reported with stable canonical identity and reason=zeroByteFile.'
 contracts:
   - name: 'zero-byte-exclusion'
     type: behavior
