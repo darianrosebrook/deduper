@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CryptoKit
 import DeduperKit
 import QuickLookThumbnailing
 import os
@@ -116,13 +117,15 @@ public actor ThumbnailService {
     }
 
     private func diskPath(for key: String) -> URL {
-        // Hash the key to get a safe filename
-        let data = Data(key.utf8)
-        var hash: UInt64 = 5381
-        for byte in data {
-            hash = ((hash &<< 5) &+ hash) &+ UInt64(byte)
-        }
-        let filename = String(hash, radix: 16)
+        // SHA-256 for a collision-resistant, stable-across-launches
+        // cache filename. Previously a hand-rolled DJB2 hash whose
+        // known collision weakness could silently serve the wrong
+        // cached thumbnail for two keys hashing to the same value.
+        // (`Hasher` is unsuitable here — it is seeded randomly per
+        // process, so disk keys would not be reproducible.)
+        let digest = SHA256.hash(data: Data(key.utf8))
+        let filename = digest.map { String(format: "%02x", $0) }
+            .joined()
         return diskCacheURL
             .appendingPathComponent(filename)
             .appendingPathExtension("png")

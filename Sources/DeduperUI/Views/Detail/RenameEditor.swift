@@ -1,4 +1,5 @@
 import SwiftUI
+import DeduperKit
 
 /// Inline rename editor with mode picker, text fields, and live preview.
 public struct RenameEditor: View {

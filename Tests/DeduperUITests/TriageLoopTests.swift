@@ -463,8 +463,13 @@ struct TriageLoopTests {
         let (vm, groups, _) = makeVM(groupCount: 5)
         vm.selectedGroupId = groups[0].groupId
 
-        // Search for something that doesn't match group 0
+        // Search for something that doesn't match group 0.
+        // Search is debounced in production (200ms); flush the
+        // filter synchronously here to observe the result. The
+        // contract under test is that flushing by search does NOT
+        // normalize selection — the same routine the debounce calls.
         vm.searchText = "zzz_nonexistent"
+        vm.applyFilters()
 
         // Filtered list is empty but selection should NOT
         // have been normalized (search typing exception)

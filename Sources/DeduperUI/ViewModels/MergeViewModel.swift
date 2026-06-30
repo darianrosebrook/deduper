@@ -3,191 +3,7 @@ import DeduperKit
 import SwiftData
 import os
 
-// MARK: - Plan Types
-
-/// Validation warning for a single group in the merge plan.
-public enum MergeValidationWarning: Sendable, Identifiable {
-    case noKeeperDetermined(groupIndex: Int)
-    case keeperMissing(groupIndex: Int, path: String)
-    case keeperNotMember(groupIndex: Int, path: String)
-    case keeperChanged(groupIndex: Int, path: String)
-    case nonKeeperMissing(groupIndex: Int, count: Int)
-    case keeperConflict(groupIndex: Int, path: String)
-    case protectedPath(groupIndex: Int, path: String)
-    case companionIsKeeper(groupIndex: Int, path: String)
-    case samePhysicalFileAsKeeper(
-        groupIndex: Int, keeperPath: String, path: String
-    )
-    case renameCollision(
-        groupIndex: Int, path: String, targetName: String
-    )
-    /// Rename collision resolved via appendNumber policy.
-    case renameCollisionResolved(
-        groupIndex: Int, path: String,
-        targetName: String, resolvedName: String
-    )
-    /// Rename blocked (block policy, collision) — group excluded.
-    case renameBlocked(
-        groupIndex: Int, path: String, targetName: String
-    )
-    /// Rename target name is invalid (empty, "/", null byte, etc.).
-    case renameInvalidTarget(
-        groupIndex: Int, path: String,
-        targetName: String, reason: String
-    )
-    /// appendNumber exhausted 999 attempts without finding free name.
-    case renameCollisionExhausted(
-        groupIndex: Int, path: String, targetName: String
-    )
-
-    public var id: String {
-        switch self {
-        case .noKeeperDetermined(let i): "noKeeper-\(i)"
-        case .keeperMissing(let i, _): "keeperMissing-\(i)"
-        case .keeperNotMember(let i, _): "keeperNotMember-\(i)"
-        case .keeperChanged(let i, _): "keeperChanged-\(i)"
-        case .nonKeeperMissing(let i, _): "nonKeeperMissing-\(i)"
-        case .keeperConflict(let i, _): "keeperConflict-\(i)"
-        case .protectedPath(let i, _): "protectedPath-\(i)"
-        case .companionIsKeeper(let i, _): "companionKeeper-\(i)"
-        case .samePhysicalFileAsKeeper(let i, _, let p):
-            "samePhysical-\(i)-\(p)"
-        case .renameCollision(let i, _, let t):
-            "renameCollision-\(i)-\(t)"
-        case .renameCollisionResolved(let i, _, let t, _):
-            "renameCollisionResolved-\(i)-\(t)"
-        case .renameBlocked(let i, _, let t):
-            "renameBlocked-\(i)-\(t)"
-        case .renameInvalidTarget(let i, _, let t, _):
-            "renameInvalidTarget-\(i)-\(t)"
-        case .renameCollisionExhausted(let i, _, let t):
-            "renameCollisionExhausted-\(i)-\(t)"
-        }
-    }
-
-    public var isSkip: Bool {
-        switch self {
-        case .noKeeperDetermined, .keeperMissing,
-             .renameBlocked:
-            true
-        default: false
-        }
-    }
-
-    public var message: String {
-        switch self {
-        case .noKeeperDetermined(let i):
-            "Group \(i): no keeper could be determined"
-        case .keeperMissing(let i, let p):
-            "Group \(i): keeper missing — \(URL(fileURLWithPath: p).lastPathComponent)"
-        case .keeperNotMember(let i, let p):
-            "Group \(i): selected keeper not in group — \(URL(fileURLWithPath: p).lastPathComponent)"
-        case .keeperChanged(let i, let p):
-            "Group \(i): keeper modified since review — \(URL(fileURLWithPath: p).lastPathComponent)"
-        case .nonKeeperMissing(let i, let c):
-            "Group \(i): \(c) file(s) already missing"
-        case .keeperConflict(let i, let p):
-            "Group \(i): file is keeper elsewhere — \(URL(fileURLWithPath: p).lastPathComponent)"
-        case .protectedPath(let i, let p):
-            "Group \(i): protected system path — \(URL(fileURLWithPath: p).lastPathComponent)"
-        case .companionIsKeeper(let i, let p):
-            "Group \(i): companion is keeper elsewhere — \(URL(fileURLWithPath: p).lastPathComponent)"
-        case .samePhysicalFileAsKeeper(let i, _, let p):
-            "Group \(i): hard link / alias of keeper — move removes link, not storage — \(URL(fileURLWithPath: p).lastPathComponent)"
-        case .renameCollision(let i, _, let t):
-            "Group \(i): rename target '\(t)' already exists — rename omitted"
-        case .renameCollisionResolved(let i, _, let t, let r):
-            "Group \(i): rename target '\(t)' in use — resolved to '\(r)'"
-        case .renameBlocked(let i, _, let t):
-            "Group \(i): rename target '\(t)' in use — group excluded (Block policy)"
-        case .renameInvalidTarget(let i, _, let t, let reason):
-            "Group \(i): rename target '\(t)' is invalid — \(reason)"
-        case .renameCollisionExhausted(let i, _, let t):
-            "Group \(i): could not find free name for '\(t)' after 999 attempts — rename skipped"
-        }
-    }
-}
-
-/// Keeper rename target resolved during plan validation.
-public struct KeeperRename: Sendable {
-    public let originalPath: String
-    public let targetPath: String
-    /// Companion renames (keeper's sidecars/Live Photo pairs).
-    public let companionRenames: [CompanionRenameEntry]
-
-    public struct CompanionRenameEntry: Sendable {
-        public let originalPath: String
-        public let targetPath: String
-    }
-}
-
-/// Per-group validation result ready for merge.
-public struct MergePlanItem: Identifiable, Sendable {
-    public let id: UUID  // groupId
-    public let groupIndex: Int
-    public let keeperPath: String
-    public let nonKeeperBundles: [AssetBundle]
-    public let warnings: [MergeValidationWarning]
-    /// Non-nil when the keeper should be renamed in-place.
-    public let keeperRename: KeeperRename?
-
-    public var totalFiles: Int {
-        nonKeeperBundles.reduce(0) { $0 + $1.allFiles.count }
-    }
-}
-
-/// Why the merge plan is empty. Computed during validation where
-/// SwiftData context is available — not inferred in the view.
-public enum MergeEmptyReason: Sendable {
-    case noApprovedDecisions
-    case allAlreadyMerged(count: Int)
-    case allSkippedDuringValidation
-}
-
-/// Complete validated merge plan.
-public struct MergePlan: Sendable {
-    public let items: [MergePlanItem]
-    public let skippedGroups: [MergeValidationWarning]
-    public let missingNonKeeperCount: Int
-    /// Non-nil when `items.isEmpty`, explains why.
-    public let emptyReason: MergeEmptyReason?
-
-    public var totalAssetBundles: Int {
-        items.reduce(0) { $0 + $1.nonKeeperBundles.count }
-    }
-
-    public var totalFiles: Int {
-        items.reduce(0) { $0 + $1.totalFiles }
-    }
-
-    public var companionCount: Int {
-        items.reduce(0) { sum, item in
-            sum + item.nonKeeperBundles.reduce(0) {
-                $0 + $1.companions.count
-            }
-        }
-    }
-
-    /// Count of groups that include a keeper rename.
-    public var renameCount: Int {
-        items.filter { $0.keeperRename != nil }.count
-    }
-
-    /// Count of groups excluded due to rename block policy.
-    public var blockedGroupCount: Int {
-        skippedGroups.filter { w in
-            if case .renameBlocked = w { return true }
-            return false
-        }.count
-    }
-
-    /// Total companion renames planned across all groups.
-    public var plannedCompanionRenameCount: Int {
-        items.reduce(0) {
-            $0 + ($1.keeperRename?.companionRenames.count ?? 0)
-        }
-    }
-}
+// MARK: - Merge Phase
 
 /// Phase of the merge flow state machine.
 public enum MergePhase {
@@ -205,6 +21,13 @@ public enum MergePhase {
 // MARK: - ViewModel
 
 /// Coordinates merge validation, execution, and undo.
+///
+/// Plan building (`MergePlanner`), protected-path decisions
+/// (`ProtectedPathPolicy`), and rename-template evaluation
+/// (`RenameTemplate`) live in DeduperKit so the UI preview and the
+/// CLI/execution path share one implementation. This view model
+/// owns only the SwiftData fetch, the merge state machine, and the
+/// undo / crash-recovery / decision-reconciliation machinery.
 /// Fetch SwiftData on main actor, build plan off-main.
 @MainActor
 @Observable
@@ -214,7 +37,18 @@ public final class MergeViewModel {
     )
 
     public var phase: MergePhase = .idle
-    public var lastTransaction: MergeTransaction?
+    /// Most recent completed transaction. Recomputes undo
+    /// eligibility on assignment so the toolbar (which reads
+    /// `canUndo` in its view body) never stats files per frame —
+    /// only once per state change.
+    public var lastTransaction: MergeTransaction? {
+        didSet {
+            cachedUndoEligible = recomputeUndoEligibility()
+        }
+    }
+    /// Cached result of `isUndoEligible(lastTransaction)`.
+    /// Refreshed only when `lastTransaction` changes.
+    private var cachedUndoEligible: Bool = false
     /// Non-nil when a `.planned` (interrupted) transaction is found on
     /// session load. The user is prompted to recover (undo) via the UI.
     public private(set) var interruptedTransaction: MergeTransaction?
@@ -222,7 +56,6 @@ public final class MergeViewModel {
     public private(set) var interruptedSessionId: UUID?
 
     private let mergeService = MergeService()
-    private let companionResolver = CompanionResolver()
     private let logDirectory: URL?
     private let quarantineRoot: URL?
     private var validateTask: Task<Void, Never>?
@@ -258,19 +91,19 @@ public final class MergeViewModel {
         validateTask = Task {
             do {
                 // Phase 1: fetch on main actor
-                let snapshot = try fetchMergeInputs(
+                let input = try fetchMergeInputs(
                     sessionId: sessionId,
                     container: container
                 )
 
                 try Task.checkCancellation()
 
-                // Phase 2: build plan off-main
-                let plan = try await buildPlan(
-                    from: snapshot,
-                    mergedDecisionCount:
-                        snapshot.mergedDecisionCount
-                )
+                // Phase 2: build plan off-main (MergePlanner is a
+                // nonisolated async Sendable struct → runs off the
+                // main actor; its body is synchronous apart from
+                // cooperative cancellation).
+                let planner = MergePlanner()
+                let plan = try await planner.buildPlan(from: input)
 
                 try Task.checkCancellation()
 
@@ -868,32 +701,12 @@ public final class MergeViewModel {
 
     // MARK: - Private: Fetch (main actor)
 
-    /// Sendable snapshot of all data needed to build a merge plan.
-    private struct MergeInputSnapshot: Sendable {
-        let groups: [GroupSnapshot]
-        /// Count of merged decisions (for empty-reason reporting).
-        let mergedDecisionCount: Int
-    }
-
-    private struct GroupSnapshot: Sendable {
-        let groupId: UUID
-        let groupIndex: Int
-        let suggestedKeeperPath: String?
-        let selectedKeeperPath: String?
-        let selectedKeeperFingerprint: String?
-        let members: [MemberSnapshot]
-        let renameTemplateJSON: Data?
-    }
-
-    private struct MemberSnapshot: Sendable {
-        let filePath: String
-        let isKeeper: Bool
-    }
-
+    /// Fetch approved decisions + group/member rows from SwiftData
+    /// and assemble a Sendable `MergePlanInput` for off-main planning.
     private func fetchMergeInputs(
         sessionId: UUID,
         container: ModelContainer
-    ) throws -> MergeInputSnapshot {
+    ) throws -> MergePlanInput {
         let context = ModelContext(container)
 
         // Fetch session for currentRunId
@@ -921,7 +734,7 @@ public final class MergeViewModel {
         )
 
         // For each decision, fetch group summary + members
-        var groups: [GroupSnapshot] = []
+        var groups: [MergePlanInput.Group] = []
         for decision in decisions {
             let gid = decision.groupId
             let rid = runId
@@ -948,7 +761,7 @@ public final class MergeViewModel {
             )
             let memberRows = try context.fetch(memberDesc)
 
-            groups.append(GroupSnapshot(
+            groups.append(MergePlanInput.Group(
                 groupId: decision.groupId,
                 groupIndex: decision.groupIndex,
                 suggestedKeeperPath: summary?.suggestedKeeperPath,
@@ -956,7 +769,7 @@ public final class MergeViewModel {
                 selectedKeeperFingerprint:
                     decision.selectedKeeperFingerprint,
                 members: memberRows.map {
-                    MemberSnapshot(
+                    MergePlanInput.Member(
                         filePath: $0.filePath,
                         isKeeper: $0.isKeeper
                     )
@@ -974,301 +787,10 @@ public final class MergeViewModel {
             FetchDescriptor<ReviewDecision>(predicate: mergedPred)
         )) ?? 0
 
-        return MergeInputSnapshot(
+        return MergePlanInput(
             groups: groups,
             mergedDecisionCount: mergedCount
         )
-    }
-
-    // MARK: - Private: Build plan (off-main)
-
-    private nonisolated func buildPlan(
-        from snapshot: MergeInputSnapshot,
-        mergedDecisionCount: Int
-    ) async throws -> MergePlan {
-        var items: [MergePlanItem] = []
-        var skipped: [MergeValidationWarning] = []
-        var missingNonKeeperTotal = 0
-
-        // Pass 1: resolve keepers and build per-group data
-        var resolved: [ResolvedGroup] = []
-
-        for group in snapshot.groups {
-            let result = resolveGroup(group)
-            switch result {
-            case .skip(let warning):
-                skipped.append(warning)
-            case .resolved(let rg):
-                resolved.append(rg)
-            }
-        }
-
-        // Pass 2: build global keeper set and dedup move targets
-        let keeperSet = Set(
-            resolved.map { canonicalize($0.keeperPath) }
-        )
-        var seenMovePaths = Set<String>()
-        // Cross-group rename target reservation: prevents two
-        // groups from planning renames to the same target path.
-        var reservedRenameTargets = Set<String>()
-
-        for group in resolved {
-            var bundles: [AssetBundle] = []
-            var warnings = group.warnings
-            var missingCount = 0
-
-            // Resolve keeper physical identity once per group
-            let keeperIdentity = FileIdentity.resolve(
-                URL(fileURLWithPath: group.keeperPath)
-            )
-
-            for path in group.nonKeeperPaths {
-                let canonical = canonicalize(path)
-
-                // Skip if this file is a keeper in another group
-                if keeperSet.contains(canonical) {
-                    warnings.append(.keeperConflict(
-                        groupIndex: group.groupIndex,
-                        path: path
-                    ))
-                    continue
-                }
-
-                // Dedup across groups
-                guard seenMovePaths.insert(canonical).inserted
-                else { continue }
-
-                // Check existence
-                let url = URL(fileURLWithPath: path)
-                guard FileManager.default.fileExists(
-                    atPath: path
-                ) else {
-                    missingCount += 1
-                    continue
-                }
-
-                // Hard-link / alias check (warn-only)
-                if let ki = keeperIdentity,
-                   let ci = FileIdentity.resolve(url),
-                   FileIdentity.same(ki, ci) {
-                    warnings.append(.samePhysicalFileAsKeeper(
-                        groupIndex: group.groupIndex,
-                        keeperPath: group.keeperPath,
-                        path: path
-                    ))
-                }
-
-                // Protected path check
-                guard !isProtectedPath(url) else {
-                    warnings.append(.protectedPath(
-                        groupIndex: group.groupIndex,
-                        path: path
-                    ))
-                    continue
-                }
-
-                // Resolve companions: filter keepers, dedup,
-                // protect, and canonicalize
-                let companionSet = CompanionResolver()
-                    .resolve(for: url)
-                let safeCompanions: [URL] = companionSet.companionURLs
-                    .compactMap { companion in
-                        let cPath = canonicalize(companion.path)
-                        // Keeper protection
-                        if keeperSet.contains(cPath) {
-                            warnings.append(.companionIsKeeper(
-                                groupIndex: group.groupIndex,
-                                path: companion.path
-                            ))
-                            return nil
-                        }
-                        // Dedup across all moved paths
-                        let cURL = URL(fileURLWithPath: cPath)
-                        guard seenMovePaths.insert(cPath).inserted
-                        else { return nil }
-                        // Protected path check
-                        guard !isProtectedPath(cURL) else {
-                            warnings.append(.protectedPath(
-                                groupIndex: group.groupIndex,
-                                path: companion.path
-                            ))
-                            return nil
-                        }
-                        return cURL
-                    }
-                bundles.append(AssetBundle(
-                    primary: url,
-                    companions: safeCompanions
-                ))
-            }
-
-            if missingCount > 0 {
-                warnings.append(.nonKeeperMissing(
-                    groupIndex: group.groupIndex,
-                    count: missingCount
-                ))
-                missingNonKeeperTotal += missingCount
-            }
-
-            // Compute keeper rename if template is set
-            let keeperRename = computeKeeperRename(
-                group: group,
-                movePaths: seenMovePaths,
-                reservedTargets: &reservedRenameTargets,
-                warnings: &warnings,
-                skipped: &skipped
-            )
-            // If block policy triggered, skip entire group.
-            // computeKeeperRename appends .renameBlocked to skipped
-            // and returns nil — check for that explicitly.
-            if keeperRename == nil
-                && group.renameTemplateJSON != nil {
-                let wasBlocked = skipped.contains { w in
-                    if case .renameBlocked(let i, _, _) = w,
-                       i == group.groupIndex { return true }
-                    return false
-                }
-                if wasBlocked {
-                    continue
-                }
-            }
-
-            // Only include if there are bundles to move
-            if !bundles.isEmpty {
-                items.append(MergePlanItem(
-                    id: group.groupId,
-                    groupIndex: group.groupIndex,
-                    keeperPath: group.keeperPath,
-                    nonKeeperBundles: bundles,
-                    warnings: warnings,
-                    keeperRename: keeperRename
-                ))
-            } else if !warnings.isEmpty {
-                // No bundles but had warnings (e.g. all missing)
-                skipped.append(contentsOf: warnings)
-            }
-        }
-
-        let sortedItems = items.sorted {
-            $0.groupIndex < $1.groupIndex
-        }
-
-        // Compute empty reason when no actionable items
-        let emptyReason: MergeEmptyReason?
-        if sortedItems.isEmpty {
-            if snapshot.groups.isEmpty && mergedDecisionCount > 0 {
-                emptyReason = .allAlreadyMerged(
-                    count: mergedDecisionCount
-                )
-            } else if snapshot.groups.isEmpty {
-                emptyReason = .noApprovedDecisions
-            } else {
-                emptyReason = .allSkippedDuringValidation
-            }
-        } else {
-            emptyReason = nil
-        }
-
-        return MergePlan(
-            items: sortedItems,
-            skippedGroups: skipped,
-            missingNonKeeperCount: missingNonKeeperTotal,
-            emptyReason: emptyReason
-        )
-    }
-
-    private nonisolated func resolveGroup(
-        _ group: GroupSnapshot
-    ) -> ResolveResult {
-        let idx = group.groupIndex
-        var warnings: [MergeValidationWarning] = []
-        let memberPaths = group.members.map(\.filePath)
-        let canonicalMembers = Set(memberPaths.map { canonicalize($0) })
-
-        // Step 1: resolve keeper
-        var keeperPath: String?
-
-        // 1a: user-selected keeper
-        if let selected = group.selectedKeeperPath {
-            let canonical = canonicalize(selected)
-            if canonicalMembers.contains(canonical) {
-                keeperPath = selected
-            } else {
-                warnings.append(.keeperNotMember(
-                    groupIndex: idx, path: selected
-                ))
-                // Fall through to other resolution methods
-            }
-        }
-
-        // 1b: isKeeper flag on members
-        if keeperPath == nil {
-            let keepers = group.members.filter(\.isKeeper)
-            if keepers.count == 1 {
-                keeperPath = keepers[0].filePath
-            }
-        }
-
-        // 1c: suggested keeper from summary
-        if keeperPath == nil, let suggested = group.suggestedKeeperPath {
-            let canonical = canonicalize(suggested)
-            if canonicalMembers.contains(canonical) {
-                keeperPath = suggested
-            }
-        }
-
-        // No keeper → skip
-        guard let keeper = keeperPath else {
-            return .skip(.noKeeperDetermined(groupIndex: idx))
-        }
-
-        // Step 2: keeper existence
-        guard FileManager.default.fileExists(atPath: keeper) else {
-            return .skip(.keeperMissing(
-                groupIndex: idx, path: keeper
-            ))
-        }
-
-        // Step 3: fingerprint drift
-        if let expected = group.selectedKeeperFingerprint {
-            let current = ContentFingerprint.compute(
-                for: URL(fileURLWithPath: keeper)
-            )
-            if current != expected {
-                warnings.append(.keeperChanged(
-                    groupIndex: idx, path: keeper
-                ))
-            }
-        }
-
-        // Step 4: collect non-keepers
-        let canonicalKeeper = canonicalize(keeper)
-        let nonKeepers = memberPaths.filter {
-            canonicalize($0) != canonicalKeeper
-        }
-
-        return .resolved(ResolvedGroup(
-            groupId: group.groupId,
-            groupIndex: group.groupIndex,
-            keeperPath: keeper,
-            nonKeeperPaths: nonKeepers,
-            warnings: warnings,
-            renameTemplateJSON: group.renameTemplateJSON
-        ))
-    }
-
-    private enum ResolveResult {
-        case skip(MergeValidationWarning)
-        case resolved(ResolvedGroup)
-    }
-
-    private struct ResolvedGroup: Sendable {
-        let groupId: UUID
-        let groupIndex: Int
-        let keeperPath: String
-        let nonKeeperPaths: [String]
-        let warnings: [MergeValidationWarning]
-        let renameTemplateJSON: Data?
     }
 
     // MARK: - Undo Eligibility
@@ -1303,335 +825,19 @@ public final class MergeViewModel {
         return hasMoveToRestore || hasRenameToReverse
     }
 
-    /// Whether the undo button should be shown. Checks full
-    /// eligibility: status, scope, and filesystem existence.
+    /// Whether the undo button should be shown. Cached at the last
+    /// `lastTransaction` assignment — reads in view bodies are free
+    /// (no per-frame filesystem stats). Full check: status, scope,
+    /// and filesystem existence.
     public var canUndo: Bool {
+        cachedUndoEligible
+    }
+
+    /// Recompute and return undo eligibility for the current
+    /// `lastTransaction`. Called from the `lastTransaction` didSet.
+    private func recomputeUndoEligibility() -> Bool {
         guard let tx = lastTransaction else { return false }
         return isUndoEligible(tx)
-    }
-
-    // MARK: - Helpers
-
-    private nonisolated func canonicalize(_ path: String) -> String {
-        PathIdentity.canonical(path)
-    }
-
-    /// Duplicates MergeService's protected path check for early
-    /// UI-side warning. MergeService also refuses at execution time.
-    private nonisolated func isProtectedPath(_ url: URL) -> Bool {
-        let path = url.path
-        let prefixes = [
-            "/System", "/Library", "/usr",
-            "/bin", "/sbin", "/Applications",
-            "/private/var",
-        ]
-        return prefixes.contains { path.hasPrefix($0) }
-    }
-
-    // MARK: - Rename Helpers
-
-    /// Compute keeper rename from template. Returns nil if no rename
-    /// needed (keepOriginal, no-op, collision skipped/blocked).
-    /// Mutates `warnings` for info-level collisions and `skipped`
-    /// for block-level collisions.
-    ///
-    /// `movePaths`: canonical paths of all files scheduled for
-    /// quarantine. Companions in this set are excluded from rename
-    /// (they're about to be moved, not renamed).
-    ///
-    /// `reservedTargets`: canonical paths already claimed by
-    /// prior groups' renames in this plan. Updated on success.
-    private nonisolated func computeKeeperRename(
-        group: ResolvedGroup,
-        movePaths: Set<String>,
-        reservedTargets: inout Set<String>,
-        warnings: inout [MergeValidationWarning],
-        skipped: inout [MergeValidationWarning]
-    ) -> KeeperRename? {
-        guard let data = group.renameTemplateJSON,
-              let template = try? JSONDecoder().decode(
-                  RenameTemplate.self, from: data
-              ),
-              template.mode != .keepOriginal
-        else { return nil }
-
-        let keeperURL = URL(fileURLWithPath: group.keeperPath)
-        let keeperFileName = keeperURL.lastPathComponent
-        let newName = template.preview(for: keeperFileName)
-        let dir = keeperURL.deletingLastPathComponent()
-
-        // No-op: template produces same name
-        guard newName != keeperFileName else { return nil }
-
-        // Reject pathological filenames
-        let trimmed = newName.trimmingCharacters(
-            in: .whitespaces
-        )
-        if trimmed.isEmpty || trimmed == "." || trimmed == ".."
-            || newName.contains("/") || newName.contains("\0") {
-            let reason: String
-            if trimmed.isEmpty {
-                reason = "result is empty or whitespace-only"
-            } else if trimmed == "." || trimmed == ".." {
-                reason = "result is a reserved name"
-            } else if newName.contains("/") {
-                reason = "result contains path separator"
-            } else {
-                reason = "result contains null byte"
-            }
-            warnings.append(.renameInvalidTarget(
-                groupIndex: group.groupIndex,
-                path: group.keeperPath,
-                targetName: newName,
-                reason: reason
-            ))
-            return nil
-        }
-
-        // No-op after canonicalization
-        let targetURL = dir.appendingPathComponent(newName)
-        if canonicalize(keeperURL.path)
-            == canonicalize(targetURL.path) {
-            return nil
-        }
-
-        // Protected path guard: refuse rename if source or
-        // target is in a protected location
-        if isProtectedPath(keeperURL) {
-            warnings.append(.protectedPath(
-                groupIndex: group.groupIndex,
-                path: group.keeperPath
-            ))
-            return nil
-        }
-        if isProtectedPath(targetURL) {
-            warnings.append(.protectedPath(
-                groupIndex: group.groupIndex,
-                path: targetURL.path
-            ))
-            return nil
-        }
-
-        // Advisory collision check: filesystem + cross-group.
-        // A file that currently exists but is scheduled for
-        // quarantine (in movePaths) will be vacated before
-        // renames execute, so treat it as available.
-        let canonicalTarget = canonicalize(targetURL.path)
-        let existsOnDisk = FileManager.default.fileExists(
-            atPath: targetURL.path
-        ) && !movePaths.contains(canonicalTarget)
-        let hasCollision = existsOnDisk
-            || reservedTargets.contains(canonicalTarget)
-
-        var resolvedName = newName
-        if hasCollision {
-            switch template.collisionPolicy {
-            case .appendNumber:
-                let candidate = resolveCollisionName(
-                    dir: dir,
-                    newName: newName,
-                    reserved: reservedTargets,
-                    vacated: movePaths
-                )
-                if candidate == newName {
-                    // Exhausted 999 attempts — skip rename
-                    warnings.append(.renameCollisionExhausted(
-                        groupIndex: group.groupIndex,
-                        path: group.keeperPath,
-                        targetName: newName
-                    ))
-                    return nil
-                }
-                resolvedName = candidate
-                warnings.append(.renameCollisionResolved(
-                    groupIndex: group.groupIndex,
-                    path: group.keeperPath,
-                    targetName: newName,
-                    resolvedName: resolvedName
-                ))
-            case .skip:
-                warnings.append(.renameCollision(
-                    groupIndex: group.groupIndex,
-                    path: group.keeperPath,
-                    targetName: newName
-                ))
-                return nil
-            case .block:
-                skipped.append(.renameBlocked(
-                    groupIndex: group.groupIndex,
-                    path: group.keeperPath,
-                    targetName: newName
-                ))
-                return nil
-            }
-        }
-
-        // Use the resolved name (post-collision) for companion
-        // stem matching, so companions get the same suffix
-        let resolvedFileName = resolvedName
-
-        // localReserved tracks targets claimed within this group
-        // (keeper + companions) to prevent within-group collisions.
-        let keeperTargetPath = dir.appendingPathComponent(
-            resolvedName
-        ).path
-        var localReserved = Set<String>()
-        localReserved.insert(canonicalize(keeperTargetPath))
-
-        // Resolve keeper's companions for atomic rename.
-        // Option 1: companion collisions skip that companion only
-        // (not block the entire group). The keeper rename proceeds.
-        let keeperCompanions = CompanionResolver()
-            .resolve(for: keeperURL)
-        var companionRenames: [KeeperRename.CompanionRenameEntry]
-            = []
-        for comp in keeperCompanions.companions {
-            // Skip companions scheduled to be quarantined
-            let compCanonical = canonicalize(comp.url.path)
-            if movePaths.contains(compCanonical) {
-                continue
-            }
-
-            let compNewName = template.previewCompanion(
-                keeperFileName: resolvedFileName,
-                companionFileName: comp.url.lastPathComponent
-            )
-
-            // Validate companion name
-            let compTrimmed = compNewName.trimmingCharacters(
-                in: .whitespaces
-            )
-            if compTrimmed.isEmpty || compTrimmed == "."
-                || compTrimmed == ".."
-                || compNewName.contains("/")
-                || compNewName.contains("\0")
-            {
-                warnings.append(.renameInvalidTarget(
-                    groupIndex: group.groupIndex,
-                    path: comp.url.path,
-                    targetName: compNewName,
-                    reason: "invalid companion name"
-                ))
-                continue
-            }
-
-            var compTargetURL = dir.appendingPathComponent(
-                compNewName
-            )
-
-            // No-op after canonicalization
-            if canonicalize(comp.url.path)
-                == canonicalize(compTargetURL.path) {
-                continue
-            }
-
-            // Protected path guard (parity with keeper)
-            if isProtectedPath(comp.url)
-                || isProtectedPath(compTargetURL)
-            {
-                warnings.append(.protectedPath(
-                    groupIndex: group.groupIndex,
-                    path: compTargetURL.path
-                ))
-                continue
-            }
-
-            // Collision check: filesystem + cross-group +
-            // within-group (localReserved).
-            let compCanonicalTarget = canonicalize(
-                compTargetURL.path
-            )
-            let compExistsOnDisk = FileManager.default.fileExists(
-                atPath: compTargetURL.path
-            ) && !movePaths.contains(compCanonicalTarget)
-            let compHasCollision = compExistsOnDisk
-                || reservedTargets.contains(compCanonicalTarget)
-                || localReserved.contains(compCanonicalTarget)
-
-            var finalCompName = compNewName
-            if compHasCollision {
-                switch template.collisionPolicy {
-                case .appendNumber:
-                    let candidate = resolveCollisionName(
-                        dir: dir,
-                        newName: compNewName,
-                        reserved: reservedTargets.union(localReserved),
-                        vacated: movePaths
-                    )
-                    if candidate == compNewName {
-                        warnings.append(.renameCollisionExhausted(
-                            groupIndex: group.groupIndex,
-                            path: comp.url.path,
-                            targetName: compNewName
-                        ))
-                        continue
-                    }
-                    warnings.append(.renameCollisionResolved(
-                        groupIndex: group.groupIndex,
-                        path: comp.url.path,
-                        targetName: compNewName,
-                        resolvedName: candidate
-                    ))
-                    finalCompName = candidate
-                case .skip, .block:
-                    // Option 1: do not block group for companion
-                    // collision — skip this companion only.
-                    warnings.append(.renameCollision(
-                        groupIndex: group.groupIndex,
-                        path: comp.url.path,
-                        targetName: compNewName
-                    ))
-                    continue
-                }
-            }
-
-            compTargetURL = dir.appendingPathComponent(finalCompName)
-            localReserved.insert(canonicalize(compTargetURL.path))
-            companionRenames.append(.init(
-                originalPath: comp.url.path,
-                targetPath: compTargetURL.path
-            ))
-        }
-
-        // Reserve all targets atomically for cross-group dedup
-        reservedTargets.formUnion(localReserved)
-
-        return KeeperRename(
-            originalPath: group.keeperPath,
-            targetPath: keeperTargetPath,
-            companionRenames: companionRenames
-        )
-    }
-
-    /// Find a non-colliding name by appending "-1", "-2", etc.
-    /// Checks both the filesystem and the cross-group reserved set.
-    /// Files in `vacated` are being quarantined and will be gone
-    /// before renames execute, so they don't count as collisions.
-    private nonisolated func resolveCollisionName(
-        dir: URL,
-        newName: String,
-        reserved: Set<String>,
-        vacated: Set<String>
-    ) -> String {
-        let ext = (newName as NSString).pathExtension
-        let stem = (newName as NSString).deletingPathExtension
-        for i in 1...999 {
-            let candidate: String
-            if ext.isEmpty {
-                candidate = "\(stem)-\(i)"
-            } else {
-                candidate = "\(stem)-\(i).\(ext)"
-            }
-            let url = dir.appendingPathComponent(candidate)
-            let canonical = canonicalize(url.path)
-            let onDisk = FileManager.default.fileExists(
-                atPath: url.path
-            ) && !vacated.contains(canonical)
-            if !onDisk && !reserved.contains(canonical) {
-                return candidate
-            }
-        }
-        return newName // fallback — execution handles failure
     }
 }
 

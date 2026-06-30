@@ -92,7 +92,23 @@ public final class GroupListViewModel {
         didSet { applyFilters() }
     }
     public var searchText: String = "" {
-        didSet { applyFilters() }
+        didSet { scheduleSearchDebounce() }
+    }
+
+    /// Coalesces search typing into one filter pass per 200ms pause.
+    /// On a 10k-group session, re-running `applyFilters` on every
+    /// keystroke janks the main thread; other filters (sort order,
+    /// match kind, decision state, etc.) apply immediately via their
+    /// own `didSet` since they change discretely, not per-keystroke.
+    private var searchDebounceTask: Task<Void, Never>?
+
+    private func scheduleSearchDebounce() {
+        searchDebounceTask?.cancel()
+        searchDebounceTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.applyFilters()
+        }
     }
     public var mediaTypeFilter: Int16? = nil {
         didSet { applyFilters(); normalizeSelection() }
@@ -232,6 +248,7 @@ public final class GroupListViewModel {
 
     /// Clear groups when session changes or is deselected.
     public func clear() {
+        searchDebounceTask?.cancel()
         allGroups = []
         filteredGroups = []
         selectedGroupId = nil

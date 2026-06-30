@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 @testable import DeduperUI
+import DeduperKit
 
 @Suite("RenameTemplate")
 struct RenameTemplateTests {

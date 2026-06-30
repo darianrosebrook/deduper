@@ -2,6 +2,11 @@ import Foundation
 
 /// Template for renaming keepers during merge.
 /// Applied to the filename stem; extension is always preserved.
+///
+/// Lives in DeduperKit (not DeduperUI) because the rename transform
+/// and collision policy are pure merge-domain logic evaluated by
+/// `MergePlanner` at plan-build time. UI-only SwiftUI conformances
+/// for the pickers live in `DeduperUI/Views/Detail/RenameEditor.swift`.
 public struct RenameTemplate: Codable, Sendable, Equatable {
     public enum Mode: String, Codable, Sendable, CaseIterable {
         case keepOriginal
