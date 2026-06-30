@@ -23,6 +23,15 @@ build/
 # Temporary files
 tmp/
 
+# Logs (generated artifacts)
+*.log
+
+# CAWS-generated local state. Kept outside the managed block below
+# so `caws init` does not clobber these. Hooks are batch-installed by
+# the tooling; working-spec scratch files are ephemeral.
+.caws/hooks/
+.caws/working-spec*.yaml
+
 # >>> caws gitignore (managed, v2) >>>
 # Ephemeral CAWS runtime/local state — never tracked. Authority state
 # (.caws/specs/, .caws/policy.yaml, .caws/waivers/) is intentionally NOT
