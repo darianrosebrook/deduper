@@ -1,0 +1,32 @@
+id: UI-QUARANTINE-RECLAIM-001
+title: 'Surface quarantine size in UI with confirmed per-transaction purge (golden-path gotcha 1)'
+risk_tier: 2
+mode: feature
+lifecycle_state: active
+created_at: '2026-07-16T23:19:03.139Z'
+updated_at: '2026-07-16T23:19:03.139Z'
+blast_radius:
+  modules:
+    - 'TODO: list one or more modules this spec touches.'
+  data_migration: false
+operational_rollback_slo: 5m
+scope:
+  in:
+    - 'Sources/DeduperUI/ViewModels/QuarantineViewModel.swift'
+    - 'Sources/DeduperUI/Views/QuarantineView.swift'
+    - 'Sources/DeduperUI/Views/AppRootView.swift'
+    - 'Sources/DeduperUI/Views/SessionSidebarView.swift'
+    - 'Tests/DeduperUITests/QuarantineViewModelTests.swift'
+    - 'docs/GOLDEN-PATH.md'
+  out: []
+invariants:
+  - 'TODO: describe one invariant this spec guarantees.'
+acceptance:
+  - id: A1
+    given: 'TODO'
+    when: 'TODO'
+    then: 'TODO'
+non_functional: {}
+contracts:
+  - name: 'quarantine-reclaim-behavior'
+    type: behavior
