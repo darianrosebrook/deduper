@@ -7,7 +7,8 @@ created_at: '2026-07-16T23:54:01.136Z'
 updated_at: '2026-07-16T23:54:01.136Z'
 blast_radius:
   modules:
-    - 'TODO: list one or more modules this spec touches.'
+    - DeduperCLI
+    - docs
   data_migration: false
 operational_rollback_slo: 5m
 scope:
@@ -16,12 +17,22 @@ scope:
     - 'docs/GOLDEN-PATH.md'
   out: []
 invariants:
-  - 'TODO: describe one invariant this spec guarantees.'
+  - 'A bare `deduper purge <tx-id>` never deletes anything: deletion requires the explicit --apply flag, mirroring merge''s dry-run-by-default.'
+  - 'The preview names every file that --apply would delete, with sizes, before any deletion is possible.'
+  - 'Existing guards (invalid ID, missing transaction, trash-mode, already undone/purged) are preserved unchanged.'
 acceptance:
   - id: A1
-    given: 'TODO'
-    when: 'TODO'
-    then: 'TODO'
+    given: 'a completed quarantine transaction with files on disk'
+    when: 'deduper purge <tx-id> runs without --apply'
+    then: 'it lists each quarantined file with its size and total, prints that nothing was deleted, and the files remain on disk with the transaction still .completed'
+  - id: A2
+    given: 'the same transaction'
+    when: 'deduper purge <tx-id> --apply runs'
+    then: 'the files are deleted from disk and the transaction is marked .purged'
+  - id: A3
+    given: 'an undone or trash-mode transaction'
+    when: 'purge runs with or without --apply'
+    then: 'the existing ValidationError guards fire exactly as before'
 non_functional: {}
 contracts:
   - name: 'purge-confirmation-behavior'
