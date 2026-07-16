@@ -239,11 +239,12 @@ struct MergeServiceTests {
             !FileManager.default.fileExists(atPath: file.path)
         )
         // File should exist in quarantine
-        if let trashedPath = transaction.entries[0].trashedPath {
-            #expect(
-                FileManager.default.fileExists(atPath: trashedPath)
-            )
-        }
+        let trashedPath = try #require(
+            transaction.entries[0].trashedPath
+        )
+        #expect(
+            FileManager.default.fileExists(atPath: trashedPath)
+        )
     }
 
     @Test("Undo from quarantine restores files")
@@ -325,11 +326,12 @@ struct MergeServiceTests {
         #expect(deleted == 1)
 
         // Quarantined file should be gone
-        if let trashedPath = transaction.entries[0].trashedPath {
-            #expect(
-                !FileManager.default.fileExists(atPath: trashedPath)
-            )
-        }
+        let trashedPath = try #require(
+            transaction.entries[0].trashedPath
+        )
+        #expect(
+            !FileManager.default.fileExists(atPath: trashedPath)
+        )
     }
 
     @Test("Transaction stores sessionId when provided")

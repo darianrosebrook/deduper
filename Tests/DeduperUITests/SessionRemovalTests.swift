@@ -139,8 +139,8 @@ struct SessionRemovalTests {
         vm.selectedSessionId = sid1
         vm.deleteSession(sid1, context: context)
 
-        // selectedSessionId should advance to remaining session
-        #expect(vm.selectedSessionId == sid2 || vm.selectedSessionId != sid1)
+        // Selection must advance to the remaining session, not be cleared.
+        #expect(vm.selectedSessionId == sid2)
         #expect(!vm.sessions.contains(where: { $0.sessionId == sid1 }))
     }
 

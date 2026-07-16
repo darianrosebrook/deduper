@@ -82,9 +82,8 @@ struct MergeLifecycleTests {
         #expect(reloaded.status == .purged)
 
         // Quarantined file should be gone
-        if let trashedPath = tx.entries.first?.trashedPath {
-            #expect(!FileManager.default.fileExists(atPath: trashedPath))
-        }
+        let trashedPath = try #require(tx.entries.first?.trashedPath)
+        #expect(!FileManager.default.fileExists(atPath: trashedPath))
     }
 
     // MARK: - merge → undo
