@@ -7,7 +7,8 @@ created_at: '2026-07-16T22:44:31.595Z'
 updated_at: '2026-07-16T22:44:31.595Z'
 blast_radius:
   modules:
-    - 'TODO: list one or more modules this spec touches.'
+    - DeduperKitTests
+    - DeduperUITests
   data_migration: false
 operational_rollback_slo: 5m
 scope:
@@ -18,11 +19,28 @@ scope:
     - 'Tests/DeduperUITests/MergeViewModelTests.swift'
   out: []
 invariants:
-  - 'TODO: describe one invariant this spec guarantees.'
+  - 'No production source changes: this spec touches test files only.'
+  - 'Every modified test can fail for the behavior it claims to pin (no disjunctive-OR escape, no silently-skipped if-let assertion block, no else-branch that accepts the opposite outcome).'
 acceptance:
   - id: A1
-    given: 'TODO'
-    when: 'TODO'
-    then: 'TODO'
+    given: 'SessionRemovalTests selection-advance test with two sessions'
+    when: 'deleteSession removes the selected session'
+    then: 'the test asserts selectedSessionId == sid2 strictly (a nil selection fails the test)'
+  - id: A2
+    given: 'MergeViewModelTests undo-partial-failure test with a blocker file at the restore destination'
+    when: 'undo runs against the occupied path'
+    then: 'the test requires .undoFailed via Issue.record in the else branch (an unexpectedly successful undo fails the test)'
+  - id: A3
+    given: 'MergeServiceTests / MergeLifecycleTests quarantine-location checks'
+    when: 'a transaction entry has a nil trashedPath'
+    then: 'the test fails via try #require instead of silently skipping the existence assertion'
+  - id: A4
+    given: 'MergeViewModelTests invalid-rename-target test'
+    when: 'the plan drops the group entirely (regression)'
+    then: 'the test fails via try #require(plan.items.first) instead of passing vacuously'
+  - id: A5
+    given: 'the full suite after hardening'
+    when: 'swift test runs'
+    then: 'all tests pass, proving the strict assertions match current production behavior'
 non_functional: {}
 contracts: []
