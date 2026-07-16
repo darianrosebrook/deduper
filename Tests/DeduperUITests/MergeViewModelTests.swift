@@ -812,9 +812,9 @@ struct MergeViewModelTests {
             #expect(!failures.isEmpty)
             #expect(keptTx.id == tx.id)
         } else {
-            // Undo may succeed if FileManager overwrites — that's OK
-            // In that case, the test is still valid
-            #expect(vm.lastTransaction == nil)
+            // FileManager.moveItem never overwrites an existing file,
+            // so a blocked undo must surface as .undoFailed.
+            Issue.record("Expected .undoFailed, got \(vm.phase)")
         }
     }
 
@@ -2245,10 +2245,9 @@ struct MergeViewModelRenameWarningTests {
             if case .renameInvalidTarget = $0 { return true }
             return false
         }
-        if let item = plan.items.first {
-            #expect(item.keeperRename == nil)
-            #expect(hasInvalidWarning)
-        }
+        let item = try #require(plan.items.first)
+        #expect(item.keeperRename == nil)
+        #expect(hasInvalidWarning)
     }
 
     // MARK: - companion collision → skip companion, not block group
