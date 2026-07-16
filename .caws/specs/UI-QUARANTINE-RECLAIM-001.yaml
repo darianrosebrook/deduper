@@ -2,10 +2,11 @@ id: UI-QUARANTINE-RECLAIM-001
 title: 'Surface quarantine size in UI with confirmed per-transaction purge (golden-path gotcha 1)'
 risk_tier: 2
 mode: feature
-lifecycle_state: active
-worktree: quarantine-reclaim
+lifecycle_state: closed
+resolution: completed
+closure_notes: 'Auto-closed by caws worktree merge quarantine-reclaim at a14e68d11d0cfbf923395ad22f170bddbe11346c'
 created_at: '2026-07-16T23:19:03.139Z'
-updated_at: '2026-07-16T23:19:03.139Z'
+updated_at: '2026-07-16T23:47:35.995Z'
 blast_radius:
   modules:
     - DeduperUI
