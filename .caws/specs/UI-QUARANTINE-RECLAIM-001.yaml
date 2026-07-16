@@ -7,7 +7,9 @@ created_at: '2026-07-16T23:19:03.139Z'
 updated_at: '2026-07-16T23:19:03.139Z'
 blast_radius:
   modules:
-    - 'TODO: list one or more modules this spec touches.'
+    - DeduperUI
+    - DeduperUITests
+    - docs
   data_migration: false
 operational_rollback_slo: 5m
 scope:
@@ -20,12 +22,34 @@ scope:
     - 'docs/GOLDEN-PATH.md'
   out: []
 invariants:
-  - 'TODO: describe one invariant this spec guarantees.'
+  - 'Purge from the UI is per-transaction, requires an explicit confirmation that names what will be deleted, and only ever targets quarantine-mode completed transactions.'
+  - 'No DeduperKit source changes: the UI consumes the existing MergeService purge/listTransactions/markPurged API.'
+  - 'The quarantine size indicator is derived from on-disk state (statting trashedPaths), never from cached counts.'
 acceptance:
   - id: A1
-    given: 'TODO'
-    when: 'TODO'
-    then: 'TODO'
+    given: 'completed quarantine-mode transactions with files on disk'
+    when: 'QuarantineViewModel loads'
+    then: 'it reports exact total bytes (sum of trashedPath file sizes), per-transaction file counts, and transaction dates'
+  - id: A2
+    given: 'transactions that are undone, purged, planned, or trash-mode'
+    when: 'QuarantineViewModel loads'
+    then: 'none of them appear as purgeable items'
+  - id: A3
+    given: 'a purgeable transaction'
+    when: 'purge is confirmed in the UI'
+    then: 'its quarantined files are deleted from disk, the transaction is marked purged, and the total size decreases accordingly'
+  - id: A4
+    given: 'a purge that fails (e.g. transaction already undone)'
+    when: 'purge is invoked'
+    then: 'the error is surfaced to the user and no state is silently swallowed'
+  - id: A5
+    given: 'the app sidebar'
+    when: 'quarantine holds files'
+    then: 'a persistent footer shows the reclaimable size and opens the quarantine management view'
+  - id: A6
+    given: 'docs/GOLDEN-PATH.md'
+    when: 'this spec closes'
+    then: 'gotcha 1''s current-state callout and index row are deleted (the doc''s defined resolution criterion)'
 non_functional: {}
 contracts:
   - name: 'quarantine-reclaim-behavior'
