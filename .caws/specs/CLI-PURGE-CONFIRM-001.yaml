@@ -3,6 +3,7 @@ title: 'CLI purge: preview by default, --apply to delete (golden-path gotcha 2)'
 risk_tier: 2
 mode: feature
 lifecycle_state: active
+worktree: purge-confirm
 created_at: '2026-07-16T23:54:01.136Z'
 updated_at: '2026-07-16T23:54:01.136Z'
 blast_radius:
