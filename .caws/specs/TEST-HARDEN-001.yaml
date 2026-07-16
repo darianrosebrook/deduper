@@ -2,10 +2,11 @@ id: TEST-HARDEN-001
 title: 'Harden weak test assertions (disjunctive OR, vacuous if-let, bimodal undo)'
 risk_tier: 3
 mode: fix
-lifecycle_state: active
-worktree: test-harden
+lifecycle_state: closed
+resolution: completed
+closure_notes: 'Auto-closed by caws worktree merge test-harden at 0f10901263cd81bfc06f155c6a503a5837b5da56'
 created_at: '2026-07-16T22:44:31.595Z'
-updated_at: '2026-07-16T22:52:25.617Z'
+updated_at: '2026-07-16T22:53:35.367Z'
 blast_radius:
   modules:
     - DeduperKitTests
