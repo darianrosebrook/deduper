@@ -136,13 +136,13 @@ keeps the transaction available for retry; it is never marked resolved by failur
 ### Stage 5: Reclaim
 
 Reclaiming disk space is a **first-class stage of the flow, in the UI** — it is the
-product's entire promise. The user can always see how much space quarantine holds and
-purge it deliberately: a confirmation that lists what will be permanently deleted, with
-transaction age visible so "everything older than a month" is an easy call.
-
-- **Current state:** no view in `Sources/DeduperUI` invokes `MergeService.purge` or
-  displays the quarantine directory's size or contents — purge exists only as the CLI
-  `purge` command (gotcha 1).
+product's entire promise. The user can always see how much space quarantine holds
+(the sidebar footer in `AppRootView.swift`) and purge it deliberately in
+`QuarantineView.swift`: a confirmation that names the files to be permanently deleted,
+with transaction age visible so "everything older than a month" is an easy call.
+Because the CLI can undo or purge a transaction between the UI loading it and the user
+confirming, `QuarantineViewModel.purge` re-reads and re-verifies the transaction from
+the log immediately before deleting.
 
 Purge is the only permanently destructive operation in the product, in either surface,
 and it acts like it: it shows what it is about to delete and requires explicit
@@ -177,7 +177,6 @@ resolution criterion is the deletion of its Current-state callout in Part 1.
 
 | # | Gotcha | Ideal handling (summary) |
 |---|--------|--------------------------|
-| 1 | Space never visibly reclaimed | Quarantine size surfaced in UI; in-UI purge with confirmation and age hints |
 | 2 | CLI `purge` has no confirmation gate | List files + require confirmation or `--yes`; mirror `merge`'s dry-run-by-default |
 | 3 | "Remove Session" hides irreversibly, diverges from CLI hard-delete | Rename to "Hide"; add unhide; separate honest hard-delete |
 | 4 | "Retry Undo" cannot succeed while blocker exists | Name the blocking file, Reveal in Finder, frame retry as after-clearing |

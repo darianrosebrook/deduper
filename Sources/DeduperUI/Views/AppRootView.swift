@@ -10,8 +10,10 @@ public struct AppRootView: View {
     @State private var groupVM = GroupListViewModel()
     @State private var detailVM = GroupDetailViewModel()
     @State private var mergeVM = MergeViewModel()
+    @State private var quarantineVM = QuarantineViewModel()
     @State private var showMergeSheet = false
     @State private var showRescanSheet = false
+    @State private var showQuarantineSheet = false
 
     /// Content column: a selected session opens on the triage funnel; drilling
     /// into a band swaps to the group list. macOS 14 mis-routes a
@@ -28,6 +30,9 @@ public struct AppRootView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SessionSidebarView(viewModel: sessionVM)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 250)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    quarantineFooter
+                }
         } content: {
             Group {
                 if sessionVM.selectedSessionId == nil {
@@ -120,6 +125,17 @@ public struct AppRootView: View {
             }
         }
         .onAppear { configureMergeCallback() }
+        .task { await quarantineVM.refresh() }
+        .onChange(of: mergeVM.lastTransaction?.id) {
+            // Merge completion and undo both change the quarantine's
+            // contents; keep the footer honest.
+            Task { await quarantineVM.refresh() }
+        }
+        .sheet(isPresented: $showQuarantineSheet, onDismiss: {
+            Task { await quarantineVM.refresh() }
+        }) {
+            QuarantineView(viewModel: quarantineVM)
+        }
         .sheet(isPresented: $showMergeSheet, onDismiss: {
             mergeVM.reset()
         }) {
@@ -139,6 +155,39 @@ public struct AppRootView: View {
                 sessionVM.selectedSessionId = newSessionId
             }
         }
+    }
+
+    /// Persistent sidebar footer: quarantine's reclaimable size,
+    /// always visible so "removed duplicates" connects to "here is
+    /// where the space went". Opens the management view.
+    /// (UI-QUARANTINE-RECLAIM-001)
+    private var quarantineFooter: some View {
+        Button {
+            showQuarantineSheet = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "archivebox")
+                Text(
+                    quarantineVM.totalBytes > 0
+                        ? "Quarantine: \(QuarantineView.formatBytes(quarantineVM.totalBytes))"
+                        : "Quarantine empty"
+                )
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .font(.caption)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+        .help(
+            "Merged files are quarantined so merges can be undone. Open to review and reclaim disk space."
+        )
     }
 
     private var selectedSession: SessionIndex? {
