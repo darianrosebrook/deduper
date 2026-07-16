@@ -7,7 +7,7 @@ created_at: '2026-07-16T23:07:24.096Z'
 updated_at: '2026-07-16T23:07:24.096Z'
 blast_radius:
   modules:
-    - 'TODO: list one or more modules this spec touches.'
+    - docs
   data_migration: false
 operational_rollback_slo: 5m
 scope:
@@ -16,11 +16,20 @@ scope:
     - 'docs'
   out: []
 invariants:
-  - 'TODO: describe one invariant this spec guarantees.'
+  - 'Documentation only: no source, test, or config changes.'
+  - 'Every current-state callout in the doc is one falsifiable present-tense sentence anchored to a code symbol or path.'
 acceptance:
   - id: A1
-    given: 'TODO'
-    when: 'TODO'
-    then: 'TODO'
+    given: 'the published docs/GOLDEN-PATH.md'
+    when: 'every cited file path and symbol is checked against the repo'
+    then: 'all citations resolve (mechanical Grep/Glob sweep, zero misses)'
+  - id: A2
+    given: 'the eight gotcha sections'
+    when: 'each current-state sentence is tested against live code'
+    then: 'each is provable or refutable with a single Grep; none is dated narrative'
+  - id: A3
+    given: 'the doc body outside current-state callouts'
+    when: 'scanned for temporal/status language (now, no longer, recently, as of, landed)'
+    then: 'no matches — lineage lives in git history, not the doc'
 non_functional: {}
 contracts: []
