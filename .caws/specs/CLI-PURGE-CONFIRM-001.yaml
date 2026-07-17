@@ -2,10 +2,11 @@ id: CLI-PURGE-CONFIRM-001
 title: 'CLI purge: preview by default, --apply to delete (golden-path gotcha 2)'
 risk_tier: 2
 mode: feature
-lifecycle_state: active
-worktree: purge-confirm
+lifecycle_state: closed
+resolution: completed
+closure_notes: 'Auto-closed by caws worktree merge purge-confirm at e07b09867e228699a2c59b98d429ec95eaca2c34'
 created_at: '2026-07-16T23:54:01.136Z'
-updated_at: '2026-07-16T23:54:01.136Z'
+updated_at: '2026-07-17T00:05:33.844Z'
 blast_radius:
   modules:
     - DeduperCLI
