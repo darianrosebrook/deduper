@@ -7,9 +7,19 @@ public struct SessionSidebarView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var showingScanSheet = false
+    /// Sessions awaiting permanent-delete confirmation.
+    @State private var confirmingDelete: Set<UUID> = []
 
     public init(viewModel: SessionListViewModel) {
         self.viewModel = viewModel
+    }
+
+    /// Context-menu / toolbar target: the right-clicked session, or
+    /// the whole multi-selection when it includes that session.
+    private func target(for session: SessionIndex) -> Set<UUID> {
+        viewModel.selectedSessionIds.contains(session.sessionId)
+            ? viewModel.selectedSessionIds
+            : [session.sessionId]
     }
 
     public var body: some View {
@@ -21,24 +31,44 @@ public struct SessionSidebarView: View {
             SessionRowView(session: session)
                 .tag(session.sessionId)
                 .contextMenu {
-                    // "Remove" acts on the right-clicked session;
-                    // if it's part of a multi-selection, remove all
-                    // selected. Otherwise just remove the one.
-                    let target: Set<UUID> = viewModel
-                        .selectedSessionIds
-                        .contains(session.sessionId)
-                        ? viewModel.selectedSessionIds
-                        : [session.sessionId]
+                    let target = target(for: session)
+                    if session.isHidden {
+                        Button {
+                            viewModel.unhideSessions(
+                                target, context: modelContext
+                            )
+                        } label: {
+                            Label(
+                                target.count > 1
+                                    ? "Unhide \(target.count) Sessions"
+                                    : "Unhide Session",
+                                systemImage: "eye"
+                            )
+                        }
+                    } else {
+                        // Hide is reversible — no destructive role,
+                        // no trash icon. Data and files are kept.
+                        Button {
+                            viewModel.hideSessions(
+                                target, context: modelContext
+                            )
+                        } label: {
+                            Label(
+                                target.count > 1
+                                    ? "Hide \(target.count) Sessions"
+                                    : "Hide Session",
+                                systemImage: "eye.slash"
+                            )
+                        }
+                    }
+                    Divider()
                     Button(role: .destructive) {
-                        viewModel.deleteSessions(
-                            target,
-                            context: modelContext
-                        )
+                        confirmingDelete = target
                     } label: {
                         Label(
                             target.count > 1
-                                ? "Remove \(target.count) Sessions"
-                                : "Remove Session",
+                                ? "Delete \(target.count) Sessions Permanently…"
+                                : "Delete Session Permanently…",
                             systemImage: "trash"
                         )
                     }
@@ -88,20 +118,34 @@ public struct SessionSidebarView: View {
                 .help("Refresh sessions")
             }
             ToolbarItem {
-                Button(role: .destructive) {
-                    viewModel.deleteSessions(
+                Button {
+                    viewModel.hideSessions(
                         viewModel.selectedSessionIds,
                         context: modelContext
                     )
                 } label: {
-                    Label("Remove", systemImage: "trash")
+                    Label("Hide", systemImage: "eye.slash")
                 }
                 .disabled(viewModel.selectedSessionIds.isEmpty)
                 .help(
-                    viewModel.selectedSessionIds.count > 1
-                        ? "Remove \(viewModel.selectedSessionIds.count) selected sessions"
-                        : "Remove selected session"
+                    "Hide selected session(s) from the sidebar. "
+                    + "Nothing is deleted; unhide via Show Hidden Sessions."
                 )
+            }
+            ToolbarItem {
+                Toggle(isOn: Binding(
+                    get: { viewModel.showHidden },
+                    set: { newValue in
+                        viewModel.showHidden = newValue
+                        viewModel.refetchSessions(context: modelContext)
+                    }
+                )) {
+                    Label(
+                        "Show Hidden Sessions",
+                        systemImage: "eye"
+                    )
+                }
+                .help("Show hidden sessions so they can be unhidden or deleted.")
             }
         }
         .sheet(isPresented: $showingScanSheet) {
@@ -109,6 +153,38 @@ public struct SessionSidebarView: View {
                 viewModel.loadSessions(context: modelContext)
                 viewModel.selectedSessionId = sessionId
             }
+        }
+        .confirmationDialog(
+            confirmingDelete.count > 1
+                ? "Permanently delete \(confirmingDelete.count) sessions?"
+                : "Permanently delete this session?",
+            isPresented: Binding(
+                get: { !confirmingDelete.isEmpty },
+                set: { if !$0 { confirmingDelete = [] } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(
+                confirmingDelete.count > 1
+                    ? "Delete \(confirmingDelete.count) Sessions"
+                    : "Delete Session",
+                role: .destructive
+            ) {
+                viewModel.deleteSessionsPermanently(
+                    confirmingDelete, context: modelContext
+                )
+                confirmingDelete = []
+            }
+            Button("Cancel", role: .cancel) {
+                confirmingDelete = []
+            }
+        } message: {
+            Text(
+                "This deletes the scan results, review decisions, and "
+                + "session artifact files. It cannot be undone. Your "
+                + "photos and any quarantined files are not touched — "
+                + "use Quarantine to reclaim that space."
+            )
         }
         .onAppear {
             viewModel.loadSessions(context: modelContext)

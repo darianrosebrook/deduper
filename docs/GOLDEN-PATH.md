@@ -157,14 +157,15 @@ transaction, and only after the user has seen what will be deleted.
 
 Session actions say what they do. The UI's session removal **hides** — the session's
 artifact, manifest, and any quarantined files survive — so the affordance is named
-"Hide", and hidden sessions are recoverable ("Show Hidden Sessions"). Hard deletion of
-stored results exists under a different, honest name, shared with the CLI's
-`delete-session`.
-
-- **Current state:** the sidebar button is labeled "Remove Session" with
-  `role: .destructive` (`SessionSidebarView.swift`), `SessionListViewModel.deleteSession`
-  sets `isHidden = true`, and no code path in `Sources/DeduperUI` sets `isHidden` back
-  to `false` (gotcha 3).
+"Hide" (`SessionListViewModel.hideSessions`), carries no destructive styling, and
+hidden sessions are recoverable: the Show Hidden Sessions toggle lists them dimmed
+with an eye-slash badge, and Unhide restores them. Hard deletion is a separate
+destructive action, "Delete Session Permanently…", behind a confirmation that names
+what it deletes — and it deletes the manifest and artifact files along with the
+stored rows (`SessionListViewModel.deleteSessionsPermanently`), because a delete that
+leaves the manifest behind gets silently resurrected by discovery on next launch.
+Deletion never touches quarantined files or original media; reclaiming that space is
+the quarantine's job.
 
 ---
 
@@ -175,7 +176,6 @@ resolution criterion is the deletion of its Current-state callout in Part 1.
 
 | # | Gotcha | Ideal handling (summary) |
 |---|--------|--------------------------|
-| 3 | "Remove Session" hides irreversibly, diverges from CLI hard-delete | Rename to "Hide"; add unhide; separate honest hard-delete |
 | 4 | "Retry Undo" cannot succeed while blocker exists | Name the blocking file, Reveal in Finder, frame retry as after-clearing |
 | 5 | Cross-tool seams surface as raw errors | UI distinguishes "already purged via CLI" from genuine failure using transaction status |
 | 6 | Rename templates degrade silently | Invalid/colliding rename is a blocking preview decision, not a dropped warning |
