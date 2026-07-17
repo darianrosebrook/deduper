@@ -31,6 +31,10 @@ public final class SessionListViewModel {
 
     public init() {}
 
+    /// When true, hidden sessions are listed too (visually distinct
+    /// in the sidebar) so they can be unhidden or deleted.
+    public var showHidden = false
+
     /// Discover sessions from manifest files and sync with SwiftData index.
     public func loadSessions(context: ModelContext) {
         isLoading = true
@@ -39,7 +43,9 @@ public final class SessionListViewModel {
         discoveryService.syncIndex(context: context)
 
         var descriptor = FetchDescriptor<SessionIndex>(
-            predicate: #Predicate { !$0.isHidden },
+            predicate: showHidden
+                ? nil
+                : #Predicate { !$0.isHidden },
             sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
         )
         descriptor.fetchLimit = 500
@@ -54,39 +60,41 @@ public final class SessionListViewModel {
         isLoading = false
     }
 
+    /// Re-fetch the session list without running manifest discovery.
+    /// Visibility changes (hide/unhide, Show Hidden toggle) must not
+    /// trigger `syncIndex` — its orphan sweep deletes rows whose
+    /// manifests are gone, which is unrelated to what the user asked.
+    public func refetchSessions(context: ModelContext) {
+        var descriptor = FetchDescriptor<SessionIndex>(
+            predicate: showHidden
+                ? nil
+                : #Predicate { !$0.isHidden },
+            sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 500
+        do {
+            sessions = try context.fetch(descriptor)
+        } catch {
+            Self.logger.error("Failed to fetch sessions: \(error)")
+            errorMessage = "Failed to load sessions."
+        }
+    }
+
     /// Hide a session from the sidebar. Marks the SessionIndex row as
     /// hidden so it survives relaunch and re-scan without reappearing.
-    /// The underlying manifest and artifact files are not deleted.
-    public func deleteSession(
+    /// Reversible: no data or files are deleted; recover via
+    /// `unhideSessions` with Show Hidden enabled.
+    public func hideSession(
         _ sessionId: UUID,
         context: ModelContext
     ) {
-        let sid = sessionId
-        let pred = #Predicate<SessionIndex> {
-            $0.sessionId == sid
-        }
-        if let match = try? context.fetch(
-            FetchDescriptor<SessionIndex>(predicate: pred)
-        ).first {
-            match.isHidden = true
-            do {
-                try context.save()
-                sessions.removeAll { $0.sessionId == sessionId }
-                if selectedSessionId == sessionId {
-                    selectedSessionId = sessions.first?.sessionId
-                }
-            } catch {
-                Self.logger.error(
-                    "Failed to hide session: \(error)"
-                )
-            }
-        }
+        hideSessions([sessionId], context: context)
     }
 
     /// Hide multiple sessions at once. Advances `selectedSessionId`
     /// to the first remaining visible session if the active session
     /// is among those removed. Clears `selectedSessionIds` on success.
-    public func deleteSessions(
+    public func hideSessions(
         _ ids: Set<UUID>,
         context: ModelContext
     ) {
@@ -107,16 +115,128 @@ public final class SessionListViewModel {
         guard saveNeeded else { return }
         do {
             try context.save()
-            sessions.removeAll { ids.contains($0.sessionId) }
+            // With Show Hidden on, rows stay listed (SessionIndex is
+            // a @Model class — the isHidden change is observed).
+            if !showHidden {
+                sessions.removeAll { ids.contains($0.sessionId) }
+            }
             selectedSessionIds.subtract(ids)
             if let active = selectedSessionId, ids.contains(active) {
-                selectedSessionId = sessions.first?.sessionId
+                selectedSessionId = sessions.first {
+                    !$0.isHidden
+                }?.sessionId
             }
         } catch {
             Self.logger.error(
                 "Failed to hide sessions: \(error)"
             )
         }
+    }
+
+    /// Reverse of `hideSessions`: mark sessions visible again.
+    public func unhideSessions(
+        _ ids: Set<UUID>,
+        context: ModelContext
+    ) {
+        guard !ids.isEmpty else { return }
+        var saveNeeded = false
+        for sid in ids {
+            let predicate = sid  // capture
+            let pred = #Predicate<SessionIndex> {
+                $0.sessionId == predicate
+            }
+            if let match = try? context.fetch(
+                FetchDescriptor<SessionIndex>(predicate: pred)
+            ).first, match.isHidden {
+                match.isHidden = false
+                saveNeeded = true
+            }
+        }
+        guard saveNeeded else { return }
+        do {
+            try context.save()
+            refetchSessions(context: context)
+        } catch {
+            Self.logger.error(
+                "Failed to unhide sessions: \(error)"
+            )
+        }
+    }
+
+    /// Permanently delete sessions: SwiftData rows (SessionIndex,
+    /// GroupSummary, GroupMember, ReviewDecision) AND the manifest +
+    /// artifact files on disk. The files must go too — otherwise
+    /// `SessionDiscoveryService.syncIndex` re-creates the session on
+    /// next launch. Never touches quarantined files or original
+    /// media: those belong to merge transactions (purge handles them).
+    ///
+    /// Returns human-readable failure strings (empty on full success).
+    @discardableResult
+    public func deleteSessionsPermanently(
+        _ ids: Set<UUID>,
+        context: ModelContext
+    ) -> [String] {
+        guard !ids.isEmpty else { return [] }
+        var failures: [String] = []
+        var deletedIds: Set<UUID> = []
+        for sid in ids {
+            let predicate = sid  // capture
+            let pred = #Predicate<SessionIndex> {
+                $0.sessionId == predicate
+            }
+            guard let match = try? context.fetch(
+                FetchDescriptor<SessionIndex>(predicate: pred)
+            ).first else { continue }
+
+            // Files first: if a file refuses to go, keep the row so
+            // the session stays visible rather than half-deleted and
+            // resurrectable.
+            var fileFailure = false
+            for path in [match.manifestPath, match.artifactPath]
+            where FileManager.default.fileExists(atPath: path) {
+                do {
+                    try FileManager.default.removeItem(atPath: path)
+                } catch {
+                    failures.append(
+                        "\(path): \(error.localizedDescription)"
+                    )
+                    fileFailure = true
+                }
+            }
+            guard !fileFailure else { continue }
+
+            do {
+                try ArtifactMaterializer.dematerializeIndex(
+                    sessionId: sid, in: context
+                )
+                try ArtifactMaterializer.deleteDecisions(
+                    sessionId: sid, in: context
+                )
+                context.delete(match)
+                try context.save()
+                deletedIds.insert(sid)
+            } catch {
+                failures.append(
+                    "\(sid.uuidString): \(error.localizedDescription)"
+                )
+            }
+        }
+
+        sessions.removeAll { deletedIds.contains($0.sessionId) }
+        selectedSessionIds.subtract(deletedIds)
+        if let active = selectedSessionId,
+           !sessions.contains(where: { $0.sessionId == active }) {
+            selectedSessionId = sessions.first {
+                !$0.isHidden
+            }?.sessionId
+        }
+        if !failures.isEmpty {
+            errorMessage = "Some sessions could not be fully deleted."
+            Self.logger.error(
+                "Permanent delete failures: \(failures)"
+            )
+        }
+        return failures
     }
 
     /// Ensure a session's groups are materialized into GroupSummary rows.
