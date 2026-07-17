@@ -146,11 +146,9 @@ the log immediately before deleting.
 
 Purge is the only permanently destructive operation in the product, in either surface,
 and it acts like it: it shows what it is about to delete and requires explicit
-confirmation before deleting. The CLI `merge` command is the model — it is dry-run by
-default and requires `--apply` to act (`MergeCommand.swift`).
-
-- **Current state:** `PurgeCommand.swift` deletes immediately given a valid transaction
-  ID, with validation-only guards and no confirmation prompt or `--yes` flag (gotcha 2).
+confirmation before deleting. Both destructive CLI commands share one shape — dry-run
+by default, `--apply` to act (`MergeCommand.swift`, `PurgeCommand.swift`) — and the
+purge preview names every file with its size before `--apply` can delete it.
 
 **Invariant:** permanent deletion happens only from quarantine, only for a named
 transaction, and only after the user has seen what will be deleted.
@@ -177,7 +175,6 @@ resolution criterion is the deletion of its Current-state callout in Part 1.
 
 | # | Gotcha | Ideal handling (summary) |
 |---|--------|--------------------------|
-| 2 | CLI `purge` has no confirmation gate | List files + require confirmation or `--yes`; mirror `merge`'s dry-run-by-default |
 | 3 | "Remove Session" hides irreversibly, diverges from CLI hard-delete | Rename to "Hide"; add unhide; separate honest hard-delete |
 | 4 | "Retry Undo" cannot succeed while blocker exists | Name the blocking file, Reveal in Finder, frame retry as after-clearing |
 | 5 | Cross-tool seams surface as raw errors | UI distinguishes "already purged via CLI" from genuine failure using transaction status |
