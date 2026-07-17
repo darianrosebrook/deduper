@@ -1,0 +1,31 @@
+id: UI-SESSION-HIDE-DELETE-001
+title: 'Honest session actions: Hide with unhide, separate confirmed permanent delete (golden-path gotcha 3)'
+risk_tier: 2
+mode: feature
+lifecycle_state: active
+created_at: '2026-07-17T00:52:25.198Z'
+updated_at: '2026-07-17T00:52:25.198Z'
+blast_radius:
+  modules:
+    - 'TODO: list one or more modules this spec touches.'
+  data_migration: false
+operational_rollback_slo: 5m
+scope:
+  in:
+    - 'Sources/DeduperUI/ViewModels/SessionListViewModel.swift'
+    - 'Sources/DeduperUI/Views/SessionSidebarView.swift'
+    - 'Sources/DeduperUI/Views/SessionRowView.swift'
+    - 'Tests/DeduperUITests/SessionRemovalTests.swift'
+    - 'docs/GOLDEN-PATH.md'
+  out: []
+invariants:
+  - 'TODO: describe one invariant this spec guarantees.'
+acceptance:
+  - id: A1
+    given: 'TODO'
+    when: 'TODO'
+    then: 'TODO'
+non_functional: {}
+contracts:
+  - name: 'session-hide-delete-behavior'
+    type: behavior
