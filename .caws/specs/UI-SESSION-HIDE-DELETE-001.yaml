@@ -7,7 +7,9 @@ created_at: '2026-07-17T00:52:25.198Z'
 updated_at: '2026-07-17T00:52:25.198Z'
 blast_radius:
   modules:
-    - 'TODO: list one or more modules this spec touches.'
+    - DeduperUI
+    - DeduperUITests
+    - docs
   data_migration: false
 operational_rollback_slo: 5m
 scope:
@@ -19,12 +21,30 @@ scope:
     - 'docs/GOLDEN-PATH.md'
   out: []
 invariants:
-  - 'TODO: describe one invariant this spec guarantees.'
+  - 'Hide is reversible and named honestly: it never deletes data, never carries destructive styling, and every hidden session is recoverable in the UI.'
+  - 'Permanent delete requires an explicit confirmation naming what is deleted, and never touches quarantined files or original media (those belong to merge transactions).'
+  - 'Permanent delete removes the manifest and artifact files as well as the SwiftData rows — otherwise SessionDiscoveryService.syncIndex resurrects the session on next launch.'
 acceptance:
   - id: A1
-    given: 'TODO'
-    when: 'TODO'
-    then: 'TODO'
+    given: 'a hidden session'
+    when: 'the user enables Show Hidden Sessions and chooses Unhide'
+    then: 'isHidden is persisted false and the session reappears in the default sidebar list'
+  - id: A2
+    given: 'the sidebar with Show Hidden enabled'
+    when: 'sessions load'
+    then: 'hidden sessions appear (visually distinct) alongside visible ones; with it disabled they are absent'
+  - id: A3
+    given: 'a session with materialized groups, members, decisions, and manifest+artifact files on disk'
+    when: 'permanent delete is confirmed'
+    then: 'SessionIndex, GroupSummary, GroupMember, and ReviewDecision rows for that session are gone, its manifest and artifact files are deleted, and other sessions are untouched'
+  - id: A4
+    given: 'the active selected session'
+    when: 'it is hidden or permanently deleted'
+    then: 'selection advances to the next remaining visible session (existing pinned behavior preserved)'
+  - id: A5
+    given: 'the sidebar affordances'
+    when: 'inspected'
+    then: 'Hide carries no destructive role or trash icon; permanent delete is a separate destructive action behind a confirmation dialog'
 non_functional: {}
 contracts:
   - name: 'session-hide-delete-behavior'
