@@ -3,6 +3,7 @@ title: 'Honest session actions: Hide with unhide, separate confirmed permanent d
 risk_tier: 2
 mode: feature
 lifecycle_state: active
+worktree: session-hide-delete
 created_at: '2026-07-17T00:52:25.198Z'
 updated_at: '2026-07-17T00:52:25.198Z'
 blast_radius:
